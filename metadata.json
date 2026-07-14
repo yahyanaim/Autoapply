@@ -1,0 +1,6 @@
+{
+  "name": "AutoApply AI",
+  "description": "Autonomous Job Search Operating System with multi-agent AI for CV parsing, automated job matching, and resume refinement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
