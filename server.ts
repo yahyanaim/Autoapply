@@ -29,7 +29,7 @@ function getGemini(req?: express.Request): GoogleGenAI {
   if (!key || key.includes("MY_GEMINI_API_KEY") || key === "placeholder_required") {
     throw new Error("Clé API Gemini non configurée. Veuillez entrer un clé valide (gratuite pour développeurs) dans l'interface pour exécuter l'intelligence artificielle.");
   }
-  
+
   if (customKey) {
     return new GoogleGenAI({
       apiKey: customKey,
@@ -61,7 +61,7 @@ async function generateContentWithRetry(ai: GoogleGenAI, params: any, retries = 
   } catch (error: any) {
     const errorStr = String(error.message || error);
     const isTransient = errorStr.includes("503") || errorStr.includes("UNAVAILABLE") || errorStr.includes("429") || errorStr.includes("ResourceExhausted") || errorStr.includes("temporary");
-    
+
     if (isTransient && retries > 0) {
       console.warn(`Transient error occurred: ${errorStr}. Retrying in ${delay}ms... (${retries} attempts left)`);
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -84,7 +84,7 @@ async function callOpenAICompatible(
 ): Promise<string> {
   // Add strict JSON-only instruction to prevent thinking tags
   const finalSystemPrompt = systemPrompt + "\n\nCRITICAL: Output ONLY the raw JSON response. Do NOT use <think> tags. Do NOT include any explanation or reasoning before or after the JSON. Just output the JSON object directly.";
-  
+
   const body: any = {
     model,
     messages: [
@@ -170,11 +170,11 @@ async function generateContentUnified(
 function safeParseJSON(text: string | undefined | null, fallback: any = {}): any {
   if (!text) return fallback;
   let clean = text.trim();
-  
+
   // Strip<think>...</think> blocks (chain-of-thought from open models)
   const thinkRegex = /<think>[\s\S]*?<\/think>/gi;
   clean = clean.replace(thinkRegex, "").trim();
-  
+
   // Strip markdown codeblock lines if present
   if (clean.startsWith("```")) {
     const lines = clean.split("\n");
@@ -186,13 +186,13 @@ function safeParseJSON(text: string | undefined | null, fallback: any = {}): any
     }
     clean = lines.join("\n").trim();
   }
-  
+
   // Try direct parsing
   try {
     return JSON.parse(clean);
   } catch (err: any) {
     console.error("Direct JSON.parse failed. Error:", err, "Raw length:", text.length);
-    
+
     // Attempt standard fixes for common LLM JSON syntax issues
     try {
       // 1. Remove trailing commas in objects and arrays
@@ -837,8 +837,8 @@ Extract now as JSON:`;
       } else {
         // For other file types (DOCX, images, etc.), only Gemini can handle them
         if (provider === 'openai-compatible') {
-          return res.status(400).json({ 
-            error: "Ce type de fichier n'est pas supporté avec Dahl. Formats supportés: PDF, TXT, MD, JSON. Veuillez coller le texte de votre CV manuellement." 
+          return res.status(400).json({
+            error: "Ce type de fichier n'est pas supporté avec Dahl. Formats supportés: PDF, TXT, MD, JSON. Veuillez coller le texte de votre CV manuellement."
           });
         }
         // For Gemini, pass base64 as-is
@@ -865,7 +865,7 @@ Extract now as JSON:`;
     // Validation: cross-check extracted data against original CV text
     if (resumeText && !fileBase64) {
       const cvLower = resumeText.toLowerCase();
-      
+
       // Validate email exists in CV
       if (parsedData.email && !cvLower.includes(parsedData.email.toLowerCase())) {
         const emailMatch = resumeText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
@@ -873,7 +873,7 @@ Extract now as JSON:`;
           parsedData.email = emailMatch[0];
         }
       }
-      
+
       // Validate phone exists in CV
       if (parsedData.phone) {
         const cleanPhone = parsedData.phone.replace(/[\s.\-()]/g, '');
@@ -1288,25 +1288,25 @@ ${JSON.stringify(candidate.skills.map(s => ({ name: s.skillName, level: s.profic
 
 Work Experience (use EXACTLY these jobs, their real titles, companies, dates, and achievements):
 ${JSON.stringify(candidate.workExperience.map(e => ({
-  title: e.title,
-  company: e.company,
-  startDate: e.startDate,
-  endDate: e.endDate,
-  isCurrent: e.isCurrent,
-  description: e.description,
-  achievements: e.achievements,
-  technologies: e.technologies
-})))}
+      title: e.title,
+      company: e.company,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      isCurrent: e.isCurrent,
+      description: e.description,
+      achievements: e.achievements,
+      technologies: e.technologies
+    })))}
 
 Education (use EXACTLY these):
 ${JSON.stringify(candidate.education.map(e => ({
-  degree: e.degree,
-  field: e.fieldOfStudy,
-  school: e.institution,
-  startYear: e.startYear,
-  endYear: e.endYear,
-  gpa: e.gpa
-})))}
+      degree: e.degree,
+      field: e.fieldOfStudy,
+      school: e.institution,
+      startYear: e.startYear,
+      endYear: e.endYear,
+      gpa: e.gpa
+    })))}
 
 ========================
 TARGET JOB:
@@ -1420,45 +1420,7 @@ COVER LETTER INSTRUCTIONS:
     };
 
     let iterationCount = 1;
-
-    if (finalATS < 80 && missingKeywords.length > 0) {
-      iterationCount++;
-      const editPrompt = `You are a resume optimizer. You MUST preserve the EXACT same Markdown template and structure. Only rephrase wording to add job keywords.
-
-ORIGINAL RESUME (keep this EXACT structure — same headers, same sections, same order):
-${resumeText}
-
-KEYWORDS TO ADD NATURALLY: ${JSON.stringify(missingKeywords.slice(0, 8))}
-
-RULES:
-1. Keep the EXACT same Markdown headers (# and ##) in the EXACT same order
-2. Keep ALL sections — do not add, remove, or reorder any section
-3. Keep ALL content — every bullet point, every job, every skill, every achievement
-4. ONLY change wording within existing lines to naturally include the missing keywords
-5. Do NOT create new bullet points or sections
-6. Do NOT change the structure or formatting
-7. Output the COMPLETE resume in the EXACT same Markdown format
-
-Output ONLY the complete resume text — same template, same structure, rephrased wording.`;
-
-      const editResponseText = await generateContentUnified(req, "You are a resume optimizer. Preserve the exact same Markdown template. Only rephrase wording.", editPrompt, false, 0.1);
-
-      if (editResponseText && editResponseText.length > resumeText.length * 0.6) {
-        // Recalculate ATS after optimization
-        const optLower = editResponseText.toLowerCase();
-        let newMatched = 0;
-        uniqueKeywords.forEach(kw => { if (optLower.includes(kw)) newMatched++; });
-        const newKeywordScore = uniqueKeywords.length > 0 ? (newMatched / uniqueKeywords.length) * 80 : 60;
-        const newATS = Math.min(Math.round(newKeywordScore + formatScore + lengthScore), 98);
-
-        if (newATS > finalATS) {
-          resumeText = editResponseText;
-          parsedCritique.atsScore = newATS;
-          parsedCritique.matchedKeywords = uniqueKeywords.filter(kw => editResponseText.toLowerCase().includes(kw)).slice(0, 15);
-          parsedCritique.missingKeywords = uniqueKeywords.filter(kw => !editResponseText.toLowerCase().includes(kw)).slice(0, 10);
-        }
-      }
-    }
+    // ATS score calculated — no optimization, keep original CV as-is
 
     // Save as structured Draft application in Database
     const newAppId = `app_${Math.random().toString(36).substring(2, 9)}`;
