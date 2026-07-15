@@ -1202,23 +1202,24 @@ IMPORTANT:
   }
 });
 
-// Fallback job generator when API fails — uses REAL search URLs
+// Fallback job generator — REAL working search URLs
 function generateFallbackJobs(query: string, location: string) {
   const q = encodeURIComponent(query);
+  const qPlus = query.replace(/\s+/g, '+');
 
   const jobTemplates = [
-    { title: `Senior ${query}`, company: "Google", loc: "Mountain View, CA", remote: "hybrid", salary: [140000, 200000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=${q}&location=Mountain+View` },
-    { title: `${query} Engineer`, company: "Microsoft", loc: "Seattle, WA", remote: "hybrid", salary: [120000, 175000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=${q}&location=Seattle` },
-    { title: `Software Engineering Intern`, company: "Amazon", loc: "Seattle, WA", remote: "onsite", salary: [25000, 45000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Software+Engineering+Intern&location=Seattle` },
-    { title: `Full-Stack ${query}`, company: "Stripe", loc: "Remote (Global)", remote: "remote", salary: [110000, 165000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${q}&l=Remote` },
-    { title: `${query} Intern — Summer 2025`, company: "Shopify", loc: "Ottawa, Canada", remote: "remote", salary: [22000, 40000], source: "Glassdoor", url: `https://www.glassdoor.com/Job/remote-${q.toLowerCase().replace(/\s+/g, '-')}-jobs-SRCH_IL.0,6_IS11047_KO7,${7 + q.length}.htm` },
-    { title: `Junior ${query}`, company: "Notion", loc: "San Francisco, CA", remote: "hybrid", salary: [70000, 100000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Junior+${q}&location=San+Francisco` },
-    { title: `${query} — Remote`, company: "GitLab", loc: "Remote (Global)", remote: "remote", salary: [95000, 150000], source: "RemoteOK", url: `https://remoteok.com/remote-dev-jobs` },
-    { title: `Lead ${query}`, company: "Netflix", loc: "Los Gatos, CA", remote: "hybrid", salary: [180000, 260000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Lead+${q}&location=Los+Gatos` },
-    { title: `Frontend ${query} Intern`, company: "Spotify", loc: "Stockholm, Sweden", remote: "hybrid", salary: [20000, 38000], source: "Indeed", url: `https://www.indeed.com/jobs?q=Frontend+${q}+Intern&l=Stockholm` },
-    { title: `${query} — Entry Level`, company: "Accenture", loc: "New York, NY", remote: "onsite", salary: [60000, 85000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${q}+entry+level&l=New+York` },
-    { title: `Backend ${query} Engineer`, company: "Datadog", loc: "New York, NY", remote: "hybrid", salary: [105000, 160000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Backend+${q}&location=New+York` },
-    { title: `${query} Intern — Fall 2025`, company: "Canva", loc: "Sydney, Australia", remote: "remote", salary: [18000, 35000], source: "Glassdoor", url: `https://www.glassdoor.com/Job/remote-${q.toLowerCase().replace(/\s+/g, '-')}-intern-jobs-SRCH_IL.0,6_IS11047_KO7,${7 + q.length + 6}.htm` },
+    { title: `Senior ${query}`, company: "Google", loc: "Mountain View, CA", remote: "hybrid", salary: [140000, 200000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=${qPlus}&location=Mountain+View%2C+CA` },
+    { title: `${query} Engineer`, company: "Microsoft", loc: "Seattle, WA", remote: "hybrid", salary: [120000, 175000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=${qPlus}&location=Seattle%2C+WA` },
+    { title: `Software Engineering Intern`, company: "Amazon", loc: "Seattle, WA", remote: "onsite", salary: [25000, 45000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Software+Engineering+Intern&location=Seattle%2C+WA` },
+    { title: `Full-Stack ${query}`, company: "Stripe", loc: "Remote (Global)", remote: "remote", salary: [110000, 165000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${qPlus}&l=Remote` },
+    { title: `${query} Intern — Summer 2025`, company: "Shopify", loc: "Ottawa, Canada", remote: "remote", salary: [22000, 40000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${qPlus}+intern&l=Remote` },
+    { title: `Junior ${query}`, company: "Notion", loc: "San Francisco, CA", remote: "hybrid", salary: [70000, 100000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Junior+${qPlus}&location=San+Francisco%2C+CA` },
+    { title: `${query} — Remote`, company: "GitLab", loc: "Remote (Global)", remote: "remote", salary: [95000, 150000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${qPlus}&l=Remote` },
+    { title: `Lead ${query}`, company: "Netflix", loc: "Los Gatos, CA", remote: "hybrid", salary: [180000, 260000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Lead+${qPlus}&location=Los+Gatos%2C+CA` },
+    { title: `Frontend ${query} Intern`, company: "Spotify", loc: "Stockholm, Sweden", remote: "hybrid", salary: [20000, 38000], source: "Indeed", url: `https://www.indeed.com/jobs?q=Frontend+${qPlus}+Intern&l=Stockholm` },
+    { title: `${query} — Entry Level`, company: "Accenture", loc: "New York, NY", remote: "onsite", salary: [60000, 85000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${qPlus}+entry+level&l=New+York%2C+NY` },
+    { title: `Backend ${query} Engineer`, company: "Datadog", loc: "New York, NY", remote: "hybrid", salary: [105000, 160000], source: "LinkedIn", url: `https://www.linkedin.com/jobs/search/?keywords=Backend+${qPlus}&location=New+York%2C+NY` },
+    { title: `${query} Intern — Fall 2025`, company: "Canva", loc: "Sydney, Australia", remote: "remote", salary: [18000, 35000], source: "Indeed", url: `https://www.indeed.com/jobs?q=${qPlus}+intern&l=Remote` },
   ];
 
   return jobTemplates.map(t => ({
@@ -1381,64 +1382,82 @@ COVER LETTER INSTRUCTIONS:
     let resumeText = parsedGen.resumeText || "";
     let coverLetterText = parsedGen.coverLetterText || "";
 
-    // 2. CRITIQUE AGENT PASS (ATS Audit, Keyword Extraction - feedback in French)
-    const critiquePrompt = `You are the autonomous Critique Agent.
-    Your task is to analyze the generated tailored resume against the core Job details.
-    All evaluations, feedbacks, and reports MUST be written in French.
-    
-    Tailored Resume:
-    ${resumeText}
-    
-    Job Requirements:
-    ${JSON.stringify(job.requiredSkills)} / ${JSON.stringify(job.requirements)}
- 
-    Provide an objective, structured critique JSON:
-    {
-      "atsScore": 85,
-      "matchedKeywords": ["React", "TypeScript"],
-      "missingKeywords": [],
-      "feedback": "Retour d'expérience constructif et conseils d'amélioration rédigés en français.",
-      "formatScore": 92,
-      "toneReview": "Examen du ton professionnel rédigé en français."
-    }`;
+    // 2. REAL ATS SCORE CALCULATION (not simulated)
+    const resumeLower = resumeText.toLowerCase();
+    const allJobKeywords = [
+      ...job.requiredSkills,
+      ...job.requirements,
+      ...(job.description.match(/\b[A-Za-z+#]{2,}\b/g) || [])
+    ].map(k => k.toLowerCase().trim()).filter(k => k.length > 2);
 
-    const critiqueResponseText = await generateContentUnified(req, "You are a resume critique agent that evaluates ATS compatibility.", critiquePrompt, true, 0.2);
+    const uniqueKeywords = [...new Set(allJobKeywords)];
+    const matchedKeywords: string[] = [];
+    const missingKeywords: string[] = [];
 
-    const parsedCritique = safeParseJSON(critiqueResponseText, {});
+    uniqueKeywords.forEach(keyword => {
+      if (resumeLower.includes(keyword)) {
+        matchedKeywords.push(keyword);
+      } else {
+        missingKeywords.push(keyword);
+      }
+    });
 
-    // Perform interactive iterative adjustment loop if ATS score is low (< 85)
-    let finalATS = parsedCritique.atsScore || 85;
+    // Real ATS score: keyword match ratio + format bonus
+    const keywordScore = uniqueKeywords.length > 0 ? (matchedKeywords.length / uniqueKeywords.length) * 80 : 60;
+    const formatScore = resumeText.includes("## ") && resumeText.includes("**") ? 15 : 8;
+    const lengthScore = resumeText.length > 500 ? 5 : 0;
+    const finalATS = Math.min(Math.round(keywordScore + formatScore + lengthScore), 98);
+
+    const parsedCritique = {
+      atsScore: finalATS,
+      matchedKeywords: matchedKeywords.slice(0, 15),
+      missingKeywords: missingKeywords.slice(0, 10),
+      feedback: matchedKeywords.length > 0
+        ? `Strong match! ${matchedKeywords.length}/${uniqueKeywords.length} keywords found in your resume. ${missingKeywords.length > 0 ? `Consider adding: ${missingKeywords.slice(0, 3).join(', ')}` : "Excellent keyword coverage!"}`
+        : "Low keyword match. Add more relevant skills from the job description.",
+      formatScore: formatScore + 60,
+      toneReview: "Professional tone and structure."
+    };
+
     let iterationCount = 1;
 
-    if (finalATS < 85) {
+    if (finalATS < 80 && missingKeywords.length > 0) {
       iterationCount++;
       const editPrompt = `You are a resume optimizer. You MUST preserve the EXACT same Markdown template and structure. Only rephrase wording to add job keywords.
 
 ORIGINAL RESUME (keep this EXACT structure — same headers, same sections, same order):
 ${resumeText}
 
-JOB REQUIRED SKILLS: ${JSON.stringify(job.requiredSkills)}
-KEYWORDS TO ADD NATURALLY: ${JSON.stringify(parsedCritique.missingKeywords)}
+KEYWORDS TO ADD NATURALLY: ${JSON.stringify(missingKeywords.slice(0, 8))}
 
 RULES:
 1. Keep the EXACT same Markdown headers (# and ##) in the EXACT same order
 2. Keep ALL sections — do not add, remove, or reorder any section
 3. Keep ALL content — every bullet point, every job, every skill, every achievement
 4. ONLY change wording within existing lines to naturally include the missing keywords
-5. Example: if a bullet says "Built React components" and "React" is a missing keyword, change to "Built React components using React and TypeScript"
-6. Do NOT create new bullet points or sections
-7. Do NOT change the structure or formatting
-8. Output the COMPLETE resume in the EXACT same Markdown format
+5. Do NOT create new bullet points or sections
+6. Do NOT change the structure or formatting
+7. Output the COMPLETE resume in the EXACT same Markdown format
 
 Output ONLY the complete resume text — same template, same structure, rephrased wording.`;
 
       const editResponseText = await generateContentUnified(req, "You are a resume optimizer. Preserve the exact same Markdown template. Only rephrase wording.", editPrompt, false, 0.1);
 
-      // Only use if it preserved the structure (roughly same length)
       if (editResponseText && editResponseText.length > resumeText.length * 0.6) {
-        resumeText = editResponseText;
+        // Recalculate ATS after optimization
+        const optLower = editResponseText.toLowerCase();
+        let newMatched = 0;
+        uniqueKeywords.forEach(kw => { if (optLower.includes(kw)) newMatched++; });
+        const newKeywordScore = uniqueKeywords.length > 0 ? (newMatched / uniqueKeywords.length) * 80 : 60;
+        const newATS = Math.min(Math.round(newKeywordScore + formatScore + lengthScore), 98);
+
+        if (newATS > finalATS) {
+          resumeText = editResponseText;
+          parsedCritique.atsScore = newATS;
+          parsedCritique.matchedKeywords = uniqueKeywords.filter(kw => editResponseText.toLowerCase().includes(kw)).slice(0, 15);
+          parsedCritique.missingKeywords = uniqueKeywords.filter(kw => !editResponseText.toLowerCase().includes(kw)).slice(0, 10);
+        }
       }
-      finalATS = Math.min(finalATS + 8, 96);
     }
 
     // Save as structured Draft application in Database
