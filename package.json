@@ -1,10 +1,10 @@
 {
   "name": "applyai",
   "private": true,
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@10.30.3",
   "engines": {
     "node": "24.x",
-    "pnpm": ">=9.0.0"
+    "pnpm": "10.x"
   },
   "scripts": {
     "build": "turbo run build",

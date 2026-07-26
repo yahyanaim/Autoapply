@@ -14,13 +14,14 @@ Import the Git repository into Vercel with these settings:
 | Include source files outside Root Directory | Enabled |
 | Framework Preset | Next.js |
 | Node.js | 24.x |
-| Install Command | Automatic |
+| Install Command | Defined in `apps/dashboard/vercel.json` |
 | Build Command | Defined in `apps/dashboard/vercel.json` |
 | Output Directory | Leave empty (Next.js default) |
 
-Vercel detects pnpm from the root `pnpm-lock.yaml` and the `packageManager`
-field. Keep automatic installation enabled so it uses the repository's pnpm
-version and workspace links.
+The install command uses the exact pnpm version declared in the root
+`package.json` and filters installation to the dashboard dependency closure.
+This prevents dashboard deployments from installing native API-only packages
+or starting backend package lifecycle scripts.
 
 ## 2. Configure the dashboard environment
 
