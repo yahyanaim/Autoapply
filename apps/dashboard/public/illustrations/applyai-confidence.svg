@@ -1,0 +1,77 @@
+<svg width="900" height="1100" viewBox="0 0 900 1100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="skin" x1="449" y1="188" x2="452" y2="660" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E7B798"/>
+      <stop offset="1" stop-color="#CB8F6E"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="342" y1="518" x2="607" y2="995" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF9348"/>
+      <stop offset="1" stop-color="#E85A1A"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="26" flood-color="#34251D" flood-opacity=".16"/>
+    </filter>
+  </defs>
+  <rect width="900" height="1100" rx="52" fill="#ECE5DC"/>
+  <circle cx="148" cy="150" r="102" fill="#F8DCCB"/>
+  <circle cx="754" cy="220" r="76" fill="#F27831"/>
+  <path d="M0 778C181 675 282 816 425 772C625 711 692 639 900 728V1100H0V778Z" fill="#DCD1C4"/>
+
+  <g filter="url(#cardShadow)">
+    <rect x="88" y="92" width="260" height="174" rx="28" fill="#FFFDF9"/>
+    <rect x="116" y="121" width="78" height="78" rx="22" fill="#1D1D19"/>
+    <circle cx="155" cy="151" r="19" fill="#E7B798"/>
+    <path d="M128 187C130 167 141 158 155 158C170 158 180 169 182 187H128Z" fill="#F27831"/>
+    <rect x="216" y="128" width="91" height="14" rx="7" fill="#24241F"/>
+    <rect x="216" y="154" width="64" height="10" rx="5" fill="#CFC7BE"/>
+    <rect x="116" y="222" width="190" height="12" rx="6" fill="#E7E0D8"/>
+  </g>
+
+  <path d="M292 486C292 316 356 206 451 206C548 206 610 314 610 486V783H292V486Z" fill="url(#skin)"/>
+  <path d="M330 307C323 209 371 151 454 151C538 151 588 211 573 318C527 271 484 255 430 271C384 285 353 294 330 307Z" fill="#272421"/>
+  <path d="M274 870C276 662 338 533 451 533C566 533 626 664 628 870V1020H274V870Z" fill="url(#shirt)"/>
+  <path d="M389 552L451 636L513 552" fill="#FFF6EF"/>
+  <circle cx="407" cy="379" r="8" fill="#2D2622"/>
+  <circle cx="502" cy="379" r="8" fill="#2D2622"/>
+  <path d="M414 449C438 468 469 468 493 449" stroke="#8A4C35" stroke-width="9" stroke-linecap="round"/>
+  <path d="M343 858C408 811 491 811 556 858" stroke="#F9B68E" stroke-width="24" stroke-linecap="round"/>
+
+  <g filter="url(#cardShadow)">
+    <rect x="552" y="115" width="270" height="198" rx="28" fill="#1D1D19"/>
+    <text x="584" y="158" fill="#97978E" font-family="Arial, sans-serif" font-size="14" letter-spacing="2">JOB FIT</text>
+    <text x="584" y="225" fill="#FFFDF9" font-family="Arial, sans-serif" font-weight="600" font-size="58">94%</text>
+    <rect x="584" y="257" width="204" height="13" rx="6.5" fill="#3A3A35"/>
+    <rect x="584" y="257" width="181" height="13" rx="6.5" fill="#F27831"/>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="62" y="548" width="248" height="218" rx="28" fill="#FFFDF9"/>
+    <rect x="92" y="580" width="80" height="20" rx="10" fill="#FFDCC6"/>
+    <rect x="92" y="627" width="184" height="12" rx="6" fill="#D9D1C8"/>
+    <rect x="92" y="654" width="153" height="12" rx="6" fill="#E8E1D8"/>
+    <rect x="92" y="681" width="171" height="12" rx="6" fill="#E8E1D8"/>
+    <path d="M94 727L122 741L155 706" stroke="#F27831" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="174" y="719" width="101" height="18" rx="9" fill="#24241F"/>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="586" y="580" width="254" height="240" rx="28" fill="#FFFDF9"/>
+    <rect x="616" y="612" width="194" height="30" rx="15" fill="#F2ECE5"/>
+    <circle cx="638" cy="627" r="7" fill="#F27831"/>
+    <rect x="657" y="620" width="122" height="13" rx="6.5" fill="#5A5650"/>
+    <path d="M640 691C676 659 722 668 744 699C770 737 804 723 814 694" stroke="#F27831" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="640" cy="691" r="13" fill="#1D1D19"/>
+    <circle cx="744" cy="699" r="13" fill="#1D1D19"/>
+    <circle cx="814" cy="694" r="13" fill="#F27831"/>
+    <rect x="616" y="766" width="103" height="18" rx="9" fill="#24241F"/>
+  </g>
+
+  <g filter="url(#cardShadow)">
+    <rect x="142" y="876" width="616" height="126" rx="30" fill="#1D1D19"/>
+    <circle cx="194" cy="939" r="24" fill="#F27831"/>
+    <path d="M183 939L191 947L206 930" stroke="#FFF8F1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="238" y="916" width="250" height="18" rx="9" fill="#FFF9F4"/>
+    <rect x="238" y="950" width="360" height="12" rx="6" fill="#77776F"/>
+    <rect x="626" y="918" width="90" height="42" rx="21" fill="#F27831"/>
+  </g>
+</svg>

@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: applyai
+      POSTGRES_PASSWORD: applyai_dev
+      POSTGRES_DB: applyai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U applyai -d applyai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://applyai:applyai_dev@postgres:5432/applyai
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - api_uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: "no"
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://applyai:applyai_dev@postgres:5432/applyai
+    command:
+      - /app/node_modules/.bin/prisma
+      - migrate
+      - deploy
+      - --schema
+      - /app/src/database/prisma/schema.prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: infra/docker/dashboard.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  api_uploads:

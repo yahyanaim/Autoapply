@@ -1,0 +1,127 @@
+export interface Fabrication {
+  type: 'experience' | 'title' | 'date' | 'skill';
+  detail: string;
+}
+
+const DATE_PATTERNS = [
+  /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}/gi,
+  /\d{1,2}\/\d{4}/g,
+  /\d{4}\s*[-–]\s*(?:present|current|now)/gi,
+  /\d{4}\s*[-–]\s*\d{4}/g,
+  /\b(?:19|20)\d{2}\b/g,
+];
+
+const JOB_TITLE_PATTERNS = [
+  /(?:senior|junior|lead|principal|staff|head|director|vp|chief)\s+\w+/gi,
+  /(?:software|data|product|project|systems|cloud|devops|ml|ai)\s+(?:engineer|developer|architect|scientist|analyst|manager|lead)/gi,
+];
+
+function extractDates(text: string): string[] {
+  const dates: string[] = [];
+  for (const pattern of DATE_PATTERNS) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      dates.push(match[0].trim());
+    }
+  }
+  return [...new Set(dates)];
+}
+
+function extractTitles(text: string): string[] {
+  const titles: string[] = [];
+  for (const pattern of JOB_TITLE_PATTERNS) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      titles.push(match[0].trim());
+    }
+  }
+  return [...new Set(titles)];
+}
+
+function extractSkills(text: string): string[] {
+  const lower = text.toLowerCase();
+  const skills = new Set<string>();
+  const knownSkills = [
+    'javascript', 'typescript', 'python', 'java', 'c++', 'c#', 'go', 'rust',
+    'react', 'angular', 'vue', 'svelte', 'nextjs', 'nuxt', 'node', 'express',
+    'django', 'flask', 'spring', 'fastapi', 'rails',
+    'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform',
+    'sql', 'postgresql', 'mysql', 'mongodb', 'redis',
+    'graphql', 'rest', 'grpc',
+    'machine learning', 'deep learning', 'nlp', 'computer vision',
+    'git', 'linux', 'bash',
+  ];
+  for (const skill of knownSkills) {
+    if (lower.includes(skill)) {
+      skills.add(skill);
+    }
+  }
+  return [...skills];
+}
+
+function findNewItems(original: string[], optimized: string[]): string[] {
+  const originalSet = new Set(original.map(item => item.toLowerCase()));
+  return optimized.filter(item => !originalSet.has(item.toLowerCase()));
+}
+
+export function detectFabrications(
+  originalResume: { content: string },
+  optimizedResume: { content: string },
+): Fabrication[] {
+  const fabrications: Fabrication[] = [];
+
+  const origDates = extractDates(originalResume.content);
+  const optDates = extractDates(optimizedResume.content);
+  const newDates = findNewItems(origDates, optDates);
+  for (const date of newDates) {
+    fabrications.push({
+      type: 'date',
+      detail: `Added date not in original resume: "${date}"`,
+    });
+  }
+
+  const origTitles = extractTitles(originalResume.content);
+  const optTitles = extractTitles(optimizedResume.content);
+  const newTitles = findNewItems(origTitles, optTitles);
+  for (const title of newTitles) {
+    fabrications.push({
+      type: 'title',
+      detail: `Added job title not in original resume: "${title}"`,
+    });
+  }
+
+  const origSkills = extractSkills(originalResume.content);
+  const optSkills = extractSkills(optimizedResume.content);
+  const newSkills = findNewItems(origSkills, optSkills);
+  for (const skill of newSkills) {
+    const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const originalCasing = optimizedResume.content.match(new RegExp(escaped, 'i'))?.[0] ?? skill;
+    fabrications.push({
+      type: 'skill',
+      detail: `Added skill not in original resume: "${originalCasing}"`,
+    });
+  }
+
+  const origExpPattern = /(?:worked|experience|employed)\s+(?:at|with)\s+([A-Z][\w\s&]+)/gi;
+  const origExps: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = origExpPattern.exec(originalResume.content)) !== null) {
+    origExps.push(m[1].trim());
+  }
+
+  const optExpPattern = /(?:worked|experience|employed)\s+(?:at|with)\s+([A-Z][\w\s&]+)/gi;
+  const optExps: string[] = [];
+  while ((m = optExpPattern.exec(optimizedResume.content)) !== null) {
+    optExps.push(m[1].trim());
+  }
+
+  const newExps = findNewItems(origExps, optExps);
+  for (const exp of newExps) {
+    fabrications.push({
+      type: 'experience',
+      detail: `Added work experience not in original resume: "${exp}"`,
+    });
+  }
+
+  return fabrications;
+}

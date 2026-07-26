@@ -1,0 +1,188 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 20% 98%;
+    --foreground: 0 0% 10%;
+    --primary: 24 94% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 12% 94%;
+    --secondary-foreground: 0 0% 12%;
+    --muted: 30 10% 95%;
+    --muted-foreground: 25 5% 42%;
+    --accent: 28 100% 95%;
+    --accent-foreground: 24 94% 42%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 8% 87%;
+    --input: 30 8% 84%;
+    --ring: 24 94% 53%;
+    --radius: 0.75rem;
+
+    --color-primary: #f97316;
+    --color-primary-hover: #ea580c;
+    --color-primary-focus: #c2410c;
+    --color-success: #22c55e;
+    --color-warning: #f59e0b;
+    --color-danger: #ef4444;
+    --color-info: #3b82f6;
+    --spacing-gutter: 24px;
+    --sidebar-collapsed: 72px;
+    --sidebar-expanded: 280px;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      "SF Pro Text",
+      "SF Pro Display",
+      "Helvetica Neue",
+      Arial,
+      sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  ::selection {
+    @apply bg-primary-200 text-gray-950;
+  }
+}
+
+@layer components {
+  .product-grid {
+    background-color: #f7f7f5;
+    background-image:
+      linear-gradient(rgba(20, 20, 20, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(20, 20, 20, 0.045) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(to bottom, black 0%, black 68%, transparent 100%);
+  }
+
+  .orange-word {
+    background: linear-gradient(100deg, #f97316 10%, #fdba74 92%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 12px 50px rgba(25, 20, 15, 0.08);
+    backdrop-filter: blur(18px);
+  }
+
+  .section-shell {
+    @apply mx-auto w-full max-w-[1180px] px-5 sm:px-8;
+  }
+
+  .feature-marquee {
+    overflow: hidden;
+    mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      black 5%,
+      black 95%,
+      transparent 100%
+    );
+  }
+
+  .feature-marquee-track {
+    display: flex;
+    width: max-content;
+    gap: 1.25rem;
+    padding-inline: 1.25rem;
+    animation: feature-marquee 42s linear infinite;
+    will-change: transform;
+  }
+
+  .feature-marquee:hover .feature-marquee-track {
+    animation-play-state: paused;
+  }
+
+  .company-logo-marquee {
+    overflow: hidden;
+    mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      black 6%,
+      black 94%,
+      transparent 100%
+    );
+  }
+
+  .company-logo-row {
+    display: flex;
+    width: max-content;
+    gap: 4rem;
+    animation: company-logo-marquee 34s linear infinite;
+    will-change: transform;
+  }
+
+  .company-logo-row-reverse {
+    animation-name: company-logo-marquee-reverse;
+    animation-duration: 38s;
+  }
+
+  .company-logo-group {
+    display: flex;
+    flex-shrink: 0;
+    gap: 4rem;
+  }
+
+  .company-logo-marquee:hover .company-logo-row {
+    animation-play-state: paused;
+  }
+
+  .btn-primary {
+    @apply bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-400;
+  }
+
+  .btn-danger {
+    @apply bg-danger-500 text-white hover:bg-danger-600 focus:ring-danger-500;
+  }
+}
+
+@keyframes feature-marquee {
+  to {
+    transform: translateX(calc(-50% - 0.625rem));
+  }
+}
+
+@keyframes company-logo-marquee {
+  to {
+    transform: translateX(calc(-50% - 2rem));
+  }
+}
+
+@keyframes company-logo-marquee-reverse {
+  from {
+    transform: translateX(calc(-50% - 2rem));
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature-marquee-track,
+  .company-logo-row {
+    animation: none;
+  }
+}

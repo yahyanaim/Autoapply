@@ -1,0 +1,7 @@
+{
+  "name": "@applyai/config",
+  "private": true,
+  "version": "0.1.0",
+  "dependencies": {},
+  "devDependencies": { "eslint": "^9.0.0", "prettier": "^3.3.0", "typescript": "^5.5.0" }
+}

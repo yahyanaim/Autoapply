@@ -1,0 +1,74 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECR_REPOSITORY: applyai
+  K8S_NAMESPACE: staging
+
+jobs:
+  deploy:
+    name: Build, publish, and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Verify the release
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @applyai/api prisma:generate
+          pnpm check
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
+        run: |
+          test -n "$NEXT_PUBLIC_API_URL"
+          node -e "const u=new URL(process.env.NEXT_PUBLIC_API_URL); if(u.protocol !== 'https:') throw new Error('NEXT_PUBLIC_API_URL must use HTTPS')"
+          docker build --file infra/docker/api.Dockerfile --tag "$ECR_REGISTRY/$ECR_REPOSITORY-api:$IMAGE_TAG" .
+          docker build --file infra/docker/dashboard.Dockerfile --build-arg "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" --tag "$ECR_REGISTRY/$ECR_REPOSITORY-dashboard:$IMAGE_TAG" .
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY-api:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY-dashboard:$IMAGE_TAG"
+
+      - name: Deploy to EKS
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
+          DEPLOY_OVERLAY: staging
+        run: bash infra/scripts/deploy.sh

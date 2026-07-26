@@ -1,0 +1,17 @@
+.git
+.github
+.turbo
+.DS_Store
+node_modules
+**/node_modules
+.pnpm-store
+**/.next
+**/dist
+**/coverage
+.env
+.env.*
+!.env.example
+*.log
+docs
+Prompt.md
+Archticture Review

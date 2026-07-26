@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "ApplyAI",
+  "description": "AI-powered job match score and autofill",
+  "version": "0.1.0",
+  "permissions": ["storage", "activeTab"],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost/*",
+      "https://app.applyai.com/*",
+      "https://staging.applyai.com/*"
+    ]
+  },
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "https://api.applyai.com/*",
+    "https://staging-api.applyai.com/*",
+    "https://boards.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://*.lever.co/*",
+    "https://jobs.ashbyhq.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_title": "ApplyAI"
+  },
+  "options_page": "src/options/index.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*"
+      ],
+      "js": ["src/content-scripts/core/index.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.lever.co/*"
+      ],
+      "js": ["src/content-scripts/core/index.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://jobs.ashbyhq.com/*"
+      ],
+      "js": ["src/content-scripts/core/index.ts"],
+      "run_at": "document_idle"
+    }
+  ]
+}

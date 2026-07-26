@@ -1,0 +1,450 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  org_admin
+  platform_admin
+}
+
+enum ApplicationStatus {
+  draft
+  submitted
+  viewed
+  interview
+  offer
+  rejected
+}
+
+enum SubscriptionPlan {
+  free
+  pro
+  premium
+}
+
+enum SubscriptionStatus {
+  active
+  canceled
+  past_due
+  trialing
+  incomplete
+  incomplete_expired
+  unpaid
+  paused
+}
+
+enum PaymentStatus {
+  succeeded
+  pending
+  failed
+  refunded
+}
+
+enum AIRequestFeature {
+  resume_parse
+  resume_optimize
+  match_score
+  cover_letter
+  interview_coach
+  career_advisor
+  recruiter_chat
+}
+
+enum NotificationChannel {
+  email
+  push
+  in_app
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  read
+}
+
+enum ResumeParseStatus {
+  pending
+  processing
+  ready
+  failed
+}
+
+enum RemoteType {
+  remote
+  hybrid
+  onsite
+}
+
+enum OAuthProvider {
+  google
+  github
+}
+
+enum ActivityType {
+  auth_login
+  auth_logout
+  resume_upload
+  resume_optimize
+  application_create
+  application_update
+  cover_letter_generate
+  ai_request
+  subscription_change
+  payment
+  access_denied
+  queue_job
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  passwordHash    String?
+  role            UserRole @default(user)
+  isEmailVerified Boolean  @default(false)
+  dataProcessingConsentAt DateTime?
+  privacyPolicyVersion    String?
+  mfaSecretEncrypted      String?
+  mfaEnabledAt            DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profile       Profile?
+  resumes       Resume[]
+  applications  Application[]
+  coverLetters  CoverLetter[]
+  subscription  Subscription?
+  aiRequests    AIRequest[]
+  notifications Notification[]
+  activityLogs  ActivityLog[]
+  sessions      Session[]
+  usageLimit    UsageLimit?
+  oauthAccounts OAuthAccount[]
+  extensionAuthHandoffs ExtensionAuthHandoff[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model ExtensionAuthHandoff {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("extension_auth_handoffs")
+}
+
+model OAuthAccount {
+  id           String        @id @default(cuid())
+  userId       String
+  provider     OAuthProvider
+  providerId   String
+  accessToken  String?
+  refreshToken String?
+  createdAt    DateTime      @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId])
+  @@map("oauth_accounts")
+}
+
+model Profile {
+  id               String      @id @default(cuid())
+  userId           String      @unique
+  fullName         String?
+  headline         String?
+  location         String?
+  visaStatus       String?
+  desiredSalaryMin Int?
+  desiredSalaryMax Int?
+  remotePreference RemoteType?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Resume {
+  id              String            @id @default(cuid())
+  userId          String
+  originalFileUrl String
+  parsedJson      Json?
+  parseStatus     ResumeParseStatus @default(pending)
+  parseError      String?
+  isPrimary       Boolean           @default(false)
+  fileName        String?
+  fileSize        Int?
+  mimeType        String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions ResumeVersion[]
+  skills   Skill[]         @relation("ResumeSkills")
+
+  @@index([userId])
+  @@map("resumes")
+}
+
+model ResumeVersion {
+  id               String   @id @default(cuid())
+  resumeId         String
+  jobId            String?
+  optimizedFileUrl String?
+  optimizedText    String?  @db.Text
+  matchScore       Float?
+  missingKeywords  String[]
+  weakSections     String[]
+  generatedAt      DateTime @default(now())
+
+  resume       Resume        @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  job          Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  applications Application[]
+
+  @@index([resumeId])
+  @@map("resume_versions")
+}
+
+model Skill {
+  id   String @id @default(cuid())
+  name String @unique
+
+  jobs    Job[]    @relation("JobSkills")
+  resumes Resume[] @relation("ResumeSkills")
+
+  @@map("skills")
+}
+
+model Company {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  domain    String?
+  sizeRange String?
+  industry  String?
+
+  jobs Job[]
+
+  @@map("companies")
+}
+
+model Job {
+  id          String      @id @default(cuid())
+  source      String?
+  sourceUrl   String?     @unique
+  title       String
+  companyId   String?
+  description String?
+  location    String?
+  remoteType  RemoteType?
+  salaryMin   Int?
+  salaryMax   Int?
+  scrapedAt   DateTime    @default(now())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  applications   Application[]
+  resumeVersions ResumeVersion[]
+  skills         Skill[]         @relation("JobSkills")
+
+  @@index([companyId])
+  @@index([sourceUrl])
+  @@map("jobs")
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  userId          String
+  jobId           String
+  resumeVersionId String?
+  coverLetterId   String?
+  status          ApplicationStatus @default(draft)
+  appliedAt       DateTime?
+  source          String?
+  screenshotUrl   String?
+  timeline        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  resumeVersion ResumeVersion? @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
+  coverLetter   CoverLetter?   @relation(fields: [coverLetterId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([status])
+  @@map("applications")
+}
+
+model CoverLetter {
+  id          String   @id @default(cuid())
+  userId      String
+  jobId       String?
+  content     String
+  tone        String?
+  generatedAt DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([userId])
+  @@map("cover_letters")
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String             @unique
+  plan                 SubscriptionPlan   @default(free)
+  stripeSubscriptionId String?            @unique
+  status               SubscriptionStatus @default(active)
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@index([stripeSubscriptionId])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  subscriptionId  String
+  amount          Int
+  currency        String        @default("usd")
+  status          PaymentStatus @default(pending)
+  stripePaymentId String?       @unique
+  invoiceUrl      String?
+  createdAt       DateTime      @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@map("payments")
+}
+
+model StripeWebhookEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  type        String
+  processedAt DateTime @default(now())
+
+  @@map("stripe_webhook_events")
+}
+
+model AIRequest {
+  id            String           @id @default(cuid())
+  userId        String
+  feature       AIRequestFeature
+  provider      String
+  model         String?
+  promptVersion String?
+  tokensUsed    Int?
+  cost          Float?
+  latencyMs     Int?
+  inputHash     String?
+  cached        Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([feature])
+  @@index([createdAt])
+  @@index([inputHash])
+  @@map("ai_requests")
+}
+
+model UsageLimit {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  period           String
+  applicationsUsed Int      @default(0)
+  applicationsMax  Int      @default(10)
+  aiRequestsUsed   Int      @default(0)
+  aiRequestsMax    Int      @default(50)
+  resumesUsed      Int      @default(0)
+  resumesMax       Int      @default(1)
+  storageBytesUsed Int      @default(0)
+  storageBytesMax  Int      @default(5242880)
+  resetAt          DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("usage_limits")
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  channel   NotificationChannel @default(in_app)
+  title     String
+  body      String?
+  link      String?
+  status    NotificationStatus  @default(pending)
+  sentAt    DateTime?
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id        String       @id @default(cuid())
+  userId    String?
+  type      ActivityType
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime     @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  userAgent  String?
+  ipAddress  String?
+  expiresAt  DateTime
+  absoluteExpiresAt DateTime
+  mfaVerifiedAt DateTime?
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
