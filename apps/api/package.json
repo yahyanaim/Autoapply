@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "build": "rimraf dist && tsc -p tsconfig.build.json && mkdir -p dist/modules/ai && cp -R src/modules/ai/prompts dist/modules/ai/prompts",
+    "build": "prisma generate --schema src/database/prisma/schema.prisma && rimraf dist && tsc -p tsconfig.build.json && mkdir -p dist/modules/ai && cp -R src/modules/ai/prompts dist/modules/ai/prompts",
     "dev": "node --watch -r ts-node/register src/main.ts",
     "start": "node dist/main.js",
     "lint": "tsc -p tsconfig.build.json --noEmit --incremental false",
