@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
 
 const navItems = [
   {
@@ -78,10 +79,10 @@ export function Sidebar() {
       onMouseLeave={() => setHovered(false)}
     >
       <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-500">
-          <span className="text-sm font-bold text-white">A</span>
-        </div>
-        {isExpanded && <span className="text-lg font-bold text-gray-900">ApplyAI</span>}
+        <ApplyAILogo
+          mark={!isExpanded}
+          className={isExpanded ? 'h-8 w-auto' : 'h-8 w-8'}
+        />
       </div>
 
       <nav className="flex-1 space-y-1 p-3">

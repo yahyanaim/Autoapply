@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/api/hooks/use-auth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiBaseURL } from '@/lib/api/api-client';
+import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email'),
@@ -53,7 +54,7 @@ export default function LoginPage() {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
       <div className="mb-8 text-center">
-        <span className="text-2xl font-bold text-primary-500">ApplyAI</span>
+        <ApplyAILogo className="mx-auto h-10 w-auto" />
         <h1 className="mt-4 text-2xl font-bold text-gray-900">Sign in to your account</h1>
       </div>
 

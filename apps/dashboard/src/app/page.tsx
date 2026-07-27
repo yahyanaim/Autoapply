@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Separator } from '@/components/ui/separator';
+import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
 
 const categories = [
   'Technology',
@@ -331,9 +332,10 @@ export default function HomePage() {
         >
           <Link
             href="/"
-            className="text-xl font-bold tracking-[-0.04em] text-primary-500 sm:text-2xl"
+            aria-label="ApplyAI home"
+            className="shrink-0"
           >
-            APPLYAI
+            <ApplyAILogo className="h-8 w-auto sm:h-9" priority />
           </Link>
 
           <div className="hidden items-center gap-8 lg:flex">
@@ -1197,8 +1199,8 @@ export default function HomePage() {
         <div className="section-shell">
           <div className="grid gap-10 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
             <div>
-              <Link href="/" className="text-2xl font-bold tracking-[-0.04em] text-primary-500">
-                APPLYAI
+              <Link href="/" aria-label="ApplyAI home" className="inline-flex">
+                <ApplyAILogo className="h-9 w-auto" />
               </Link>
               <p className="mt-4 max-w-sm text-sm leading-6 text-gray-500">
                 A responsible AI workspace for finding, preparing, submitting, and
@@ -1308,7 +1310,7 @@ function WorkflowDashboard({ activeStep }: { activeStep: (typeof steps)[number] 
   return (
     <div className="overflow-hidden rounded-[22px] border border-black/[0.08] bg-[#f8f8f6] text-[#1b1b18] shadow-[0_18px_50px_rgba(35,28,21,0.11)]">
       <div className="flex min-h-[62px] items-center justify-between gap-4 border-b border-black/[0.07] bg-white px-4 sm:px-6">
-        <span className="text-lg font-bold tracking-[-0.04em] text-primary-500">APPLYAI</span>
+        <ApplyAILogo className="h-6 w-auto" />
         <div className="hidden items-center gap-1 md:flex">
           {['Overview', 'Resumes', 'Jobs', 'Applications'].map((item) => (
             <span

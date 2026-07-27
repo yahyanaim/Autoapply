@@ -16,6 +16,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/lib/api/hooks/use-auth';
 import { cn } from '@/lib/utils';
+import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
 
 const navigation = [
   { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
@@ -55,8 +56,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="product-grid fixed inset-x-0 top-0 h-[420px] opacity-60" aria-hidden="true" />
       <header className="relative z-40 px-4 pt-4 sm:px-6 sm:pt-6">
         <nav className="glass-panel mx-auto flex max-w-[1280px] items-center gap-5 rounded-2xl border border-white/80 px-4 py-2.5">
-          <Link href="/dashboard" className="shrink-0 text-xl font-black tracking-[-0.04em] text-primary-500">
-            APPLYAI
+          <Link href="/dashboard" aria-label="ApplyAI dashboard" className="shrink-0">
+            <ApplyAILogo className="h-8 w-auto" priority />
           </Link>
 
           <div className="hidden min-w-0 flex-1 items-center justify-center gap-1 lg:flex">

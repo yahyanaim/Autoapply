@@ -55,9 +55,11 @@ export function MatchScoreOverlay({
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-primary rounded-md flex items-center justify-center text-white font-bold text-[10px]">
-            A
-          </div>
+          <img
+            src={chrome.runtime.getURL('icons/icon48.png')}
+            alt=""
+            className="h-7 w-7 object-contain"
+          />
           <span className="text-sm font-semibold text-gray-900">ApplyAI</span>
         </div>
         <button

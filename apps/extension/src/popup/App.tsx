@@ -68,9 +68,7 @@ export function PopupApp() {
   return (
     <div className="w-80 bg-white font-sans">
       <div className="flex items-center gap-3 p-4 bg-dark-900 border-b border-gray-200">
-        <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center text-white font-bold text-xs">
-          A
-        </div>
+        <img src="/icons/icon48.png" alt="" className="h-8 w-8 object-contain" />
         <span className="text-white text-base font-bold">ApplyAI</span>
       </div>
 

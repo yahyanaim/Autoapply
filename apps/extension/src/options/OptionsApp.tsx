@@ -96,10 +96,10 @@ export function OptionsApp() {
       <div className="mx-auto max-w-2xl px-6 py-12">
         <div className="mb-8">
           <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-white">
-              A
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900">ApplyAI Settings</h1>
+            <img src="/applyai-logo.png" alt="ApplyAI" className="h-11 w-auto object-contain" />
+            <span className="rounded-full bg-orange-50 px-3 py-1 text-sm font-semibold text-primary">
+              Settings
+            </span>
           </div>
           <p className="text-sm text-gray-500">Connect your account and configure assistive autofill.</p>
         </div>

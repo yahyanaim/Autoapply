@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft, Check, ShieldCheck, Sparkles } from 'lucide-react';
+import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
 
 const benefits = [
   'Grounded resume optimization',
@@ -14,8 +15,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="product-grid absolute inset-0 opacity-[0.08]" />
         <div className="absolute -left-20 top-1/4 h-96 w-96 rounded-full bg-primary-500/25 blur-[120px]" />
 
-        <Link href="/" className="relative text-2xl font-black tracking-[-0.04em] text-primary-500">
-          APPLYAI
+        <Link
+          href="/"
+          aria-label="ApplyAI home"
+          className="relative inline-flex w-fit rounded-xl bg-white px-3 py-2"
+        >
+          <ApplyAILogo className="h-8 w-auto" priority />
         </Link>
 
         <div className="relative max-w-xl">
@@ -52,8 +57,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="product-grid absolute inset-0 opacity-40" />
         <div className="relative w-full max-w-md">
           <div className="mb-6 flex items-center justify-between lg:hidden">
-            <Link href="/" className="text-xl font-black tracking-[-0.04em] text-primary-500">
-              APPLYAI
+            <Link href="/" aria-label="ApplyAI home">
+              <ApplyAILogo className="h-8 w-auto" priority />
             </Link>
             <Link href="/" className="flex items-center gap-1 text-sm font-medium text-gray-500">
               <ArrowLeft className="h-4 w-4" />
