@@ -65,6 +65,40 @@ export interface JobRecord {
   createdAt: string;
 }
 export interface JobSearchResponse { jobs: JobRecord[]; total: number; page: number; limit: number }
+export interface JobDiscoveryRequest {
+  resumeId: string;
+  query?: string;
+  location?: string;
+  remoteType?: 'remote' | 'hybrid' | 'onsite';
+  limit?: number;
+}
+export interface JobRecommendationRecord extends JobRecord {
+  matchScore: number;
+  matchedResumeSkills: string[];
+  missingKeywords: string[];
+  weakSections: string[];
+  explanation: string[];
+  trackedApplication: { id: string; status: string } | null;
+}
+export interface JobDiscoveryResponse {
+  resumeId: string;
+  generatedAt: string;
+  requestedLimit: number;
+  totalCandidates: number;
+  searchProfile: { roles: string[]; skills: string[] };
+  filters: {
+    query: string | null;
+    location: string | null;
+    remoteType: 'remote' | 'hybrid' | 'onsite' | null;
+  };
+  sourceRefresh: Array<{
+    source: 'greenhouse' | 'lever' | 'ashby';
+    identifier: string;
+    status: 'refreshed' | 'cached' | 'failed';
+    ingested?: number;
+  }>;
+  jobs: JobRecommendationRecord[];
+}
 
 export interface ApplicationCreateRequest { jobId: string; resumeVersionId?: string; coverLetterId?: string }
 export interface ApplicationPrepareRequest { jobId: string; resumeId: string }

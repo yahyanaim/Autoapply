@@ -71,6 +71,8 @@ import { ObservabilityModule } from './shared/observability/observability.module
         PARTNER_API_TIMEOUT_MS: Joi.number().integer().min(1_000).max(120_000).default(15_000),
         PARTNER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD: Joi.number().integer().min(1).max(20).default(3),
         PARTNER_API_CIRCUIT_BREAKER_RESET_MS: Joi.number().integer().min(1_000).max(600_000).default(30_000),
+        JOB_DISCOVERY_SOURCES: Joi.string().allow('').default(''),
+        JOB_DISCOVERY_REFRESH_TTL_MINUTES: Joi.number().integer().min(5).max(1440).default(30),
         OPENAI_API_KEY: Joi.string().allow('').default(''),
         ANTHROPIC_API_KEY: Joi.string().allow('').default(''),
         GOOGLE_AI_API_KEY: Joi.string().allow('').default(''),

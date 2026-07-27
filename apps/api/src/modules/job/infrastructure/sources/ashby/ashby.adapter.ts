@@ -55,7 +55,7 @@ export class AshbyAdapter {
     private readonly partnerApi: PartnerApiClient,
   ) {}
 
-  async fetchJobs(organizationId: string): Promise<number> {
+  async fetchJobs(organizationId: string, limit = 1_000): Promise<number> {
     const url = `https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobBoardWithTeams`;
     try {
       const response = await this.partnerApi.fetch(url, {
@@ -68,7 +68,10 @@ export class AshbyAdapter {
         }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const postings = parsePostings((await response.json()) as unknown);
+      const postings = parsePostings((await response.json()) as unknown).slice(
+        0,
+        Math.min(1_000, Math.max(1, limit)),
+      );
 
       for (const posting of postings) {
         await this.jobService.ingestJob({

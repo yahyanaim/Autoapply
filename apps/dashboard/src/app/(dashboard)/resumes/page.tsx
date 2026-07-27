@@ -79,7 +79,19 @@ export default function ResumesPage() {
               <p className="mt-2 text-xs text-danger-600">{resume.parseError}</p>
             )}
             <div className="mt-5 flex gap-2">
-              <Link href={`/resumes/${resume.id}`} className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50">View</Link>
+              {resume.parseStatus === 'ready' ? (
+                <Link
+                  href={`/jobs?resumeId=${encodeURIComponent(resume.id)}`}
+                  className="inline-flex h-8 flex-1 items-center justify-center rounded-lg bg-primary px-3 text-xs font-semibold text-white hover:bg-primary-600"
+                >
+                  Find matching jobs
+                </Link>
+              ) : (
+                <Link href={`/resumes/${resume.id}`} className="inline-flex h-8 flex-1 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50">View</Link>
+              )}
+              {resume.parseStatus === 'ready' && (
+                <Link href={`/resumes/${resume.id}`} className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50">View</Link>
+              )}
               <Button variant="danger" size="sm" onClick={() => void handleDelete(resume.id)} disabled={remove.isPending}>Delete</Button>
             </div>
           </Card>

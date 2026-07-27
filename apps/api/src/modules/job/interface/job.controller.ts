@@ -21,11 +21,16 @@ import { RemoteType } from '@prisma/client';
 import { CaptureJobDto } from './dto/capture-job.dto';
 import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
+import { DiscoverJobsDto } from './dto/discover-jobs.dto';
+import { JobDiscoveryService } from '../application/job-discovery.service';
 
 @ApiTags('jobs')
 @Controller('jobs')
 export class JobController {
-  constructor(private readonly jobService: JobService) {}
+  constructor(
+    private readonly jobService: JobService,
+    private readonly jobDiscoveryService: JobDiscoveryService,
+  ) {}
 
   @Get('search')
   @UseGuards(JwtAuthGuard)
@@ -75,6 +80,24 @@ export class JobController {
       source: dto.source?.trim() || hostname,
       capturedByUserId: userId,
     });
+  }
+
+  @Post('discover')
+  @Throttle({ default: { limit: 12, ttl: 60 * 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Refresh approved sources and rank up to 20 jobs against a resume',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Explainable CV-matched job recommendations',
+  })
+  async discover(
+    @CurrentUser('id') userId: string,
+    @Body() dto: DiscoverJobsDto,
+  ) {
+    return this.jobDiscoveryService.discover(userId, dto);
   }
 
   @Get(':id')

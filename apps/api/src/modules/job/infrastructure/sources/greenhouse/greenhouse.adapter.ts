@@ -51,12 +51,15 @@ export class GreenhouseAdapter {
     private readonly partnerApi: PartnerApiClient,
   ) {}
 
-  async fetchJobs(boardToken: string): Promise<number> {
+  async fetchJobs(boardToken: string, limit = 1_000): Promise<number> {
     const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(boardToken)}/jobs?content=true`;
     try {
       const response = await this.partnerApi.fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const jobs = parseJobs((await response.json()) as unknown);
+      const jobs = parseJobs((await response.json()) as unknown).slice(
+        0,
+        Math.min(1_000, Math.max(1, limit)),
+      );
 
       for (const job of jobs) {
         await this.jobService.ingestJob({

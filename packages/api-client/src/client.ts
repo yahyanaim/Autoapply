@@ -13,6 +13,8 @@ import type {
   ResumeVersionsResponse,
   JobSearchRequest,
   JobSearchResponse,
+  JobDiscoveryRequest,
+  JobDiscoveryResponse,
   ApplicationCreateRequest,
   ApplicationPrepareRequest,
   ApplicationCreateResponse,
@@ -131,6 +133,11 @@ export class ApiClient {
   jobs = {
     search: async (params: JobSearchRequest): Promise<JobSearchResponse> => {
       const res = await this.http.get<JobSearchResponse>('/jobs/search', { params });
+      return res.data;
+    },
+
+    discover: async (data: JobDiscoveryRequest): Promise<JobDiscoveryResponse> => {
+      const res = await this.http.post<JobDiscoveryResponse>('/jobs/discover', data);
       return res.data;
     },
   };

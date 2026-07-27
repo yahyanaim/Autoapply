@@ -7,18 +7,20 @@ import { GreenhouseAdapter } from './infrastructure/sources/greenhouse/greenhous
 import { LeverAdapter } from './infrastructure/sources/lever/lever.adapter';
 import { AshbyAdapter } from './infrastructure/sources/ashby/ashby.adapter';
 import { PartnerApiClient } from './infrastructure/sources/partner-api.client';
+import { JobDiscoveryService } from './application/job-discovery.service';
 
 @Module({
   imports: [PrismaModule],
   providers: [
     JobService,
     JobIngestionService,
+    JobDiscoveryService,
     PartnerApiClient,
     GreenhouseAdapter,
     LeverAdapter,
     AshbyAdapter,
   ],
   controllers: [JobController],
-  exports: [JobService, JobIngestionService],
+  exports: [JobService, JobIngestionService, JobDiscoveryService],
 })
 export class JobModule {}
