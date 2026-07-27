@@ -287,7 +287,26 @@ Post-generation validation that checks:
 - No fabricated skills or certifications
 - Original facts preserved exactly
 
-### 4.6 Cost Controls
+### 4.6 Generated CV Documents
+
+Resume optimization returns structured copy rather than an untrusted finished
+document. The server merges that copy with verified resume and profile fields,
+rejects changed or fabricated claims, and persists a `classic-ats-v1` JSON
+snapshot on `ResumeVersion.documentJson`.
+
+The dashboard can restore that snapshot after refresh and displays an HTML
+preview matching the downloadable result. An authenticated, tenant-scoped
+endpoint renders selectable text with PDFKit:
+
+```text
+GET /resumes/:resumeId/versions/:versionId/pdf
+```
+
+The A4 PDF uses a one-column serif structure with no icons, images, or floating
+text boxes. This mirrors the supplied classic resume reference and remains
+friendly to common applicant tracking systems.
+
+### 4.7 Cost Controls
 
 - Per-tier monthly AI-request quotas enforced at `AIModule` level
 - Token/cost logging per request (`AIRequest.tokensUsed`, `.cost`)

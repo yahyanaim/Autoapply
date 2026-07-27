@@ -15,6 +15,7 @@ import { ResumeController } from './interface/resume.controller';
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import { ResumeParseWorker } from './infrastructure/queue/resume-parse.worker';
 import { BillingModule } from '../billing/billing.module';
+import { GeneratedResumePdfService } from './infrastructure/pdf/generated-resume-pdf.service';
 
 function redisConnection(configService: ConfigService) {
   const url = new URL(configService.get<string>('REDIS_URL', 'redis://localhost:6379'));
@@ -35,6 +36,7 @@ function redisConnection(configService: ConfigService) {
     S3StorageAdapter,
     LocalStorageAdapter,
     ResumeParseWorker,
+    GeneratedResumePdfService,
     {
       provide: StorageToken,
       useFactory: (

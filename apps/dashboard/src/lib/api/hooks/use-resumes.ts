@@ -23,6 +23,56 @@ export interface OptimizeResult {
   missingKeywords: string[];
   weakSections: string[];
   fabrications: unknown[];
+  document: GeneratedResumeDocument;
+}
+
+export interface GeneratedResumeDocument {
+  template: 'classic-ats-v1';
+  contact: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    location?: string;
+    linkedInUrl?: string;
+    portfolioUrl?: string;
+  };
+  profile: string;
+  experience: Array<{
+    title: string;
+    company: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+    highlights: string[];
+  }>;
+  education: Array<{
+    degree: string;
+    institution: string;
+    startDate: string;
+    endDate: string;
+    gpa?: string;
+  }>;
+  skills: string[];
+  projects: Array<{
+    name: string;
+    description: string;
+    technologies: string[];
+    url?: string;
+  }>;
+  certifications: string[];
+  languages: string[];
+}
+
+export interface ResumeVersion {
+  id: string;
+  resumeId: string;
+  jobId: string | null;
+  optimizedText: string | null;
+  documentJson: GeneratedResumeDocument | null;
+  matchScore: number | null;
+  missingKeywords: string[];
+  weakSections: string[];
+  generatedAt: string;
 }
 
 export function useResumes() {
@@ -47,7 +97,12 @@ export function useResumes() {
   const optimize = useMutation({
     mutationFn: ({ resumeId, jobId }: { resumeId: string; jobId: string }) =>
       apiClient.post<OptimizeResult>(`/resumes/${resumeId}/optimize`, { jobId }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resumes'] }),
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['resumes'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['resume-versions', variables.resumeId],
+      });
+    },
   });
 
   const remove = useMutation({
@@ -69,4 +124,19 @@ export function useResume(id: string) {
         ? 2_000
         : false,
   });
+}
+
+export function useResumeVersions(resumeId: string) {
+  const versions = useQuery<ResumeVersion[]>({
+    queryKey: ['resume-versions', resumeId],
+    queryFn: () => apiClient.get(`/resumes/${resumeId}/versions`),
+    enabled: Boolean(resumeId),
+  });
+
+  const downloadPdf = useMutation({
+    mutationFn: (versionId: string) =>
+      apiClient.getBlob(`/resumes/${resumeId}/versions/${versionId}/pdf`),
+  });
+
+  return { versions, downloadPdf };
 }

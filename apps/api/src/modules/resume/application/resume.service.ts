@@ -17,6 +17,10 @@ import {
 import { PdfParser } from '../infrastructure/parsers/pdf.parser';
 import { DocxParser } from '../infrastructure/parsers/docx.parser';
 import { Prisma, ResumeParseStatus } from '@prisma/client';
+import {
+  GeneratedResumeDocument,
+  isGeneratedResumeDocument,
+} from '../domain/generated-resume';
 
 export const StorageToken = Symbol('StoragePort');
 export const ResumeParseQueueToken = Symbol('ResumeParseQueue');
@@ -181,6 +185,56 @@ export class ResumeService {
     });
   }
 
+  async listVersions(userId: string, resumeId: string) {
+    await this.assertResumeOwnership(userId, resumeId);
+    return this.prisma.resumeVersion.findMany({
+      where: { resumeId },
+      orderBy: { generatedAt: 'desc' },
+      select: {
+        id: true,
+        resumeId: true,
+        jobId: true,
+        optimizedText: true,
+        documentJson: true,
+        matchScore: true,
+        missingKeywords: true,
+        weakSections: true,
+        generatedAt: true,
+      },
+    });
+  }
+
+  async getGeneratedResumeVersion(
+    userId: string,
+    resumeId: string,
+    versionId: string,
+  ): Promise<{
+    document: GeneratedResumeDocument;
+    generatedAt: Date;
+  }> {
+    const version = await this.prisma.resumeVersion.findFirst({
+      where: {
+        id: versionId,
+        resumeId,
+        resume: { userId },
+      },
+      select: {
+        documentJson: true,
+        generatedAt: true,
+      },
+    });
+    if (!version) throw new NotFoundException('Generated CV not found');
+    if (!isGeneratedResumeDocument(version.documentJson)) {
+      throw new BadRequestException(
+        'This resume version does not contain a generated CV document',
+      );
+    }
+    return {
+      document: version.documentJson,
+      generatedAt: version.generatedAt,
+    };
+  }
+
   async deleteResume(userId: string, resumeId: string) {
     const resume = await this.prisma.resume.findUnique({
       where: { id: resumeId },
@@ -263,6 +317,14 @@ export class ResumeService {
       }
     }
     throw new ServiceUnavailableException('Could not reserve resume storage');
+  }
+
+  private async assertResumeOwnership(userId: string, resumeId: string): Promise<void> {
+    const resume = await this.prisma.resume.findFirst({
+      where: { id: resumeId, userId },
+      select: { id: true },
+    });
+    if (!resume) throw new NotFoundException('Resume not found');
   }
 
   private validateFile(file: Express.Multer.File | undefined): asserts file is Express.Multer.File {

@@ -10,9 +10,17 @@ import {
   UploadedFile,
   HttpCode,
   HttpStatus,
+  StreamableFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiProduces,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
 import { ResumeService } from '../application/resume.service';
@@ -22,6 +30,7 @@ import { Throttle } from '@nestjs/throttler';
 import { SubscriptionPlan } from '@prisma/client';
 import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
 import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
+import { GeneratedResumePdfService } from '../infrastructure/pdf/generated-resume-pdf.service';
 
 const resumeUploadLimits = {
   fileSize: 5 * 1024 * 1024,
@@ -38,6 +47,7 @@ export class ResumeController {
   constructor(
     private readonly resumeService: ResumeService,
     private readonly aiService: AIService,
+    private readonly generatedResumePdf: GeneratedResumePdfService,
   ) {}
 
   @Post()
@@ -81,6 +91,45 @@ export class ResumeController {
     return this.resumeService.getResume(userId, id);
   }
 
+  @Get(':id/versions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List generated versions of a resume' })
+  @ApiResponse({ status: 200, description: 'Resume versions retrieved successfully' })
+  async listVersions(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.resumeService.listVersions(userId, id);
+  }
+
+  @Get(':id/versions/:versionId/pdf')
+  @Throttle({ default: { limit: 30, ttl: 60 * 1_000 } })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiProduces('application/pdf')
+  @ApiOperation({ summary: 'Download a generated CV as an ATS-friendly PDF' })
+  @ApiResponse({ status: 200, description: 'Generated CV PDF' })
+  @ApiResponse({ status: 404, description: 'Generated CV not found' })
+  async downloadGeneratedPdf(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+  ): Promise<StreamableFile> {
+    const generated = await this.resumeService.getGeneratedResumeVersion(
+      userId,
+      id,
+      versionId,
+    );
+    const pdf = await this.generatedResumePdf.render(generated.document);
+    const filename = `${safeFilename(generated.document.contact.fullName)}-cv.pdf`;
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+      length: pdf.length,
+    });
+  }
+
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -113,4 +162,14 @@ export class ResumeController {
   ) {
     return this.aiService.optimizeResume(userId, id, dto.jobId);
   }
+}
+
+function safeFilename(value: string): string {
+  const cleaned = value
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 80);
+  return cleaned || 'applyai-optimized';
 }

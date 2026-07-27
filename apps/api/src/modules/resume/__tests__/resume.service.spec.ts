@@ -18,11 +18,16 @@ describe('ResumeService', () => {
       },
       resume: {
         create: jest.fn(),
+        findFirst: jest.fn(),
         findUnique: jest.fn(),
         findMany: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
         delete: jest.fn(),
+      },
+      resumeVersion: {
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
       },
       usageLimit: {
         findUnique: jest.fn().mockResolvedValue({
@@ -164,5 +169,48 @@ describe('ResumeService', () => {
     prisma.resume.delete.mockResolvedValue(resume);
     await expect(service.deleteResume('u1', 'r1')).resolves.toEqual(resume);
     expect(storage.deleteFile).toHaveBeenCalledWith(resume.originalFileUrl);
+  });
+
+  it('returns only a generated CV version owned by the current user', async () => {
+    prisma.resumeVersion.findFirst.mockResolvedValue({
+      generatedAt: new Date('2026-07-27T12:00:00Z'),
+      documentJson: {
+        template: 'classic-ats-v1',
+        contact: { fullName: 'Candidate', email: 'candidate@example.com' },
+        profile: 'Software Engineer.',
+        experience: [],
+        education: [],
+        skills: [],
+        projects: [],
+        certifications: [],
+        languages: [],
+      },
+    });
+
+    await expect(
+      service.getGeneratedResumeVersion('u1', 'r1', 'v1'),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        document: expect.objectContaining({ template: 'classic-ats-v1' }),
+      }),
+    );
+    expect(prisma.resumeVersion.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'v1',
+        resumeId: 'r1',
+        resume: { userId: 'u1' },
+      },
+      select: {
+        documentJson: true,
+        generatedAt: true,
+      },
+    });
+  });
+
+  it('does not reveal a generated CV version outside its tenant', async () => {
+    prisma.resumeVersion.findFirst.mockResolvedValue(null);
+    await expect(
+      service.getGeneratedResumeVersion('u1', 'r1', 'other-version'),
+    ).rejects.toThrow(NotFoundException);
   });
 });

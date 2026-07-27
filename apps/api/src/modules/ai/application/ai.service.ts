@@ -13,9 +13,16 @@ import { PromptService } from './prompt.service';
 import { calculateMatchScore } from '../domain/match-score';
 import { detectFabrications } from '../domain/fabrication-detector';
 import { scoreGenericness } from '../domain/genericness-detector';
-import { AIRequestFeature, ResumeParseStatus } from '@prisma/client';
+import { AIRequestFeature, Prisma, ResumeParseStatus } from '@prisma/client';
 import * as crypto from 'crypto';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
+import {
+  buildGeneratedResumeDocument,
+  generatedResumeToText,
+  GeneratedResumeDocument,
+  GeneratedResumeValidationError,
+  verifiedResumeToText,
+} from '../../resume/domain/generated-resume';
 
 @Injectable()
 export class AIService {
@@ -172,13 +179,50 @@ export class AIService {
     );
 
     const optimizedPayload = this.parseObjectResponse(aiContent);
-    const optimizedText = optimizedPayload.optimizedResumeText;
-    if (typeof optimizedText !== 'string' || optimizedText.trim() === '') {
-      throw new BadGatewayException('AI provider returned an invalid resume optimization');
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        profile: {
+          select: {
+            fullName: true,
+            phone: true,
+            location: true,
+            linkedInUrl: true,
+            portfolioUrl: true,
+          },
+        },
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    let generatedDocument: GeneratedResumeDocument;
+    try {
+      generatedDocument = buildGeneratedResumeDocument(
+        resume.parsedJson,
+        optimizedPayload,
+        {
+          fullName: user.profile?.fullName,
+          email: user.email,
+          phone: user.profile?.phone,
+          location: user.profile?.location,
+          linkedInUrl: user.profile?.linkedInUrl,
+          portfolioUrl: user.profile?.portfolioUrl,
+        },
+      );
+    } catch (error) {
+      if (error instanceof GeneratedResumeValidationError) {
+        throw new BadGatewayException(
+          `AI provider returned an invalid resume optimization: ${error.message}`,
+        );
+      }
+      throw error;
     }
+    const optimizedText = generatedResumeToText(generatedDocument, false);
+    const verifiedResumeText = verifiedResumeToText(resume.parsedJson);
 
     const fabrications = detectFabrications(
-      { content: resumeContent },
+      { content: `${resumeContent}\n${verifiedResumeText}` },
       { content: optimizedText },
     );
     if (fabrications.length > 0) {
@@ -195,6 +239,7 @@ export class AIService {
         resumeId,
         jobId,
         optimizedText,
+        documentJson: generatedDocument as unknown as Prisma.InputJsonValue,
         matchScore: matchResult.score,
         missingKeywords: matchResult.missingKeywords,
         weakSections: matchResult.weakSections,
@@ -208,6 +253,7 @@ export class AIService {
       missingKeywords: matchResult.missingKeywords,
       weakSections: matchResult.weakSections,
       fabrications,
+      document: generatedDocument,
     };
   }
 

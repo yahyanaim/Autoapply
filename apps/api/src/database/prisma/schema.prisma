@@ -216,6 +216,7 @@ model ResumeVersion {
   jobId            String?
   optimizedFileUrl String?
   optimizedText    String?  @db.Text
+  documentJson     Json?
   matchScore       Float?
   missingKeywords  String[]
   weakSections     String[]

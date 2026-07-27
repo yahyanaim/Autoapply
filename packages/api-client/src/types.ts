@@ -29,6 +29,18 @@ export interface ResumeRecord {
 export interface ResumeUploadRequest { file: File }
 export type ResumeUploadResponse = ResumeRecord;
 export type ResumeListResponse = ResumeRecord[];
+export interface ResumeVersionRecord {
+  id: string;
+  resumeId: string;
+  jobId: string | null;
+  optimizedText: string | null;
+  documentJson: GeneratedResumeDocument | null;
+  matchScore: number | null;
+  missingKeywords: string[];
+  weakSections: string[];
+  generatedAt: string;
+}
+export type ResumeVersionsResponse = ResumeVersionRecord[];
 
 export interface JobSearchRequest {
   query?: string;
@@ -70,6 +82,43 @@ export interface AiOptimizeResponse {
   missingKeywords: string[];
   weakSections: string[];
   fabrications: unknown[];
+  document: GeneratedResumeDocument;
+}
+export interface GeneratedResumeDocument {
+  template: 'classic-ats-v1';
+  contact: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    location?: string;
+    linkedInUrl?: string;
+    portfolioUrl?: string;
+  };
+  profile: string;
+  experience: Array<{
+    title: string;
+    company: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+    highlights: string[];
+  }>;
+  education: Array<{
+    degree: string;
+    institution: string;
+    startDate: string;
+    endDate: string;
+    gpa?: string;
+  }>;
+  skills: string[];
+  projects: Array<{
+    name: string;
+    description: string;
+    technologies: string[];
+    url?: string;
+  }>;
+  certifications: string[];
+  languages: string[];
 }
 export interface AiCoverLetterRequest { resumeId: string; jobId: string; tone?: string }
 export interface AiCoverLetterResponse { id: string; userId: string; jobId: string | null; content: string; tone: string | null; generatedAt: string }

@@ -57,8 +57,46 @@ export interface ResumeVersion {
   jobId: string | null;
   optimizedFileUrl: string | null;
   optimizedText: string | null;
+  documentJson: GeneratedResumeDocument | null;
   matchScore: number | null;
   missingKeywords: string[];
   weakSections: string[];
   generatedAt: string;
+}
+
+export interface GeneratedResumeDocument {
+  template: 'classic-ats-v1';
+  contact: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    location?: string;
+    linkedInUrl?: string;
+    portfolioUrl?: string;
+  };
+  profile: string;
+  experience: Array<{
+    title: string;
+    company: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+    highlights: string[];
+  }>;
+  education: Array<{
+    degree: string;
+    institution: string;
+    startDate: string;
+    endDate: string;
+    gpa?: string;
+  }>;
+  skills: string[];
+  projects: Array<{
+    name: string;
+    description: string;
+    technologies: string[];
+    url?: string;
+  }>;
+  certifications: string[];
+  languages: string[];
 }

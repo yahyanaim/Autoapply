@@ -11,12 +11,17 @@ describe('AIService resume ownership and readiness', () => {
   const prisma = {
     resume: { findFirst: jest.fn() },
     job: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn() },
     resumeVersion: { create: jest.fn() },
   };
   const service = new AIService(prisma as never, {} as never, {} as never);
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.user.findUnique.mockResolvedValue({
+      email: 'candidate@example.com',
+      profile: { fullName: 'Candidate Name' },
+    });
   });
 
   it('scores only an owned, fully parsed resume', async () => {
@@ -65,12 +70,22 @@ describe('AIService resume ownership and readiness', () => {
       id: 'resume_1',
       userId: 'user_1',
       parseStatus: 'ready',
-      parsedJson: { skills: ['TypeScript'] },
+      parsedJson: {
+        skills: ['TypeScript'],
+        experience: [],
+        education: [],
+        projects: [],
+        languages: [],
+        certifications: [],
+      },
     });
     prisma.job.findUnique.mockResolvedValue({ id: 'job_1', description: 'Rust' });
     jest.spyOn(service, 'complete').mockResolvedValue({
       content: JSON.stringify({
-        optimizedResumeText: '{"skills":["TypeScript","Rust"]}',
+        profileSummary: 'TypeScript developer.',
+        experience: [],
+        projects: [],
+        skillsOrder: ['TypeScript', 'Rust'],
       }),
       model: 'test-model',
     });
@@ -86,7 +101,14 @@ describe('AIService resume ownership and readiness', () => {
       id: 'resume_1',
       userId: 'user_1',
       parseStatus: 'ready',
-      parsedJson: { skills: ['TypeScript'] },
+      parsedJson: {
+        skills: ['TypeScript'],
+        experience: [],
+        education: [],
+        projects: [],
+        languages: [],
+        certifications: [],
+      },
     });
     prisma.job.findUnique.mockResolvedValue({ id: 'job_1', description: 'TypeScript' });
     jest.spyOn(service, 'complete').mockResolvedValue({
@@ -98,6 +120,68 @@ describe('AIService resume ownership and readiness', () => {
       service.optimizeResume('user_1', 'resume_1', 'job_1'),
     ).rejects.toThrow('invalid resume optimization');
     expect(prisma.resumeVersion.create).not.toHaveBeenCalled();
+  });
+
+  it('stores a validated generated CV document with the optimized version', async () => {
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume_1',
+      userId: 'user_1',
+      parseStatus: 'ready',
+      parsedJson: {
+        skills: ['TypeScript', 'React'],
+        experience: [
+          {
+            title: 'Software Engineer',
+            company: 'Acme',
+            startDate: '2022',
+            endDate: 'Present',
+            description: 'Built web applications.',
+            highlights: ['Built customer features'],
+          },
+        ],
+        education: [],
+        projects: [],
+        languages: ['English'],
+        certifications: [],
+      },
+    });
+    prisma.job.findUnique.mockResolvedValue({
+      id: 'job_1',
+      description: 'TypeScript and React',
+    });
+    prisma.resumeVersion.create.mockResolvedValue({ id: 'version_1' });
+    jest.spyOn(service, 'complete').mockResolvedValue({
+      content: JSON.stringify({
+        profileSummary: 'Software Engineer experienced in TypeScript and React.',
+        experience: [
+          {
+            index: 0,
+            description: 'Built TypeScript web applications with React.',
+            highlights: ['Built customer features with TypeScript and React'],
+          },
+        ],
+        projects: [],
+        skillsOrder: ['TypeScript', 'React'],
+      }),
+      model: 'test-model',
+    });
+
+    const result = await service.optimizeResume('user_1', 'resume_1', 'job_1');
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        versionId: 'version_1',
+        document: expect.objectContaining({
+          template: 'classic-ats-v1',
+          contact: expect.objectContaining({ fullName: 'Candidate Name' }),
+        }),
+      }),
+    );
+    expect(prisma.resumeVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        documentJson: expect.objectContaining({ template: 'classic-ats-v1' }),
+      }),
+    });
   });
 });
 

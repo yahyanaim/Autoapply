@@ -10,6 +10,7 @@ import type {
   ResumeUploadRequest,
   ResumeUploadResponse,
   ResumeListResponse,
+  ResumeVersionsResponse,
   JobSearchRequest,
   JobSearchResponse,
   ApplicationCreateRequest,
@@ -104,6 +105,24 @@ export class ApiClient {
 
     list: async (): Promise<ResumeListResponse> => {
       const res = await this.http.get<ResumeListResponse>('/resumes');
+      return res.data;
+    },
+
+    versions: async (resumeId: string): Promise<ResumeVersionsResponse> => {
+      const res = await this.http.get<ResumeVersionsResponse>(
+        `/resumes/${resumeId}/versions`,
+      );
+      return res.data;
+    },
+
+    downloadGeneratedPdf: async (
+      resumeId: string,
+      versionId: string,
+    ): Promise<Blob> => {
+      const res = await this.http.get<Blob>(
+        `/resumes/${resumeId}/versions/${versionId}/pdf`,
+        { responseType: 'blob' },
+      );
       return res.data;
     },
   };

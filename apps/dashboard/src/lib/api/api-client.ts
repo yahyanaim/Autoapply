@@ -119,6 +119,40 @@ class ApiClient {
     return this.request<T>(endpoint, { method: 'GET', params });
   }
 
+  async getBlob(endpoint: string, retryOnUnauthorized = true): Promise<Blob> {
+    const url = new URL(endpoint, `${baseURL}/`);
+    const headers = new Headers();
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+    });
+
+    if (
+      response.status === 401 &&
+      retryOnUnauthorized &&
+      !this.isLoggingOut &&
+      !endpoint.startsWith('/auth/')
+    ) {
+      await this.refresh();
+      return this.getBlob(endpoint, false);
+    }
+
+    if (!response.ok) {
+      const payload = await response
+        .json()
+        .catch(() => ({ message: `Request failed (${response.status})` }));
+      const message = Array.isArray(payload.message)
+        ? payload.message.join(', ')
+        : payload.message;
+      throw new Error(message || `Request failed (${response.status})`);
+    }
+
+    return response.blob();
+  }
+
   post<T>(endpoint: string, body?: unknown): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',

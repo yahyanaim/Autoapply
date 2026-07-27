@@ -22,7 +22,7 @@ external organizations or production infrastructure.
 | Complete candidate preferences | Complete | Location, workplace preference, salary range, work authorization, phone, LinkedIn, and portfolio are editable and exportable. |
 | Resume upload, storage, PDF/DOCX parsing | Complete | Size/type/ZIP-bomb controls, isolated PDF worker, local/S3 adapters. |
 | Match score and explainability | Complete | Deterministic scoring with missing-keyword and weak-section output. |
-| Resume optimization without fabricated facts | Complete | Post-generation validation rejects unsupported claims. |
+| Resume optimization and generated ATS CV | Complete | Post-generation validation rejects unsupported claims; verified fields are merged into a persisted classic template with authenticated PDF download. |
 | Cover-letter generation | Complete | Structured provider output validation and bounded tone choices. |
 | Manual application tracker CRUD | Complete | List/Kanban/detail views, status timeline, private notes, delete, and monthly quota visibility enforce tenant ownership. |
 | Assistive extension autofill | Complete | Greenhouse, Lever and Ashby adapters fill only supported contact fields; no sensitive-question guesses or automatic submission. |
