@@ -24,11 +24,45 @@ import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
 import { ListApplicationsDto } from './dto/list-applications.dto';
 import { AddApplicationNoteDto } from './dto/add-application-note.dto';
+import { PrepareApplicationDto } from './dto/prepare-application.dto';
+import {
+  RegenerateApplicationDto,
+} from './dto/regenerate-application.dto';
+import { UpdateApplicationMaterialsDto } from './dto/update-materials.dto';
+import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
+import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
+import { SubscriptionPlan } from '@prisma/client';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('applications')
 @Controller('applications')
 export class ApplicationTrackerController {
   constructor(private readonly trackerService: ApplicationTrackerService) {}
+
+  @Post('prepare')
+  @Throttle({ default: { limit: 10, ttl: 60 * 60_000 } })
+  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
+  @RequiresPlan(SubscriptionPlan.pro, 'Unified application preparation')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Analyze a job and prepare one reviewable application package' })
+  async prepare(
+    @CurrentUser('id') userId: string,
+    @Body() dto: PrepareApplicationDto,
+  ) {
+    return this.trackerService.prepare(userId, dto.jobId, dto.resumeId);
+  }
+
+  @Get('approved-package')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get an approved package for a job URL' })
+  async approvedPackage(
+    @CurrentUser('id') userId: string,
+    @Query('sourceUrl') sourceUrl: string,
+  ) {
+    return this.trackerService.getApprovedPackageBySourceUrl(userId, sourceUrl);
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -85,6 +119,46 @@ export class ApplicationTrackerController {
     @Param('id') id: string,
   ) {
     return this.trackerService.get(userId, id);
+  }
+
+  @Post(':id/regenerate')
+  @Throttle({ default: { limit: 10, ttl: 60 * 60_000 } })
+  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
+  @RequiresPlan(SubscriptionPlan.pro, 'Application-material regeneration')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Regenerate part or all of an application package' })
+  async regenerate(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: RegenerateApplicationDto,
+  ) {
+    return this.trackerService.regenerate(userId, id, dto.target);
+  }
+
+  @Patch(':id/materials')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Edit the reviewable CV and cover letter' })
+  async updateMaterials(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateApplicationMaterialsDto,
+  ) {
+    return this.trackerService.updateMaterials(userId, id, dto);
+  }
+
+  @Post(':id/approve')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve an application package for extension use' })
+  async approve(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.trackerService.approve(userId, id);
   }
 
   @Patch(':id')

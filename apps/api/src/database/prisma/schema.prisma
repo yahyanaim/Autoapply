@@ -22,6 +22,15 @@ enum ApplicationStatus {
   rejected
 }
 
+enum ApplicationPreparationStatus {
+  job_captured
+  analyzing
+  generating
+  ready_for_review
+  ready_to_submit
+  generation_failed
+}
+
 enum SubscriptionPlan {
   free
   pro
@@ -48,6 +57,7 @@ enum PaymentStatus {
 
 enum AIRequestFeature {
   resume_parse
+  job_analyze
   resume_optimize
   match_score
   cover_letter
@@ -132,6 +142,7 @@ model User {
   usageLimit    UsageLimit?
   oauthAccounts OAuthAccount[]
   extensionAuthHandoffs ExtensionAuthHandoff[]
+  capturedJobs   Job[]            @relation("CapturedJobs")
 
   @@index([email])
   @@map("users")
@@ -204,6 +215,7 @@ model Resume {
 
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions ResumeVersion[]
+  applications Application[]
   skills   Skill[]         @relation("ResumeSkills")
 
   @@index([userId])
@@ -225,6 +237,7 @@ model ResumeVersion {
   resume       Resume        @relation(fields: [resumeId], references: [id], onDelete: Cascade)
   job          Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
   applications Application[]
+  coverLetters CoverLetter[]
 
   @@index([resumeId])
   @@map("resume_versions")
@@ -255,9 +268,11 @@ model Company {
 model Job {
   id          String      @id @default(cuid())
   source      String?
-  sourceUrl   String?     @unique
+  sourceUrl   String?
+  sourceKey   String?     @unique
   title       String
   companyId   String?
+  capturedByUserId String?
   description String?
   location    String?
   remoteType  RemoteType?
@@ -268,11 +283,13 @@ model Job {
   updatedAt   DateTime    @updatedAt
 
   company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  capturedBy     User?           @relation("CapturedJobs", fields: [capturedByUserId], references: [id], onDelete: Cascade)
   applications   Application[]
   resumeVersions ResumeVersion[]
   skills         Skill[]         @relation("JobSkills")
 
   @@index([companyId])
+  @@index([capturedByUserId])
   @@index([sourceUrl])
   @@map("jobs")
 }
@@ -281,9 +298,16 @@ model Application {
   id              String            @id @default(cuid())
   userId          String
   jobId           String
+  sourceResumeId  String?
   resumeVersionId String?
   coverLetterId   String?
   status          ApplicationStatus @default(draft)
+  preparationStatus ApplicationPreparationStatus @default(job_captured)
+  jobAnalysis     Json?
+  generationError String?
+  approvedAt      DateTime?
+  approvedResumeHash String?
+  approvedCoverLetterHash String?
   appliedAt       DateTime?
   source          String?
   screenshotUrl   String?
@@ -293,11 +317,13 @@ model Application {
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sourceResume  Resume?        @relation(fields: [sourceResumeId], references: [id], onDelete: SetNull)
   resumeVersion ResumeVersion? @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
   coverLetter   CoverLetter?   @relation(fields: [coverLetterId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([jobId])
+  @@index([sourceResumeId])
   @@index([status])
   @@map("applications")
 }
@@ -306,14 +332,18 @@ model CoverLetter {
   id          String   @id @default(cuid())
   userId      String
   jobId       String?
+  resumeVersionId String?
   content     String
   tone        String?
   generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeVersion ResumeVersion? @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
   applications Application[]
 
   @@index([userId])
+  @@index([resumeVersionId])
   @@map("cover_letters")
 }
 

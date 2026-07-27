@@ -81,3 +81,7 @@ The `fabricationCheck` field must be `"passed"`. If truthful optimization is not
 ## Job Description
 
 {{jobDescription}}
+
+## Verified Job Analysis
+
+{{jobAnalysis}}

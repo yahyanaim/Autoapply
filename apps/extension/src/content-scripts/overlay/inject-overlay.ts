@@ -7,7 +7,8 @@ export function injectOverlay(
   container: HTMLElement,
   score: number,
   jobId: string,
-  onAutofill: () => Promise<number>
+  onPrepare: () => Promise<{ applicationId: string; reviewUrl: string }>,
+  onFillApproved: () => Promise<number>,
 ): void {
   const existingRoot = container.querySelector('#applyai-root');
   if (existingRoot) {
@@ -57,7 +58,8 @@ export function injectOverlay(
         reactRoot.unmount();
         container.remove();
       },
-      onAutofill,
+      onPrepare,
+      onFillApproved,
     }),
   );
 }

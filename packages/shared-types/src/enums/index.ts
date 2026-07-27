@@ -13,6 +13,15 @@ export enum ApplicationStatus {
   rejected = 'rejected',
 }
 
+export enum ApplicationPreparationStatus {
+  job_captured = 'job_captured',
+  analyzing = 'analyzing',
+  generating = 'generating',
+  ready_for_review = 'ready_for_review',
+  ready_to_submit = 'ready_to_submit',
+  generation_failed = 'generation_failed',
+}
+
 export enum SubscriptionPlan {
   free = 'free',
   pro = 'pro',
@@ -36,6 +45,7 @@ export enum PaymentStatus {
 
 export enum AIRequestFeature {
   resume_parse = 'resume_parse',
+  job_analyze = 'job_analyze',
   resume_optimize = 'resume_optimize',
   match_score = 'match_score',
   cover_letter = 'cover_letter',

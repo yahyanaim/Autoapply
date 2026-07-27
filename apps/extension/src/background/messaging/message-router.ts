@@ -1,7 +1,10 @@
 import { AuthManager } from '../auth/auth-manager';
+import { DASHBOARD_BASE_URL } from '../../shared/config';
 
 type MessageType =
   | 'GET_MATCH_SCORE'
+  | 'PREPARE_APPLICATION'
+  | 'GET_APPROVED_PACKAGE'
   | 'GET_AUTOFILL_PROFILE'
   | 'GET_AUTH_STATE'
   | 'LOGOUT'
@@ -37,6 +40,12 @@ export class MessageRouter {
         case 'GET_MATCH_SCORE':
           await this.handleGetMatchScore(message, sendResponse);
           return;
+        case 'PREPARE_APPLICATION':
+          await this.handlePrepareApplication(message, sendResponse);
+          return;
+        case 'GET_APPROVED_PACKAGE':
+          await this.handleGetApprovedPackage(message, sendResponse);
+          return;
         case 'GET_AUTOFILL_PROFILE':
           await this.handleGetAutofillProfile(sendResponse);
           return;
@@ -56,6 +65,112 @@ export class MessageRouter {
     } catch (error) {
       sendResponse({ error: error instanceof Error ? error.message : 'Internal error' });
     }
+  }
+
+  private async handlePrepareApplication(
+    message: Message,
+    sendResponse: (response: unknown) => void,
+  ): Promise<void> {
+    const job = (message.payload ?? {}) as {
+      title?: string;
+      company?: string;
+      description?: string;
+      url?: string;
+      location?: string;
+      source?: string;
+    };
+    if (!job.title?.trim() || !job.description?.trim() || !job.url?.trim()) {
+      throw new Error('The job page could not be captured');
+    }
+    const settings = await chrome.storage.local.get('selectedResume');
+    const resumeId =
+      typeof settings.selectedResume === 'string' ? settings.selectedResume : '';
+    if (!resumeId) {
+      sendResponse({
+        error: 'Choose a resume in extension settings',
+        requiresResume: true,
+      });
+      return;
+    }
+
+    const captureResponse = await this.authManager.apiFetch('/jobs/capture', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: job.title,
+        companyName: job.company,
+        description: job.description,
+        sourceUrl: job.url,
+        location: job.location,
+        source: job.source,
+      }),
+    });
+    if (!captureResponse.ok) {
+      throw new Error(await this.readError(captureResponse, 'Failed to capture job'));
+    }
+    const captured = (await captureResponse.json()) as { id: string };
+    const preparationResponse = await this.authManager.apiFetch(
+      '/applications/prepare',
+      {
+        method: 'POST',
+        body: JSON.stringify({ jobId: captured.id, resumeId }),
+      },
+    );
+    if (!preparationResponse.ok) {
+      throw new Error(
+        await this.readError(
+          preparationResponse,
+          'Failed to prepare application package',
+        ),
+      );
+    }
+    const application = (await preparationResponse.json()) as { id: string };
+    sendResponse({
+      applicationId: application.id,
+      reviewUrl: `${DASHBOARD_BASE_URL}/applications/${application.id}`,
+    });
+  }
+
+  private async handleGetApprovedPackage(
+    message: Message,
+    sendResponse: (response: unknown) => void,
+  ): Promise<void> {
+    const sourceUrl = (message.payload ?? {}).sourceUrl;
+    if (typeof sourceUrl !== 'string' || !sourceUrl.trim()) {
+      throw new Error('Missing job URL');
+    }
+    const packageResponse = await this.authManager.apiFetch(
+      `/applications/approved-package?sourceUrl=${encodeURIComponent(sourceUrl)}`,
+    );
+    if (!packageResponse.ok) {
+      throw new Error(
+        await this.readError(
+          packageResponse,
+          'Approve the application package in ApplyAI first',
+        ),
+      );
+    }
+    const applicationPackage = (await packageResponse.json()) as {
+      applicationId: string;
+      contact: Record<string, string>;
+      coverLetter: string;
+      resumeDownloadPath: string;
+    };
+    const resumeResponse = await this.authManager.apiFetch(
+      applicationPackage.resumeDownloadPath,
+    );
+    if (!resumeResponse.ok) {
+      throw new Error(await this.readError(resumeResponse, 'Failed to load approved CV'));
+    }
+    const resumeBase64 = bytesToBase64(
+      new Uint8Array(await resumeResponse.arrayBuffer()),
+    );
+    sendResponse({
+      package: {
+        ...applicationPackage,
+        resumeBase64,
+        resumeFilename: 'ApplyAI-approved-CV.pdf',
+      },
+    });
   }
 
   private async handleGetMatchScore(
@@ -153,4 +268,13 @@ export class MessageRouter {
       return fallback;
     }
   }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 32_768;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
 }

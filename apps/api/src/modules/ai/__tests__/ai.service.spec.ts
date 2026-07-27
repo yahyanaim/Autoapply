@@ -10,7 +10,7 @@ import { AIService } from '../application/ai.service';
 describe('AIService resume ownership and readiness', () => {
   const prisma = {
     resume: { findFirst: jest.fn() },
-    job: { findUnique: jest.fn() },
+    job: { findFirst: jest.fn() },
     user: { findUnique: jest.fn() },
     resumeVersion: { create: jest.fn() },
   };
@@ -31,7 +31,7 @@ describe('AIService resume ownership and readiness', () => {
       parseStatus: 'ready',
       parsedJson: { skills: ['TypeScript', 'React'] },
     });
-    prisma.job.findUnique.mockResolvedValue({
+    prisma.job.findFirst.mockResolvedValue({
       id: 'job_1',
       description: 'TypeScript and React are required.',
     });
@@ -79,7 +79,7 @@ describe('AIService resume ownership and readiness', () => {
         certifications: [],
       },
     });
-    prisma.job.findUnique.mockResolvedValue({ id: 'job_1', description: 'Rust' });
+    prisma.job.findFirst.mockResolvedValue({ id: 'job_1', description: 'Rust' });
     jest.spyOn(service, 'complete').mockResolvedValue({
       content: JSON.stringify({
         profileSummary: 'TypeScript developer.',
@@ -110,7 +110,7 @@ describe('AIService resume ownership and readiness', () => {
         certifications: [],
       },
     });
-    prisma.job.findUnique.mockResolvedValue({ id: 'job_1', description: 'TypeScript' });
+    prisma.job.findFirst.mockResolvedValue({ id: 'job_1', description: 'TypeScript' });
     jest.spyOn(service, 'complete').mockResolvedValue({
       content: '{"wrongField":true}',
       model: 'test-model',
@@ -145,7 +145,7 @@ describe('AIService resume ownership and readiness', () => {
         certifications: [],
       },
     });
-    prisma.job.findUnique.mockResolvedValue({
+    prisma.job.findFirst.mockResolvedValue({
       id: 'job_1',
       description: 'TypeScript and React',
     });

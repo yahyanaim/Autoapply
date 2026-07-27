@@ -1,3 +1,9 @@
 # application-tracker
 
-Spec section 3/11 -- Application entity, status/timeline tracking.
+The application entity owns the complete preparation workflow: source job,
+source resume, structured job analysis, optimized resume version, cover letter,
+review state, approval hashes, submission status and timeline.
+
+`POST /applications/prepare` orchestrates job analysis, grounded CV generation
+and cover-letter generation as one package. Only `ready_to_submit` packages with
+matching approval hashes are exposed to the extension.

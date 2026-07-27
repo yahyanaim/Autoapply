@@ -14,7 +14,8 @@ content-scripts/
 │   ├── base.adapter.ts   # Shared adapter utilities
 │   ├── greenhouse/       # Greenhouse job board adapter
 │   ├── lever/            # Lever job board adapter
-│   └── ashby/            # Ashby job board adapter
+│   ├── ashby/            # Ashby job board adapter
+│   └── morocco/          # User-opened Moroccan job-board pages
 └── overlay/
     ├── MatchScoreOverlay.tsx  # React overlay component
     └── inject-overlay.ts      # Shadow DOM injection
@@ -29,15 +30,20 @@ content-scripts/
 5. Job data is sent to background for analysis
 6. Background returns match score
 7. Overlay is injected via Shadow DOM
-8. User can trigger autofill from overlay
+8. User can prepare one CV + cover-letter package
+9. User reviews and approves it in the dashboard
+10. Extension retrieves only the approved package and fills supported fields
 
 ## Message Types
 
 - `TRIGGER_ANALYSIS` - Analyze the current posting and show the overlay
 - `GET_MATCH_SCORE` - Analyze the current posting and return its score to the popup
+- `PREPARE_APPLICATION` - Capture the job and generate the unified package
+- `GET_APPROVED_PACKAGE` - Fetch the approved CV and cover letter for this URL
 
-The overlay requests `GET_AUTOFILL_PROFILE` from the background worker only after the
-user chooses assistive autofill. It never submits an application.
+The extension can attach the approved PDF and insert the approved cover letter
+when the target form exposes supported controls. It leaves unknown questions
+untouched and never clicks a final submission control.
 
 ## Adapter Interface
 

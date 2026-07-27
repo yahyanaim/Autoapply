@@ -23,6 +23,11 @@ import {
   GeneratedResumeValidationError,
   verifiedResumeToText,
 } from '../../resume/domain/generated-resume';
+import {
+  JobAnalysis,
+  JobAnalysisValidationError,
+  readJobAnalysis,
+} from '../domain/job-analysis';
 
 @Injectable()
 export class AIService {
@@ -121,8 +126,8 @@ export class AIService {
   async matchScore(userId: string, resumeId: string, jobId: string) {
     const resume = await this.getOwnedResume(userId, resumeId);
 
-    const job = await this.prisma.job.findUnique({
-      where: { id: jobId },
+    const job = await this.prisma.job.findFirst({
+      where: this.accessibleJobWhere(userId, jobId),
     });
     if (!job) {
       throw new NotFoundException('Job not found');
@@ -159,11 +164,47 @@ export class AIService {
     };
   }
 
-  async optimizeResume(userId: string, resumeId: string, jobId: string) {
+  async analyzeJob(userId: string, jobId: string): Promise<JobAnalysis> {
+    const job = await this.prisma.job.findFirst({
+      where: this.accessibleJobWhere(userId, jobId),
+      include: { company: true },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+    if (!job.description?.trim()) {
+      throw new BadRequestException('The job does not contain a description to analyze');
+    }
+
+    const { content } = await this.complete(
+      AIRequestFeature.job_analyze,
+      userId,
+      {
+        jobTitle: job.title,
+        companyName: job.company?.name ?? 'Company not listed',
+        jobDescription: job.description,
+      },
+    );
+    try {
+      return readJobAnalysis(this.parseObjectResponse(content));
+    } catch (error) {
+      if (error instanceof JobAnalysisValidationError) {
+        throw new BadGatewayException(
+          `AI provider returned an invalid job analysis: ${error.message}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async optimizeResume(
+    userId: string,
+    resumeId: string,
+    jobId: string,
+    jobAnalysis?: JobAnalysis,
+  ) {
     const resume = await this.getOwnedResume(userId, resumeId);
 
-    const job = await this.prisma.job.findUnique({
-      where: { id: jobId },
+    const job = await this.prisma.job.findFirst({
+      where: this.accessibleJobWhere(userId, jobId),
     });
     if (!job) {
       throw new NotFoundException('Job not found');
@@ -175,7 +216,11 @@ export class AIService {
     const { content: aiContent } = await this.complete(
       AIRequestFeature.resume_optimize,
       userId,
-      { resume: resumeContent, jobDescription },
+      {
+        resume: resumeContent,
+        jobDescription,
+        jobAnalysis: JSON.stringify(jobAnalysis ?? {}),
+      },
     );
 
     const optimizedPayload = this.parseObjectResponse(aiContent);
@@ -262,17 +307,38 @@ export class AIService {
     jobId: string,
     resumeId: string,
     tone?: string,
+    resumeVersionId?: string,
+    jobAnalysis?: JobAnalysis,
   ) {
     const resume = await this.getOwnedResume(userId, resumeId);
 
-    const job = await this.prisma.job.findUnique({
-      where: { id: jobId },
+    const job = await this.prisma.job.findFirst({
+      where: this.accessibleJobWhere(userId, jobId),
     });
     if (!job) {
       throw new NotFoundException('Job not found');
     }
 
-    const resumeContent = JSON.stringify(resume.parsedJson ?? {});
+    let resumeContent = JSON.stringify(resume.parsedJson ?? {});
+    if (resumeVersionId) {
+      const version = await this.prisma.resumeVersion.findFirst({
+        where: {
+          id: resumeVersionId,
+          resumeId,
+          jobId,
+          resume: { userId },
+        },
+        select: { documentJson: true },
+      });
+      if (!version?.documentJson) {
+        throw new NotFoundException(
+          'Optimized resume version for this job was not found',
+        );
+      }
+      const generated = version.documentJson as Record<string, unknown>;
+      const { contact: _privateContact, ...resumeWithoutContact } = generated;
+      resumeContent = JSON.stringify(resumeWithoutContact);
+    }
     const jobDescription = job.description ?? '';
 
     const { content: aiContent } = await this.complete(
@@ -281,6 +347,7 @@ export class AIService {
       {
         resume: resumeContent,
         jobDescription,
+        jobAnalysis: JSON.stringify(jobAnalysis ?? {}),
         tone: tone ?? 'professional',
       },
     );
@@ -301,6 +368,7 @@ export class AIService {
       data: {
         userId,
         jobId,
+        resumeVersionId,
         content: coverLetterContent,
         tone,
       },
@@ -350,6 +418,7 @@ export class AIService {
   private getPromptId(feature: AIRequestFeature): string {
     const mapping: Record<AIRequestFeature, string> = {
       [AIRequestFeature.resume_optimize]: 'resume-optimize.v2',
+      [AIRequestFeature.job_analyze]: 'job-analyze.v1',
       [AIRequestFeature.match_score]: 'match-score.v2',
       [AIRequestFeature.cover_letter]: 'cover-letter.v2',
       [AIRequestFeature.interview_coach]: 'interview-coach.v1',
@@ -429,6 +498,16 @@ export class AIService {
   private getNextResetDate(): Date {
     const now = this.clock.now();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  }
+
+  private accessibleJobWhere(
+    userId: string,
+    jobId: string,
+  ): Prisma.JobWhereInput {
+    return {
+      id: jobId,
+      OR: [{ capturedByUserId: null }, { capturedByUserId: userId }],
+    };
   }
 
   private async getOwnedResume(userId: string, resumeId: string) {

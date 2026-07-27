@@ -2,11 +2,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ApplicationTrackerService } from '../application/application-tracker.service';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { ApplicationStatus } from '@prisma/client';
+import {
+  ApplicationPreparationStatus,
+  ApplicationStatus,
+} from '@prisma/client';
+import { AIService } from '../../ai/application/ai.service';
 
 describe('ApplicationTrackerService', () => {
   let service: ApplicationTrackerService;
   let prismaMock: any;
+  let aiServiceMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -14,13 +19,15 @@ describe('ApplicationTrackerService', () => {
         create: jest.fn(),
         findMany: jest.fn(),
         findFirst: jest.fn(),
+        findUnique: jest.fn(),
         count: jest.fn(),
         update: jest.fn(),
         deleteMany: jest.fn(),
       },
       job: {
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
       },
+      resume: { findFirst: jest.fn() },
       resumeVersion: { findFirst: jest.fn() },
       coverLetter: { findFirst: jest.fn() },
       usageLimit: {
@@ -30,11 +37,17 @@ describe('ApplicationTrackerService', () => {
       },
       $transaction: jest.fn((callback: (client: any) => unknown) => callback(prismaMock)),
     };
+    aiServiceMock = {
+      analyzeJob: jest.fn(),
+      optimizeResume: jest.fn(),
+      generateCoverLetter: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApplicationTrackerService,
         { provide: PrismaService, useValue: prismaMock },
+        { provide: AIService, useValue: aiServiceMock },
       ],
     }).compile();
 
@@ -43,9 +56,62 @@ describe('ApplicationTrackerService', () => {
     );
   });
 
+  describe('prepare', () => {
+    it('creates one reviewable package from the job and source resume', async () => {
+      prismaMock.job.findFirst.mockResolvedValue({ id: 'j1' });
+      prismaMock.resume.findFirst.mockResolvedValue({
+        id: 'r1',
+        userId: 'u1',
+        parseStatus: 'ready',
+        parsedJson: { skills: ['TypeScript'] },
+      });
+      prismaMock.application.create.mockResolvedValue({ id: 'a1' });
+      prismaMock.application.findUnique.mockResolvedValue({ timeline: [] });
+      prismaMock.application.update.mockResolvedValue({ id: 'a1' });
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        preparationStatus: 'ready_for_review',
+      });
+      aiServiceMock.analyzeJob.mockResolvedValue({
+        summary: 'Build reliable software',
+        responsibilities: ['Build software'],
+        requiredSkills: ['TypeScript'],
+        preferredSkills: [],
+        experienceLevel: '',
+        education: [],
+        languages: [],
+        keywords: ['TypeScript'],
+      });
+      aiServiceMock.optimizeResume.mockResolvedValue({ versionId: 'rv1' });
+      aiServiceMock.generateCoverLetter.mockResolvedValue({ id: 'cl1' });
+
+      await expect(service.prepare('u1', 'j1', 'r1')).resolves.toEqual(
+        expect.objectContaining({
+          id: 'a1',
+          preparationStatus: 'ready_for_review',
+        }),
+      );
+      expect(aiServiceMock.analyzeJob).toHaveBeenCalledWith('u1', 'j1');
+      expect(aiServiceMock.optimizeResume).toHaveBeenCalledWith(
+        'u1',
+        'r1',
+        'j1',
+        expect.objectContaining({ requiredSkills: ['TypeScript'] }),
+      );
+      expect(aiServiceMock.generateCoverLetter).toHaveBeenCalledWith(
+        'u1',
+        'j1',
+        'r1',
+        'professional',
+        'rv1',
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('create', () => {
     it('should create an application', async () => {
-      prismaMock.job.findUnique.mockResolvedValue({ id: 'j1' });
+      prismaMock.job.findFirst.mockResolvedValue({ id: 'j1' });
       prismaMock.application.create.mockResolvedValue({
         id: 'a1',
         status: 'draft',
@@ -56,10 +122,96 @@ describe('ApplicationTrackerService', () => {
     });
 
     it('should throw NotFoundException if job not found', async () => {
-      prismaMock.job.findUnique.mockResolvedValue(null);
+      prismaMock.job.findFirst.mockResolvedValue(null);
       await expect(service.create('u1', 'nonexistent')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('rejects generated materials that belong to a different job', async () => {
+      prismaMock.job.findFirst.mockResolvedValue({ id: 'j1' });
+      prismaMock.resumeVersion.findFirst.mockResolvedValue({
+        id: 'rv1',
+        resumeId: 'r1',
+        jobId: 'j2',
+      });
+
+      await expect(service.create('u1', 'j1', 'rv1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prismaMock.application.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('approval integrity', () => {
+    const documentJson = {
+      template: 'classic-ats-v1',
+      contact: {
+        fullName: 'Daniel Carter',
+        email: 'daniel@example.com',
+        phone: '',
+        location: '',
+      },
+      profile: 'Software engineer',
+      experience: [],
+      education: [],
+      skills: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+    };
+
+    it('stores content hashes when the user approves the complete package', async () => {
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        preparationStatus: ApplicationPreparationStatus.ready_for_review,
+        jobAnalysis: { summary: 'Build software' },
+        resumeVersion: { documentJson },
+        coverLetter: { content: 'Dear hiring team' },
+        timeline: [],
+      });
+      prismaMock.application.update.mockResolvedValue({ id: 'a1' });
+
+      await service.approve('u1', 'a1');
+
+      expect(prismaMock.application.update).toHaveBeenCalledWith({
+        where: { id: 'a1' },
+        data: expect.objectContaining({
+          preparationStatus: ApplicationPreparationStatus.ready_to_submit,
+          approvedAt: expect.any(Date),
+          approvedResumeHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          approvedCoverLetterHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      });
+    });
+
+    it('refuses an approved package whose content changed after approval', async () => {
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        approvedResumeHash: 'stale-resume-hash',
+        approvedCoverLetterHash: 'stale-letter-hash',
+        approvedAt: new Date(),
+        job: {
+          id: 'j1',
+          title: 'Engineer',
+          sourceUrl: 'https://example.com/jobs/1',
+          company: { name: 'Example' },
+        },
+        resumeVersion: {
+          id: 'rv1',
+          resumeId: 'r1',
+          documentJson,
+        },
+        coverLetter: { content: 'Changed after approval' },
+      });
+
+      await expect(
+        service.getApprovedPackageBySourceUrl(
+          'u1',
+          'https://example.com/jobs/1',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

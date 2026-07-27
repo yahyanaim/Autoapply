@@ -67,7 +67,14 @@ export interface JobRecord {
 export interface JobSearchResponse { jobs: JobRecord[]; total: number; page: number; limit: number }
 
 export interface ApplicationCreateRequest { jobId: string; resumeVersionId?: string; coverLetterId?: string }
-export interface ApplicationCreateResponse { id: string; jobId: string; status: string; createdAt: string }
+export interface ApplicationPrepareRequest { jobId: string; resumeId: string }
+export interface ApplicationCreateResponse {
+  id: string;
+  jobId: string;
+  status: string;
+  preparationStatus: 'job_captured' | 'analyzing' | 'generating' | 'ready_for_review' | 'ready_to_submit' | 'generation_failed';
+  createdAt: string;
+}
 export interface ApplicationUpdateRequest { status: 'draft' | 'submitted' | 'viewed' | 'interview' | 'offer' | 'rejected' }
 export interface ApplicationUpdateResponse { id: string; status: string; updatedAt: string }
 

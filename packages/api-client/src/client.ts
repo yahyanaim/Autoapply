@@ -14,6 +14,7 @@ import type {
   JobSearchRequest,
   JobSearchResponse,
   ApplicationCreateRequest,
+  ApplicationPrepareRequest,
   ApplicationCreateResponse,
   ApplicationUpdateRequest,
   ApplicationUpdateResponse,
@@ -137,6 +138,11 @@ export class ApiClient {
   applications = {
     create: async (data: ApplicationCreateRequest): Promise<ApplicationCreateResponse> => {
       const res = await this.http.post<ApplicationCreateResponse>('/applications', data);
+      return res.data;
+    },
+
+    prepare: async (data: ApplicationPrepareRequest): Promise<ApplicationCreateResponse> => {
+      const res = await this.http.post<ApplicationCreateResponse>('/applications/prepare', data);
       return res.data;
     },
 

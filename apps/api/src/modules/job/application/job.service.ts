@@ -7,17 +7,25 @@ import { Prisma } from '@prisma/client';
 export class JobService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async search(filters: JobSearchFilter) {
+  async search(filters: JobSearchFilter, userId?: string) {
     const page = filters.page || 1;
     const limit = filters.limit || 20;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.JobWhereInput = {};
+    const where: Prisma.JobWhereInput = {
+      OR: userId
+        ? [{ capturedByUserId: null }, { capturedByUserId: userId }]
+        : [{ capturedByUserId: null }],
+    };
 
     if (filters.query) {
-      where.OR = [
-        { title: { contains: filters.query, mode: 'insensitive' } },
-        { description: { contains: filters.query, mode: 'insensitive' } },
+      where.AND = [
+        {
+          OR: [
+            { title: { contains: filters.query, mode: 'insensitive' } },
+            { description: { contains: filters.query, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -55,9 +63,14 @@ export class JobService {
     return { jobs, total, page, limit };
   }
 
-  async getJob(id: string) {
-    const job = await this.prisma.job.findUnique({
-      where: { id },
+  async getJob(id: string, userId?: string) {
+    const job = await this.prisma.job.findFirst({
+      where: {
+        id,
+        OR: userId
+          ? [{ capturedByUserId: null }, { capturedByUserId: userId }]
+          : [{ capturedByUserId: null }],
+      },
       include: { company: true, skills: true },
     });
     if (!job) throw new NotFoundException('Job not found');
@@ -71,6 +84,7 @@ export class JobService {
     description?: string;
     location?: string;
     companyName?: string;
+    capturedByUserId?: string;
   }) {
     const sourceUrl = this.normalizeSourceUrl(data.sourceUrl);
     const title = data.title.trim();
@@ -94,12 +108,16 @@ export class JobService {
       description: data.description?.slice(0, 200_000),
       location: data.location?.trim().slice(0, 300),
       remoteType: /\bremote\b/i.test(data.location ?? '') ? 'remote' as const : undefined,
+      capturedBy: data.capturedByUserId
+        ? { connect: { id: data.capturedByUserId } }
+        : undefined,
       company,
     };
     if (!sourceUrl) return this.prisma.job.create({ data: jobData });
+    const sourceKey = `${data.capturedByUserId ?? 'public'}:${sourceUrl}`;
     return this.prisma.job.upsert({
-      where: { sourceUrl },
-      create: { ...jobData, sourceUrl },
+      where: { sourceKey },
+      create: { ...jobData, sourceUrl, sourceKey },
       update: jobData,
     });
   }
@@ -109,6 +127,7 @@ export class JobService {
     try {
       const parsed = new URL(sourceUrl);
       if (parsed.protocol !== 'https:') throw new Error('HTTPS is required');
+      parsed.hash = '';
       return parsed.toString();
     } catch {
       throw new BadRequestException('Job source URL must be a valid HTTPS URL');

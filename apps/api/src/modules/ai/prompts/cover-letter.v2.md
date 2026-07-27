@@ -13,7 +13,9 @@ Write in a {{tone}} tone. Default to **confident and specific** if no tone is pr
 1. **No generic openings.** Never start with "I am writing to express my interest in..." or "I am excited to apply for..." — these are filler. Start with something specific: a relevant achievement, a connection to the company's mission, or a direct statement of value.
 2. **No filler phrases.** Absolutely prohibited: "I am a hardworking team player," "passionate about technology," "I thrive in fast-paced environments," "think outside the box," "synergy," "go-getter," "detail-oriented."
 3. **Specificity over volume.** One concrete example from the candidate's experience is worth more than five vague claims. Reference a specific project, metric, or achievement from the resume.
-4. **Company research signals.** Reference something specific about the company — their product, mission, recent news, or technical challenges — to show the candidate did their homework.
+4. **Verified company context only.** Reference the company, product, mission, or
+   challenge only when it is explicitly present in the supplied job description.
+   Never invent company research or recent news.
 5. **Match the JD's priorities.** If the JD emphasizes "distributed systems experience," the letter must address that directly with evidence from the resume.
 6. **Length:** 250–400 words. Not shorter, not longer.
 7. **Structure:** 3–4 paragraphs max. Opening (hook + value proposition), Body (evidence + company connection), Close (call to action + enthusiasm).
@@ -46,3 +48,7 @@ Respond with a single JSON object. No markdown, no commentary outside the JSON.
 ## Job Description
 
 {{jobDescription}}
+
+## Verified Job Analysis
+
+{{jobAnalysis}}

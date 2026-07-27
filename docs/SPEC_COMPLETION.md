@@ -24,8 +24,9 @@ external organizations or production infrastructure.
 | Match score and explainability | Complete | Deterministic scoring with missing-keyword and weak-section output. |
 | Resume optimization and generated ATS CV | Complete | Post-generation validation rejects unsupported claims; verified fields are merged into a persisted classic template with authenticated PDF download. |
 | Cover-letter generation | Complete | Structured provider output validation and bounded tone choices. |
-| Manual application tracker CRUD | Complete | List/Kanban/detail views, status timeline, private notes, delete, and monthly quota visibility enforce tenant ownership. |
-| Assistive extension autofill | Complete | Greenhouse, Lever and Ashby adapters fill only supported contact fields; no sensitive-question guesses or automatic submission. |
+| Unified application preparation | Complete | One workflow connects tenant-scoped job capture, structured job analysis, optimized CV, cover letter, editing, approval hashes, extension handoff and tracking. |
+| Application tracker CRUD | Complete | List/Kanban/review views, preparation and submission states, timeline, notes, delete, and monthly quota visibility enforce tenant ownership. |
+| Assistive extension autofill | Complete | Greenhouse, Lever, Ashby and user-opened Moroccan-board adapters capture jobs and fill only an approved package; unknown questions and final submission remain user-controlled. |
 | Dashboard account linking for the extension | Complete | Two-minute single-use Pro handoff; extension sessions are revoked after downgrade and extension password login is rejected. |
 | Cover-letter dashboard workflow | Complete | Ready-resume selection, generation, review, and specificity regeneration are available on Jobs. |
 | Stripe Free/Pro/Premium billing | Complete | Checkout, portal, webhook ledger and current-state reconciliation. |

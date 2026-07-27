@@ -11,7 +11,7 @@ describe('JobService', () => {
     prismaMock = {
       job: {
         findMany: jest.fn(),
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
         count: jest.fn(),
         create: jest.fn(),
         upsert: jest.fn(),
@@ -46,7 +46,7 @@ describe('JobService', () => {
 
   describe('getJob', () => {
     it('should return job by id', async () => {
-      prismaMock.job.findUnique.mockResolvedValue({
+      prismaMock.job.findFirst.mockResolvedValue({
         id: 'j1',
         title: 'Engineer',
       });
@@ -55,7 +55,7 @@ describe('JobService', () => {
     });
 
     it('should throw NotFoundException if job not found', async () => {
-      prismaMock.job.findUnique.mockResolvedValue(null);
+      prismaMock.job.findFirst.mockResolvedValue(null);
       await expect(service.getJob('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
@@ -84,6 +84,27 @@ describe('JobService', () => {
         }),
       ).rejects.toThrow('Job source URL must be a valid HTTPS URL');
       expect(prismaMock.job.upsert).not.toHaveBeenCalled();
+    });
+
+    it('isolates a captured job by user in its source key', async () => {
+      prismaMock.job.upsert.mockResolvedValue({ id: 'captured-1' });
+      await service.ingestJob({
+        title: 'Engineer',
+        source: 'rekrute.com',
+        sourceUrl: 'https://www.rekrute.com/job/123',
+        description: 'A complete job description for an engineering role.',
+        capturedByUserId: 'user-1',
+      });
+      expect(prismaMock.job.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            sourceKey: 'user-1:https://www.rekrute.com/job/123',
+          },
+          create: expect.objectContaining({
+            capturedBy: { connect: { id: 'user-1' } },
+          }),
+        }),
+      );
     });
   });
 

@@ -4,17 +4,21 @@ interface MatchScoreOverlayProps {
   score: number;
   jobId: string;
   onClose: () => void;
-  onAutofill: () => Promise<number>;
+  onPrepare: () => Promise<{ applicationId: string; reviewUrl: string }>;
+  onFillApproved: () => Promise<number>;
 }
 
 export function MatchScoreOverlay({
   score,
   jobId,
   onClose,
-  onAutofill,
+  onPrepare,
+  onFillApproved,
 }: MatchScoreOverlayProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAutofilled, setIsAutofilled] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
+  const [isFilling, setIsFilling] = useState(false);
+  const [reviewUrl, setReviewUrl] = useState('');
+  const [isFilled, setIsFilled] = useState(false);
   const [error, setError] = useState('');
 
   const getScoreColor = (s: number) => {
@@ -35,16 +39,29 @@ export function MatchScoreOverlay({
     return 'Weak match';
   };
 
-  const handleAutofill = async () => {
-    setIsLoading(true);
+  const handlePrepare = async () => {
+    setIsPreparing(true);
     setError('');
     try {
-      const filled = await onAutofill();
-      setIsAutofilled(filled > 0);
+      const result = await onPrepare();
+      setReviewUrl(result.reviewUrl);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Autofill failed');
+      setError(reason instanceof Error ? reason.message : 'Preparation failed');
     } finally {
-      setIsLoading(false);
+      setIsPreparing(false);
+    }
+  };
+
+  const handleFillApproved = async () => {
+    setIsFilling(true);
+    setError('');
+    try {
+      const filled = await onFillApproved();
+      setIsFilled(filled > 0);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Package fill failed');
+    } finally {
+      setIsFilling(false);
     }
   };
 
@@ -88,17 +105,48 @@ export function MatchScoreOverlay({
       </div>
 
       <button
-        onClick={handleAutofill}
-        disabled={isLoading || isAutofilled}
+        onClick={handlePrepare}
+        disabled={isPreparing || Boolean(reviewUrl)}
         className={`w-full py-2.5 rounded-xl text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-          isAutofilled
+          reviewUrl
             ? 'bg-success text-white cursor-default'
             : 'bg-primary text-white hover:bg-primary-hover active:scale-[0.98]'
-        } ${isLoading ? 'opacity-70 cursor-wait' : ''}`}
-        aria-label={isAutofilled ? 'Form fields filled' : 'Autofill form fields (review before submit)'}
+        } ${isPreparing ? 'opacity-70 cursor-wait' : ''}`}
+        aria-label="Prepare optimized CV and cover letter"
       >
-        {isAutofilled ? '✓ Filled — review & submit' : isLoading ? 'Filling...' : 'Autofill (review before submit)'}
+        {reviewUrl
+          ? '✓ Package ready for review'
+          : isPreparing
+            ? 'Preparing CV + letter…'
+            : 'Prepare application'}
       </button>
+      {reviewUrl && (
+        <a
+          href={reviewUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 flex w-full items-center justify-center rounded-xl border border-primary px-3 py-2.5 text-sm font-medium text-primary hover:bg-primary/5"
+        >
+          Review and approve in ApplyAI
+        </a>
+      )}
+      <button
+        onClick={handleFillApproved}
+        disabled={isFilling || isFilled}
+        className={`mt-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-50 ${
+          isFilling ? 'cursor-wait opacity-70' : ''
+        }`}
+        aria-label="Fill the form with an approved application package"
+      >
+        {isFilled
+          ? '✓ Approved package filled'
+          : isFilling
+            ? 'Loading approved package…'
+            : 'Fill approved package'}
+      </button>
+      <p className="mt-2 text-[10px] leading-4 text-gray-500">
+        ApplyAI never clicks the final Submit button. Review every field yourself.
+      </p>
       {error && (
         <p className="mt-2 text-xs text-danger" role="alert">
           {error}

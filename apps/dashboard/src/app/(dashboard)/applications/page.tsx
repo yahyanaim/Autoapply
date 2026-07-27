@@ -85,9 +85,42 @@ export default function ApplicationsPage() {
                     </Link>
                     <p className="text-sm text-gray-500">{application.job.company?.name || 'Company not listed'}</p>
                   </td>
-                  <td className="px-5 py-4"><Badge variant={variants[application.status]}>{application.status}</Badge></td>
+                  <td className="px-5 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant={variants[application.status]}>{application.status}</Badge>
+                      {application.status === 'draft' && (
+                        <Badge
+                          variant={
+                            application.preparationStatus === 'ready_to_submit'
+                              ? 'success'
+                              : application.preparationStatus === 'generation_failed'
+                                ? 'danger'
+                                : 'info'
+                          }
+                        >
+                          {application.preparationStatus.replaceAll('_', ' ')}
+                        </Badge>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-5 py-4 text-sm text-gray-500">{new Date(application.createdAt).toLocaleDateString()}</td>
-                  <td className="px-5 py-4"><StatusControl application={application} onChange={changeStatus} disabled={update.isPending} /></td>
+                  <td className="px-5 py-4">
+                    {application.status === 'draft' &&
+                    application.preparationStatus !== 'ready_to_submit' ? (
+                      <Link
+                        href={`/applications/${application.id}`}
+                        className="text-xs font-semibold text-primary-600 hover:text-primary-700"
+                      >
+                        {application.preparationStatus === 'ready_for_review'
+                          ? 'Review and approve'
+                          : application.preparationStatus === 'generation_failed'
+                            ? 'Retry preparation'
+                            : 'Open workflow'}
+                      </Link>
+                    ) : (
+                      <StatusControl application={application} onChange={changeStatus} disabled={update.isPending} />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

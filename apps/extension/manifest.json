@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ApplyAI",
   "description": "AI-powered job match score and autofill",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -25,7 +25,14 @@
     "https://boards.greenhouse.io/*",
     "https://job-boards.greenhouse.io/*",
     "https://*.lever.co/*",
-    "https://jobs.ashbyhq.com/*"
+    "https://jobs.ashbyhq.com/*",
+    "https://ma.indeed.com/*",
+    "https://rekrute.com/*",
+    "https://www.rekrute.com/*",
+    "https://anapec.org/*",
+    "https://www.anapec.org/*",
+    "https://marocannonces.com/*",
+    "https://www.marocannonces.com/*"
   ],
   "background": {
     "service_worker": "src/background/index.ts",
@@ -64,6 +71,19 @@
       ],
       "js": ["src/content-scripts/core/index.ts"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://ma.indeed.com/*",
+        "https://rekrute.com/*",
+        "https://www.rekrute.com/*",
+        "https://anapec.org/*",
+        "https://www.anapec.org/*",
+        "https://marocannonces.com/*",
+        "https://www.marocannonces.com/*"
+      ],
+      "js": ["src/content-scripts/core/index.ts"],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
@@ -73,7 +93,14 @@
         "https://boards.greenhouse.io/*",
         "https://job-boards.greenhouse.io/*",
         "https://*.lever.co/*",
-        "https://jobs.ashbyhq.com/*"
+        "https://jobs.ashbyhq.com/*",
+        "https://ma.indeed.com/*",
+        "https://rekrute.com/*",
+        "https://www.rekrute.com/*",
+        "https://anapec.org/*",
+        "https://www.anapec.org/*",
+        "https://marocannonces.com/*",
+        "https://www.marocannonces.com/*"
       ]
     }
   ]
