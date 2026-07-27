@@ -294,16 +294,49 @@ const enterpriseFeatures = [
   'Volume pricing and a SOC 2 Type II readiness path',
 ];
 
+const heroHeadline = 'A Smarter Way To Make Every Application Stronger.';
+const heroHighlight = 'Smarter Way';
+const heroHighlightStart = heroHeadline.indexOf(heroHighlight);
+const heroHighlightEnd = heroHighlightStart + heroHighlight.length;
+
 export default function HomePage() {
   const router = useRouter();
   const { user, isInitialized } = useAuth();
   const [query, setQuery] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeStep, setActiveStep] = useState('resume');
+  const [typedHeadlineLength, setTypedHeadlineLength] = useState(0);
 
   useEffect(() => {
     if (isInitialized && user) router.replace('/dashboard');
   }, [isInitialized, router, user]);
+
+  useEffect(() => {
+    if (!isInitialized || user) return;
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTypedHeadlineLength(heroHeadline.length);
+      return;
+    }
+
+    let characterIndex = 0;
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
+    const startTimer = window.setTimeout(() => {
+      typingTimer = setInterval(() => {
+        characterIndex += 1;
+        setTypedHeadlineLength(characterIndex);
+
+        if (characterIndex >= heroHeadline.length && typingTimer) {
+          clearInterval(typingTimer);
+        }
+      }, 42);
+    }, 320);
+
+    return () => {
+      window.clearTimeout(startTimer);
+      if (typingTimer) clearInterval(typingTimer);
+    };
+  }, [isInitialized, user]);
 
   if (!isInitialized || user) return null;
 
@@ -423,8 +456,28 @@ export default function HomePage() {
               AI-powered applications. Human-approved decisions.
             </Badge>
 
-            <h1 className="mx-auto max-w-[1040px] text-[2.75rem] font-medium leading-[1.01] tracking-[-0.045em] sm:text-[4.6rem] lg:text-[5.55rem]">
-              A <span className="orange-word">Smarter Way</span> To Make Every Application Stronger.
+            <h1
+              aria-label={heroHeadline}
+              className="relative mx-auto max-w-[1040px] text-[2.75rem] font-bold leading-[1.01] tracking-[-0.05em] sm:text-[4.6rem] lg:text-[5.55rem]"
+            >
+              <span aria-hidden="true" className="invisible">
+                A <span className="orange-word">Smarter Way</span> To Make Every Application Stronger.
+              </span>
+              <span aria-hidden="true" className="absolute inset-0">
+                {heroHeadline.slice(0, Math.min(typedHeadlineLength, heroHighlightStart))}
+                <span className="orange-word">
+                  {heroHeadline.slice(
+                    heroHighlightStart,
+                    Math.min(typedHeadlineLength, heroHighlightEnd),
+                  )}
+                </span>
+                {typedHeadlineLength > heroHighlightEnd
+                  ? heroHeadline.slice(heroHighlightEnd, typedHeadlineLength)
+                  : ''}
+                {typedHeadlineLength < heroHeadline.length && (
+                  <span className="typewriter-cursor" />
+                )}
+              </span>
             </h1>
             <p className="mx-auto mt-7 max-w-[720px] text-base leading-7 text-gray-600 sm:mt-8 sm:text-xl sm:leading-8">
               ApplyAI understands your experience, explains job fit, creates truthful
