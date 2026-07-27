@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,7 @@ import {
   ActivityType,
   OAuthProvider,
   Prisma,
+  SessionClientType,
   SubscriptionPlan,
   SubscriptionStatus,
   UserRole,
@@ -265,6 +267,13 @@ export class AuthService {
       if (!candidate || candidate.usedAt || candidate.expiresAt <= now) {
         throw new UnauthorizedException('Invalid or expired extension handoff');
       }
+      const subscription = await transaction.subscription.findUnique({
+        where: { userId: candidate.userId },
+        select: { plan: true, status: true },
+      });
+      if (!this.isPaidExtensionSubscription(subscription)) {
+        throw new ForbiddenException('A Pro plan is required to use the extension');
+      }
       const consumed = await transaction.extensionAuthHandoff.updateMany({
         where: {
           id: candidate.id,
@@ -279,7 +288,12 @@ export class AuthService {
       return candidate;
     });
 
-    const tokens = await this.generateTokens(handoff.userId, sessionMetadata);
+    const tokens = await this.generateTokens(
+      handoff.userId,
+      sessionMetadata,
+      false,
+      SessionClientType.extension,
+    );
     await this.writeAuthActivity(
       handoff.userId,
       ActivityType.auth_login,
@@ -384,11 +398,19 @@ export class AuthService {
 
     const session = await this.prisma.session.findUnique({
       where: { token: tokenHash },
-      include: { user: true },
+      include: { user: { include: { subscription: true } } },
     });
 
     if (!session) {
       throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (
+      session.clientType === SessionClientType.extension &&
+      !this.isPaidExtensionSubscription(session.user.subscription)
+    ) {
+      await this.prisma.session.deleteMany({ where: { id: session.id } });
+      throw new UnauthorizedException('A Pro plan is required to use the extension');
     }
 
     const now = this.clock.now();
@@ -479,6 +501,7 @@ export class AuthService {
         lastUsedAt: true,
         expiresAt: true,
         absoluteExpiresAt: true,
+        clientType: true,
       },
       orderBy: { lastUsedAt: 'desc' },
     });
@@ -533,6 +556,7 @@ export class AuthService {
     userId: string,
     metadata?: SessionMetadata,
     mfaVerified = false,
+    clientType: SessionClientType = SessionClientType.web,
   ) {
     const sessionId = crypto.randomUUID();
     const rawRefreshToken = this.createRefreshToken(sessionId);
@@ -560,6 +584,7 @@ export class AuthService {
         expiresAt,
         absoluteExpiresAt,
         mfaVerifiedAt: mfaVerified ? now : null,
+        clientType,
         userAgent: metadata?.userAgent?.slice(0, 500),
         ipAddress: metadata?.ipAddress?.slice(0, 64),
       },
@@ -637,6 +662,24 @@ export class AuthService {
   private getNextResetDate(): Date {
     const now = this.clock.now();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  }
+
+  private isPaidExtensionSubscription(
+    subscription:
+      | { plan: SubscriptionPlan; status: SubscriptionStatus }
+      | null
+      | undefined,
+  ): boolean {
+    if (!subscription) return false;
+    const active =
+      subscription.status === SubscriptionStatus.active ||
+      subscription.status === SubscriptionStatus.trialing ||
+      subscription.status === SubscriptionStatus.past_due;
+    return (
+      active &&
+      (subscription.plan === SubscriptionPlan.pro ||
+        subscription.plan === SubscriptionPlan.premium)
+    );
   }
 
   private getSessionIdleTimeoutMs(): number {

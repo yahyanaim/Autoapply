@@ -1,25 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { apiClient } from '@/lib/api/api-client';
-
-interface Subscription {
-  id: string;
-  plan: 'free' | 'pro' | 'premium';
-  status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'incomplete' | 'incomplete_expired' | 'unpaid' | 'paused';
-  currentPeriodEnd: string | null;
-  stripeSubscriptionId: string | null;
-  payments: Array<{ id: string; amount: number; currency: string; status: string; invoiceUrl: string | null; createdAt: string }>;
-}
+import { useSubscription } from '@/lib/api/hooks/use-subscription';
 
 export default function BillingPage() {
   const [error, setError] = useState('');
-  const subscription = useQuery<Subscription>({ queryKey: ['subscription'], queryFn: () => apiClient.get('/billing/subscription') });
+  const subscription = useSubscription();
   const checkout = useMutation({ mutationFn: (plan: 'pro' | 'premium') => apiClient.post<{ url: string }>('/billing/checkout-session', { plan }) });
   const portal = useMutation({ mutationFn: () => apiClient.post<{ url: string }>('/billing/portal-session') });
 

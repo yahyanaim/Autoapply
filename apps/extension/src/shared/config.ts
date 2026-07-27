@@ -7,7 +7,7 @@ export const API_BASE_URL = (configuredApiBase || defaultApiBase).replace(/\/+$/
 
 const configuredDashboardBase = import.meta.env.VITE_DASHBOARD_URL?.trim();
 const defaultDashboardBase = import.meta.env.PROD
-  ? 'https://app.applyai.com'
+  ? 'https://autoapply-phi.vercel.app'
   : 'http://localhost:3000';
 
 export const DASHBOARD_BASE_URL = (
@@ -16,6 +16,7 @@ export const DASHBOARD_BASE_URL = (
 
 export const TRUSTED_DASHBOARD_ORIGINS = new Set([
   new URL(DASHBOARD_BASE_URL).origin,
+  'https://autoapply-phi.vercel.app',
   'https://app.applyai.com',
   'https://staging.applyai.com',
 ]);

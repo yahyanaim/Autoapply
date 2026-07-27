@@ -114,13 +114,22 @@ export class MessageRouter {
     }
     const user = (await response.json()) as {
       email: string;
-      profile?: { fullName?: string | null; location?: string | null } | null;
+      profile?: {
+        fullName?: string | null;
+        location?: string | null;
+        phone?: string | null;
+        linkedInUrl?: string | null;
+        portfolioUrl?: string | null;
+      } | null;
     };
     sendResponse({
       profile: {
         email: user.email,
         fullName: user.profile?.fullName ?? '',
         location: user.profile?.location ?? '',
+        phone: user.profile?.phone ?? '',
+        linkedInUrl: user.profile?.linkedInUrl ?? '',
+        portfolioUrl: user.profile?.portfolioUrl ?? '',
       },
     });
   }

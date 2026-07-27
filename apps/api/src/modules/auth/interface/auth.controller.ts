@@ -31,6 +31,9 @@ import {
   GitHubOAuthGuard,
   GoogleOAuthGuard,
 } from './guards/oauth-configured.guard';
+import { SubscriptionPlan } from '@prisma/client';
+import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
+import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
 
 interface AuthenticationResult {
   accessToken: string;
@@ -124,7 +127,8 @@ export class AuthController {
 
   @Post('extension/handoff')
   @Throttle({ default: { limit: 20, ttl: 15 * 60_000 } })
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
+  @RequiresPlan(SubscriptionPlan.pro, 'Chrome extension connection')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a short-lived extension sign-in handoff' })
   async createExtensionHandoff(@CurrentUser('id') userId: string) {

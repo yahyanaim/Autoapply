@@ -6,8 +6,10 @@ import { OpenAIProvider } from './infrastructure/providers/openai.provider';
 import { ClaudeProvider } from './infrastructure/providers/claude.provider';
 import { GeminiProvider } from './infrastructure/providers/gemini.provider';
 import { AIController } from './interface/ai.controller';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
+  imports: [BillingModule],
   providers: [
     AIService,
     PromptService,

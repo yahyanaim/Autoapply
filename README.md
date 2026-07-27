@@ -95,8 +95,10 @@ cp .env.example .env
 ```
 
 Set `EXTENSION_ID` to the unpacked/published Chrome extension ID before using
-extension authentication. Configure the optional `SMTP_*` values only when
-email notifications are required.
+extension authentication. Production extension builds must also set
+`VITE_DASHBOARD_URL` and `VITE_API_BASE_URL` to the deployed HTTPS origins.
+Configure the optional `SMTP_*` values only when email notifications are
+required.
 
 ### 3. Start Development Dependencies
 

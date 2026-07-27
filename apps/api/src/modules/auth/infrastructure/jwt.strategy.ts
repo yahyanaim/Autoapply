@@ -8,6 +8,11 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
+import {
+  SessionClientType,
+  SubscriptionPlan,
+  SubscriptionStatus,
+} from '@prisma/client';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -50,11 +55,29 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     const session = await this.prisma.session.findUnique({
       where: { id: payload.sid },
-      include: { user: true },
+      include: { user: { include: { subscription: true } } },
     });
 
     if (!session || session.userId !== payload.sub) {
       throw new UnauthorizedException('Session is no longer active');
+    }
+    if (
+      session.clientType === SessionClientType.extension &&
+      !(
+        session.user.subscription &&
+        (
+          session.user.subscription.status === SubscriptionStatus.active ||
+          session.user.subscription.status === SubscriptionStatus.trialing ||
+          session.user.subscription.status === SubscriptionStatus.past_due
+        ) &&
+        (
+          session.user.subscription.plan === SubscriptionPlan.pro ||
+          session.user.subscription.plan === SubscriptionPlan.premium
+        )
+      )
+    ) {
+      await this.prisma.session.deleteMany({ where: { id: session.id } });
+      throw new UnauthorizedException('A Pro plan is required to use the extension');
     }
 
     return {

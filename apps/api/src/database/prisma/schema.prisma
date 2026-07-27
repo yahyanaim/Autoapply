@@ -87,6 +87,11 @@ enum OAuthProvider {
   github
 }
 
+enum SessionClientType {
+  web
+  extension
+}
+
 enum ActivityType {
   auth_login
   auth_logout
@@ -168,6 +173,9 @@ model Profile {
   fullName         String?
   headline         String?
   location         String?
+  phone            String?
+  linkedInUrl      String?
+  portfolioUrl     String?
   visaStatus       String?
   desiredSalaryMin Int?
   desiredSalaryMax Int?
@@ -439,6 +447,7 @@ model Session {
   expiresAt  DateTime
   absoluteExpiresAt DateTime
   mfaVerifiedAt DateTime?
+  clientType SessionClientType @default(web)
   lastUsedAt DateTime @default(now())
   createdAt  DateTime @default(now())
 

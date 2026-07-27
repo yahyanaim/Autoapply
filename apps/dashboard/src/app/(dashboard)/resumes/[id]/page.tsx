@@ -8,6 +8,8 @@ import { MatchScore } from '@/components/ui/MatchScore';
 import { Spinner } from '@/components/ui/Spinner';
 import { OptimizeResult, useResume, useResumes } from '@/lib/api/hooks/use-resumes';
 import { useJobs } from '@/lib/api/hooks/use-jobs';
+import { hasMinimumPlan, useSubscription } from '@/lib/api/hooks/use-subscription';
+import Link from 'next/link';
 
 export default function ResumeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -15,6 +17,8 @@ export default function ResumeDetailPage({ params }: { params: Promise<{ id: str
   const resume = useResume(id);
   const { optimize } = useResumes();
   const jobs = useJobs({ limit: 100 });
+  const subscription = useSubscription();
+  const hasPro = hasMinimumPlan(subscription.data, 'pro');
   const [jobId, setJobId] = useState('');
   const [result, setResult] = useState<OptimizeResult | null>(null);
   const [error, setError] = useState('');
@@ -55,15 +59,25 @@ export default function ResumeDetailPage({ params }: { params: Promise<{ id: str
         <div className="space-y-4">
           <Card>
             <h2 className="font-semibold text-gray-900">Optimize for a job</h2>
-            <p className="mt-1 text-xs text-gray-500">Choose a saved job to tailor this resume.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {hasPro
+                ? 'Choose a saved job to tailor this resume with fabrication checks.'
+                : 'Resume optimization with fabrication checks is available on Pro.'}
+            </p>
             <div className="mt-4 space-y-3">
               <select aria-label="Job to optimize for" value={jobId} onChange={(event) => setJobId(event.target.value)} className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900">
                 <option value="">Select a job…</option>
                 {jobs.data?.jobs.map((job) => <option key={job.id} value={job.id}>{job.title} — {job.company?.name || 'Company not listed'}</option>)}
               </select>
-              <Button className="w-full" onClick={() => void handleOptimize()} disabled={optimize.isPending || resume.data.parseStatus !== 'ready'}>
-                {optimize.isPending ? 'Optimizing…' : 'Optimize with AI'}
-              </Button>
+              {hasPro ? (
+                <Button className="w-full" onClick={() => void handleOptimize()} disabled={optimize.isPending || resume.data.parseStatus !== 'ready'}>
+                  {optimize.isPending ? 'Optimizing…' : 'Optimize with AI'}
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/billing">Upgrade to Pro</Link>
+                </Button>
+              )}
             </div>
             {error && <p role="alert" className="mt-3 text-sm text-danger-600">{error}</p>}
           </Card>

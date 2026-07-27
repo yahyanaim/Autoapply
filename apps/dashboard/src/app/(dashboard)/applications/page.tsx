@@ -1,10 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
-import { Application, ApplicationStatus, useApplications } from '@/lib/api/hooks/use-applications';
+import {
+  Application,
+  ApplicationStatus,
+  useApplications,
+  useApplicationUsage,
+} from '@/lib/api/hooks/use-applications';
 
 const statuses: ApplicationStatus[] = ['draft', 'submitted', 'viewed', 'interview', 'offer', 'rejected'];
 const nextStatuses: Record<ApplicationStatus, ApplicationStatus[]> = {
@@ -19,6 +25,7 @@ export default function ApplicationsPage() {
   const [filter, setFilter] = useState<ApplicationStatus | undefined>();
   const [error, setError] = useState('');
   const { applications, update } = useApplications({ status: filter, limit: 100 });
+  const usage = useApplicationUsage();
   const items = applications.data?.applications ?? [];
 
   const changeStatus = async (application: Application, status: ApplicationStatus) => {
@@ -39,6 +46,22 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
+      {usage.data && (
+        <Card className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Monthly tracking usage</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {usage.data.unlimited
+                ? `${usage.data.used.toLocaleString()} applications created this month · no plan limit`
+                : `${usage.data.used.toLocaleString()} of ${usage.data.maximum.toLocaleString()} applications created this month`}
+            </p>
+          </div>
+          <p className="text-xs text-gray-500">
+            Resets {new Date(usage.data.resetAt).toLocaleDateString()}. Deleting an application does not restore monthly usage.
+          </p>
+        </Card>
+      )}
+
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setFilter(undefined)} className={`rounded-full px-3 py-1 text-sm font-medium ${!filter ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-700'}`}>All</button>
         {statuses.map((status) => <button key={status} onClick={() => setFilter(status)} className={`rounded-full px-3 py-1 text-sm font-medium capitalize ${filter === status ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-700'}`}>{status}</button>)}
@@ -56,7 +79,12 @@ export default function ApplicationsPage() {
             <tbody className="divide-y divide-gray-100">
               {items.map((application) => (
                 <tr key={application.id}>
-                  <td className="px-5 py-4"><p className="font-medium text-gray-900">{application.job.title}</p><p className="text-sm text-gray-500">{application.job.company?.name || 'Company not listed'}</p></td>
+                  <td className="px-5 py-4">
+                    <Link href={`/applications/${application.id}`} className="font-medium text-gray-900 hover:text-primary-600">
+                      {application.job.title}
+                    </Link>
+                    <p className="text-sm text-gray-500">{application.job.company?.name || 'Company not listed'}</p>
+                  </td>
                   <td className="px-5 py-4"><Badge variant={variants[application.status]}>{application.status}</Badge></td>
                   <td className="px-5 py-4 text-sm text-gray-500">{new Date(application.createdAt).toLocaleDateString()}</td>
                   <td className="px-5 py-4"><StatusControl application={application} onChange={changeStatus} disabled={update.isPending} /></td>
@@ -71,7 +99,7 @@ export default function ApplicationsPage() {
         <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6">
           {statuses.map((status) => (
             <div key={status} className="space-y-3"><div className="flex items-center justify-between"><h2 className="text-sm font-semibold capitalize text-gray-700">{status}</h2><span className="text-xs text-gray-400">{items.filter((item) => item.status === status).length}</span></div>
-              {items.filter((item) => item.status === status).map((application) => <Card key={application.id} className="p-4"><p className="text-sm font-semibold text-gray-900">{application.job.title}</p><p className="mt-1 text-xs text-gray-500">{application.job.company?.name || 'Company not listed'}</p><div className="mt-3"><StatusControl application={application} onChange={changeStatus} disabled={update.isPending} /></div></Card>)}
+              {items.filter((item) => item.status === status).map((application) => <Card key={application.id} className="p-4"><Link href={`/applications/${application.id}`} className="text-sm font-semibold text-gray-900 hover:text-primary-600">{application.job.title}</Link><p className="mt-1 text-xs text-gray-500">{application.job.company?.name || 'Company not listed'}</p><div className="mt-3"><StatusControl application={application} onChange={changeStatus} disabled={update.isPending} /></div></Card>)}
             </div>
           ))}
         </div>

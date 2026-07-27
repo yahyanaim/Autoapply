@@ -14,7 +14,26 @@ const profileSchema = z.object({
   fullName: z.string().trim().max(120, 'Name is too long').optional(),
   headline: z.string().trim().max(200, 'Headline is too long').optional(),
   location: z.string().trim().max(200, 'Location is too long').optional(),
-});
+  phone: z.string().trim().max(30, 'Phone number is too long').regex(
+    /^[+()\d\s.-]{5,30}$/,
+    'Enter a valid phone number',
+  ).or(z.literal('')).optional(),
+  linkedInUrl: z.string().trim().url('Enter a complete LinkedIn URL').max(500).or(z.literal('')).optional(),
+  portfolioUrl: z.string().trim().url('Enter a complete portfolio URL').max(500).or(z.literal('')).optional(),
+  visaStatus: z.string().trim().max(120, 'Work authorization is too long').optional(),
+  desiredSalaryMin: z.number().int().min(0, 'Minimum salary cannot be negative').optional(),
+  desiredSalaryMax: z.number().int().min(0, 'Maximum salary cannot be negative').optional(),
+  remotePreference: z.enum(['remote', 'hybrid', 'onsite']).optional(),
+}).refine(
+  (profile) =>
+    profile.desiredSalaryMin === undefined ||
+    profile.desiredSalaryMax === undefined ||
+    profile.desiredSalaryMin <= profile.desiredSalaryMax,
+  {
+    message: 'Maximum salary must be greater than or equal to minimum salary',
+    path: ['desiredSalaryMax'],
+  },
+);
 type ProfileFormData = z.infer<typeof profileSchema>;
 
 interface ActiveSession {
@@ -25,6 +44,7 @@ interface ActiveSession {
   lastUsedAt: string;
   expiresAt: string;
   absoluteExpiresAt: string;
+  clientType: 'web' | 'extension';
   current: boolean;
 }
 
@@ -45,7 +65,18 @@ export default function SettingsPage() {
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ProfileFormData>({ resolver: zodResolver(profileSchema) });
 
   useEffect(() => {
-    reset({ fullName: user?.profile?.fullName || '', headline: user?.profile?.headline || '', location: user?.profile?.location || '' });
+    reset({
+      fullName: user?.profile?.fullName || '',
+      headline: user?.profile?.headline || '',
+      location: user?.profile?.location || '',
+      phone: user?.profile?.phone || '',
+      linkedInUrl: user?.profile?.linkedInUrl || '',
+      portfolioUrl: user?.profile?.portfolioUrl || '',
+      visaStatus: user?.profile?.visaStatus || '',
+      desiredSalaryMin: user?.profile?.desiredSalaryMin ?? undefined,
+      desiredSalaryMax: user?.profile?.desiredSalaryMax ?? undefined,
+      remotePreference: user?.profile?.remotePreference ?? undefined,
+    });
   }, [reset, user]);
 
   useEffect(() => {
@@ -194,11 +225,109 @@ export default function SettingsPage() {
       {error && <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-700">{error}</div>}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <h2 className="text-lg font-semibold text-gray-900">Profile</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Profile and job preferences</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            These preferences help ApplyAI explain whether an opportunity fits what you are looking for.
+          </p>
           <form onSubmit={handleSubmit(save)} className="mt-6 space-y-4">
             <Input label="Full name" error={errors.fullName?.message} {...register('fullName')} />
             <Input label="Professional headline" error={errors.headline?.message} {...register('headline')} />
             <Input label="Location" error={errors.location?.message} {...register('location')} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                type="tel"
+                autoComplete="tel"
+                label="Phone"
+                placeholder="+33 6 12 34 56 78"
+                error={errors.phone?.message}
+                {...register('phone')}
+              />
+              <Input
+                type="url"
+                autoComplete="url"
+                label="LinkedIn URL"
+                placeholder="https://www.linkedin.com/in/your-name"
+                error={errors.linkedInUrl?.message}
+                {...register('linkedInUrl')}
+              />
+            </div>
+            <Input
+              type="url"
+              autoComplete="url"
+              label="Portfolio or personal website"
+              placeholder="https://your-portfolio.com"
+              error={errors.portfolioUrl?.message}
+              {...register('portfolioUrl')}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <label htmlFor="remote-preference" className="block text-sm font-medium text-gray-700">
+                  Workplace preference
+                </label>
+                <select
+                  id="remote-preference"
+                  className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                  {...register('remotePreference', {
+                    setValueAs: (value) => value || undefined,
+                  })}
+                >
+                  <option value="">No preference</option>
+                  <option value="remote">Remote</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="onsite">On-site</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="visa-status" className="block text-sm font-medium text-gray-700">
+                  Work authorization
+                </label>
+                <select
+                  id="visa-status"
+                  className="h-10 w-full rounded-lg border border-input bg-white px-3 text-sm shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+                  {...register('visaStatus', {
+                    setValueAs: (value) => value || undefined,
+                  })}
+                >
+                  <option value="">Prefer not to say</option>
+                  <option value="citizen">Citizen</option>
+                  <option value="permanent_resident">Permanent resident</option>
+                  <option value="authorized">Authorized to work</option>
+                  <option value="student_visa">Student visa</option>
+                  <option value="sponsorship_required">Sponsorship required</option>
+                  <option value="other">Other</option>
+                </select>
+                {errors.visaStatus?.message && (
+                  <p className="text-xs text-danger-600">{errors.visaStatus.message}</p>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                type="number"
+                min={0}
+                step={1000}
+                label="Desired salary minimum"
+                placeholder="For example, 50000"
+                error={errors.desiredSalaryMin?.message}
+                {...register('desiredSalaryMin', {
+                  setValueAs: (value) => value === '' ? undefined : Number(value),
+                })}
+              />
+              <Input
+                type="number"
+                min={0}
+                step={1000}
+                label="Desired salary maximum"
+                placeholder="For example, 70000"
+                error={errors.desiredSalaryMax?.message}
+                {...register('desiredSalaryMax', {
+                  setValueAs: (value) => value === '' ? undefined : Number(value),
+                })}
+              />
+            </div>
+            <p className="text-xs leading-5 text-gray-500">
+              Salary values use the currency shown in each job listing. ApplyAI does not send these preferences to employers.
+            </p>
             <div className="flex justify-end"><Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Saving…' : 'Save changes'}</Button></div>
           </form>
         </Card>
@@ -239,6 +368,11 @@ export default function SettingsPage() {
                   {session.current && (
                     <span className="rounded-full bg-success-50 px-3 py-1 text-xs font-medium text-success-700">
                       Current
+                    </span>
+                  )}
+                  {session.clientType === 'extension' && (
+                    <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-medium text-primary-700">
+                      Extension
                     </span>
                   )}
                 </div>

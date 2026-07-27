@@ -113,14 +113,14 @@ const steps = [
     number: '2',
     title: 'Understand the opportunity',
     description:
-      'Paste a job or capture it with the extension to get an explainable match score, ATS signals, missing keywords, and weak-section flags.',
+      'Paste a job or capture it with the extension to get an explainable Application Match Score, missing keywords, and weak-section flags.',
   },
   {
     value: 'tailor',
     number: '3',
     title: 'Create stronger materials',
     description:
-      'Optimize your resume and generate a specific cover letter. A validation pass rejects titles, dates, or experience that you never provided.',
+      'Optimize your resume and generate a specific cover letter. Fabrication checks flag unsupported titles, dates, skills, or experience for your review.',
   },
   {
     value: 'review',
@@ -242,10 +242,10 @@ const pricingPlans = [
     currentFeatures: [
       'Everything in Free',
       'Unlimited tracked applications',
-      'AI Resume Optimizer with fabrication validation',
+      'AI Resume Optimizer with fabrication checks and human review',
       'Personalized Cover Letter Generator',
-      'ATS score, missing keywords, and weak-section flags',
-      'Explainable job-to-resume Match Score',
+      'Application Match Score, missing keywords, and weak-section flags',
+      'Explainable job-to-resume comparison',
       'Remote, location, salary, and visa profile preferences',
       'Chrome extension job detection and assistive autofill',
       '500 AI requests per month',
@@ -844,7 +844,8 @@ export default function HomePage() {
               <article className="rounded-2xl border border-black/[0.07] bg-[#f7f4ef] p-5">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm text-primary-600" aria-hidden="true">✦</span>
                 <p className="mt-4 text-sm font-semibold text-[#262621]">Why this role fits</p>
-                <p className="mt-1 text-sm leading-6 text-gray-600">See strengths, gaps, and ATS signals before writing a single line.</p>
+                <p className="mt-1 text-sm leading-6 text-gray-600">See strengths, gaps, and application signals before writing a single line.</p>
+                <p className="mt-3 text-xs leading-5 text-gray-500">Guidance only—employer screening systems and decisions vary.</p>
               </article>
               <article className="rounded-2xl border border-black/[0.07] bg-white p-5">
                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm text-primary-600" aria-hidden="true">☻</span>

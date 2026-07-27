@@ -95,6 +95,35 @@ export class ApplicationTrackerService {
     return { applications, total, page, limit };
   }
 
+  async getUsage(userId: string) {
+    return this.prisma.$transaction(async (transaction) => {
+      const now = this.clock.now();
+      await transaction.usageLimit.updateMany({
+        where: { userId, resetAt: { lt: now } },
+        data: {
+          applicationsUsed: 0,
+          aiRequestsUsed: 0,
+          resetAt: this.getNextResetDate(now),
+        },
+      });
+      const usage = await transaction.usageLimit.findUnique({
+        where: { userId },
+        select: {
+          applicationsUsed: true,
+          applicationsMax: true,
+          resetAt: true,
+        },
+      });
+      if (!usage) throw new NotFoundException('Usage limit not found for user');
+      return {
+        used: usage.applicationsUsed,
+        maximum: usage.applicationsMax,
+        unlimited: usage.applicationsMax >= 2_000_000_000,
+        resetAt: usage.resetAt,
+      };
+    });
+  }
+
   async get(userId: string, id: string) {
     const application = await this.prisma.application.findFirst({
       where: { id, userId },
@@ -181,12 +210,13 @@ export class ApplicationTrackerService {
   private async reserveApplication(userId: string): Promise<Date> {
     return this.prisma.$transaction(async (transaction) => {
       const now = this.clock.now();
-      const nextReset = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-      );
       await transaction.usageLimit.updateMany({
         where: { userId, resetAt: { lt: now } },
-        data: { applicationsUsed: 0, aiRequestsUsed: 0, resetAt: nextReset },
+        data: {
+          applicationsUsed: 0,
+          aiRequestsUsed: 0,
+          resetAt: this.getNextResetDate(now),
+        },
       });
       const usage = await transaction.usageLimit.findUnique({ where: { userId } });
       if (!usage) throw new NotFoundException('Usage limit not found for user');
@@ -197,6 +227,12 @@ export class ApplicationTrackerService {
       if (reserved.count !== 1) throw new ForbiddenException('Application limit reached');
       return usage.resetAt;
     });
+  }
+
+  private getNextResetDate(now: Date): Date {
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+    );
   }
 
   private timelineEntries(

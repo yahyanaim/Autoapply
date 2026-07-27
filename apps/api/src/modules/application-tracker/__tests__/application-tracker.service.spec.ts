@@ -116,6 +116,53 @@ describe('ApplicationTrackerService', () => {
     });
   });
 
+  describe('notes and usage', () => {
+    it('adds a note to an application owned by the user', async () => {
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        timeline: [],
+      });
+      prismaMock.application.update.mockResolvedValue({
+        id: 'a1',
+        timeline: [{ type: 'note', note: 'Follow up Tuesday' }],
+      });
+
+      await expect(
+        service.addNote('u1', 'a1', 'Follow up Tuesday'),
+      ).resolves.toEqual(expect.objectContaining({ id: 'a1' }));
+      expect(prismaMock.application.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'a1' },
+          data: {
+            timeline: [
+              expect.objectContaining({
+                type: 'note',
+                note: 'Follow up Tuesday',
+              }),
+            ],
+          },
+        }),
+      );
+    });
+
+    it('returns the current monthly application quota', async () => {
+      const resetAt = new Date(Date.now() + 86_400_000);
+      prismaMock.usageLimit.findUnique.mockResolvedValue({
+        applicationsUsed: 4,
+        applicationsMax: 10,
+        resetAt,
+      });
+
+      await expect(service.getUsage('u1')).resolves.toEqual({
+        used: 4,
+        maximum: 10,
+        unlimited: false,
+        resetAt,
+      });
+    });
+  });
+
   describe('list', () => {
     it('should return paginated applications', async () => {
       prismaMock.application.findMany.mockResolvedValue([{ id: 'a1' }]);

@@ -10,6 +10,7 @@ describe('JwtStrategy session enforcement', () => {
     session: {
       updateMany: jest.fn(),
       findUnique: jest.fn(),
+      deleteMany: jest.fn(),
     },
   };
   const strategy = new JwtStrategy(config as never, prisma as never);
@@ -68,5 +69,33 @@ describe('JwtStrategy session enforcement', () => {
       }),
     ).rejects.toThrow(UnauthorizedException);
     expect(prisma.session.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('revokes an extension session after a downgrade to Free', async () => {
+    prisma.session.updateMany.mockResolvedValue({ count: 1 });
+    prisma.session.findUnique.mockResolvedValue({
+      id: 'extension_session',
+      userId: 'user_1',
+      clientType: 'extension',
+      user: {
+        id: 'user_1',
+        email: 'person@example.com',
+        role: 'user',
+        subscription: { plan: 'free', status: 'active' },
+      },
+    });
+    prisma.session.deleteMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      strategy.validate({
+        sub: 'user_1',
+        sid: 'extension_session',
+        iat: 1,
+        exp: 2,
+      }),
+    ).rejects.toThrow('A Pro plan is required to use the extension');
+    expect(prisma.session.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'extension_session' },
+    });
   });
 });

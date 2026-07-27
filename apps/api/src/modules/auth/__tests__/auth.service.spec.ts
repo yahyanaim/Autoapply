@@ -27,6 +27,10 @@ describe('AuthService', () => {
       },
       subscription: {
         create: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({
+          plan: 'pro',
+          status: 'active',
+        }),
       },
       usageLimit: {
         create: jest.fn(),
@@ -321,6 +325,7 @@ describe('AuthService', () => {
           data: expect.objectContaining({
             userId: 'user_123',
             userAgent: 'ApplyAI extension',
+            clientType: 'extension',
           }),
         }),
       );

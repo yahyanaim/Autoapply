@@ -17,6 +17,9 @@ import { MatchScoreTextDto } from './dto/match-score-text.dto';
 import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
+import { SubscriptionPlan } from '@prisma/client';
+import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
+import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
 
 @ApiTags('ai')
 @Controller('ai')
@@ -51,7 +54,8 @@ export class AIController {
   }
 
   @Post('optimize')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
+  @RequiresPlan(SubscriptionPlan.pro, 'Resume optimization')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Optimize resume for a specific job' })
   @ApiResponse({ status: 200, description: 'Resume optimized' })
@@ -64,7 +68,8 @@ export class AIController {
   }
 
   @Post('cover-letter')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
+  @RequiresPlan(SubscriptionPlan.pro, 'Cover-letter generation')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Generate a cover letter' })
   @ApiResponse({ status: 200, description: 'Cover letter generated' })

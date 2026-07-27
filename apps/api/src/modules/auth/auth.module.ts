@@ -15,10 +15,12 @@ import {
   GitHubOAuthGuard,
   GoogleOAuthGuard,
 } from './interface/guards/oauth-configured.guard';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
     PrismaModule,
+    BillingModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

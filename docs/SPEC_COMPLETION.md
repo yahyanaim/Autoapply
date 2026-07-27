@@ -19,16 +19,18 @@ external organizations or production infrastructure.
 | PostgreSQL/Prisma schema and migrations | Complete | Schema validates; initial and quota migrations are included. |
 | Email/password and Google/GitHub authentication | Complete | Argon2id, verified OAuth email selection, rotating refresh sessions. |
 | Active-session view and revocation | Complete | Settings lists active devices and supports current, individual, and all-other revocation. |
+| Complete candidate preferences | Complete | Location, workplace preference, salary range, work authorization, phone, LinkedIn, and portfolio are editable and exportable. |
 | Resume upload, storage, PDF/DOCX parsing | Complete | Size/type/ZIP-bomb controls, isolated PDF worker, local/S3 adapters. |
 | Match score and explainability | Complete | Deterministic scoring with missing-keyword and weak-section output. |
 | Resume optimization without fabricated facts | Complete | Post-generation validation rejects unsupported claims. |
 | Cover-letter generation | Complete | Structured provider output validation and bounded tone choices. |
-| Manual application tracker CRUD | Complete | Create/list/detail/update/timeline/delete enforce tenant ownership. |
-| Assistive extension autofill | Complete | Greenhouse, Lever and Ashby adapters; no automatic submission. |
-| Dashboard account linking for the extension | Complete | Two-minute single-use dashboard handoff; extension password login is rejected. |
+| Manual application tracker CRUD | Complete | List/Kanban/detail views, status timeline, private notes, delete, and monthly quota visibility enforce tenant ownership. |
+| Assistive extension autofill | Complete | Greenhouse, Lever and Ashby adapters fill only supported contact fields; no sensitive-question guesses or automatic submission. |
+| Dashboard account linking for the extension | Complete | Two-minute single-use Pro handoff; extension sessions are revoked after downgrade and extension password login is rejected. |
 | Cover-letter dashboard workflow | Complete | Ready-resume selection, generation, review, and specificity regeneration are available on Jobs. |
 | Stripe Free/Pro/Premium billing | Complete | Checkout, portal, webhook ledger and current-state reconciliation. |
 | Per-plan application/AI/resume/storage quotas | Complete | Atomic counters and rollback behavior are implemented. |
+| Paid-feature entitlements | Complete | Centralized guards enforce Pro access for optimization, cover letters, and extension connection; dashboard actions mirror backend access. |
 
 ## Security, privacy and reliability
 

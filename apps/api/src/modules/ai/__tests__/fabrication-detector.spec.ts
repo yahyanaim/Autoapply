@@ -101,4 +101,46 @@ describe('detectFabrications', () => {
 
     expect(result).toHaveLength(0);
   });
+
+  it('detects an invented education claim', () => {
+    const result = detectFabrications(
+      { content: 'Education: Bachelor of Science in Computer Science' },
+      {
+        content:
+          'Education: Bachelor of Science in Computer Science. Master degree in Artificial Intelligence',
+      },
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'education' }),
+      ]),
+    );
+  });
+
+  it('detects an invented certification', () => {
+    const result = detectFabrications(
+      { content: 'Skills: AWS, Docker' },
+      { content: 'Skills: AWS, Docker. AWS Certified Solutions Architect' },
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'certification' }),
+      ]),
+    );
+  });
+
+  it('detects an invented quantitative achievement', () => {
+    const result = detectFabrications(
+      { content: 'Improved API performance.' },
+      { content: 'Improved API performance by 45% for 2 million users.' },
+    );
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'metric' }),
+      ]),
+    );
+  });
 });

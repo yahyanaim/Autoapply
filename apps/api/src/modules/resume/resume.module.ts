@@ -14,6 +14,7 @@ import { AIModule } from '../ai/ai.module';
 import { ResumeController } from './interface/resume.controller';
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import { ResumeParseWorker } from './infrastructure/queue/resume-parse.worker';
+import { BillingModule } from '../billing/billing.module';
 
 function redisConnection(configService: ConfigService) {
   const url = new URL(configService.get<string>('REDIS_URL', 'redis://localhost:6379'));
@@ -27,7 +28,7 @@ function redisConnection(configService: ConfigService) {
 }
 
 @Module({
-  imports: [AIModule, PrismaModule],
+  imports: [AIModule, PrismaModule, BillingModule],
   providers: [
     ResumeService,
     ResumeParser,

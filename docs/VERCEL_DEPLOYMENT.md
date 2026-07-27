@@ -39,6 +39,21 @@ The marketing homepage builds without the API, but registration, login,
 dashboard data, billing, resume processing, and extension handoff require this
 variable to point to a running API.
 
+## 2.1 Configure the Chrome extension
+
+Build the extension with the same public origins:
+
+```text
+VITE_DASHBOARD_URL=https://autoapply-phi.vercel.app
+VITE_API_BASE_URL=https://api.example.com
+```
+
+The dashboard origin must also appear in `apps/extension/manifest.json` under
+`externally_connectable.matches`, and the API origin must appear under
+`host_permissions`. Set the API's `EXTENSION_ID` to the ID assigned to the
+unpacked or Chrome Web Store build. Rebuild the extension whenever either
+public origin changes.
+
 ## 3. Deploy the API separately
 
 Deploy `apps/api` with the repository's production Docker image to a

@@ -13,6 +13,13 @@ export interface SessionUser {
     fullName?: string | null;
     headline?: string | null;
     location?: string | null;
+    phone?: string | null;
+    linkedInUrl?: string | null;
+    portfolioUrl?: string | null;
+    visaStatus?: string | null;
+    desiredSalaryMin?: number | null;
+    desiredSalaryMax?: number | null;
+    remotePreference?: 'remote' | 'hybrid' | 'onsite' | null;
   } | null;
 }
 

@@ -19,6 +19,9 @@ import { ResumeService } from '../application/resume.service';
 import { OptimizeResumeDto } from './dto/optimize-resume.dto';
 import { AIService } from '../../ai/application/ai.service';
 import { Throttle } from '@nestjs/throttler';
+import { SubscriptionPlan } from '@prisma/client';
+import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
+import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
 
 const resumeUploadLimits = {
   fileSize: 5 * 1024 * 1024,
@@ -95,7 +98,8 @@ export class ResumeController {
   }
 
   @Post(':id/optimize')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
+  @RequiresPlan(SubscriptionPlan.pro, 'Resume optimization')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Optimize a resume for a job' })

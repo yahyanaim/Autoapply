@@ -23,6 +23,7 @@ import { ApplicationTrackerService } from '../application/application-tracker.se
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { UpdateApplicationDto } from './dto/update-application.dto';
 import { ListApplicationsDto } from './dto/list-applications.dto';
+import { AddApplicationNoteDto } from './dto/add-application-note.dto';
 
 @ApiTags('applications')
 @Controller('applications')
@@ -62,6 +63,15 @@ export class ApplicationTrackerController {
       page: query.page,
       limit: query.limit,
     });
+  }
+
+  @Get('usage')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get application-tracking quota usage' })
+  @ApiResponse({ status: 200, description: 'Application quota retrieved' })
+  async getUsage(@CurrentUser('id') userId: string) {
+    return this.trackerService.getUsage(userId);
   }
 
   @Get(':id')
@@ -104,6 +114,21 @@ export class ApplicationTrackerController {
     @Param('id') id: string,
   ) {
     return this.trackerService.getTimeline(userId, id);
+  }
+
+  @Post(':id/notes')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Add a note to an application timeline' })
+  @ApiResponse({ status: 200, description: 'Note added' })
+  @ApiResponse({ status: 404, description: 'Application not found' })
+  async addNote(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() dto: AddApplicationNoteDto,
+  ) {
+    return this.trackerService.addNote(userId, id, dto.note.trim());
   }
 
   @Delete(':id')

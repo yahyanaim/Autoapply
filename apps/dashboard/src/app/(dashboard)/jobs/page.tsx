@@ -10,6 +10,7 @@ import { JobSearchParams, RemoteType, useJobs } from '@/lib/api/hooks/use-jobs';
 import { useApplications } from '@/lib/api/hooks/use-applications';
 import { useResumes } from '@/lib/api/hooks/use-resumes';
 import { apiClient } from '@/lib/api/api-client';
+import { hasMinimumPlan, useSubscription } from '@/lib/api/hooks/use-subscription';
 
 const remoteTypes: Array<{ label: string; value?: RemoteType }> = [
   { label: 'All' },
@@ -27,6 +28,8 @@ export default function JobsPage() {
   const jobs = useJobs(filters);
   const { create } = useApplications({ limit: 1 });
   const { resumes } = useResumes();
+  const subscription = useSubscription();
+  const hasPro = hasMinimumPlan(subscription.data, 'pro');
   const [selectedResumeId, setSelectedResumeId] = useState('');
   const [generatingJobId, setGeneratingJobId] = useState('');
   const [generatedLetter, setGeneratedLetter] = useState<{
@@ -117,25 +120,32 @@ export default function JobsPage() {
             <button key={type.label} type="button" onClick={() => setRemoteType(type.value)} className={`rounded-full px-4 py-1.5 text-sm font-medium ${remoteType === type.value ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{type.label}</button>
           ))}
         </div>
-        <div className="mt-4 max-w-md">
-          <label htmlFor="cover-letter-resume" className="block text-sm font-medium text-gray-700">
-            Resume for cover letters
-          </label>
-          <select
-            id="cover-letter-resume"
-            value={selectedResumeId}
-            onChange={(event) => setSelectedResumeId(event.target.value)}
-            className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-          >
-            <option value="">Choose a ready resume…</option>
-            {readyResumes.map((resume) => (
-              <option key={resume.id} value={resume.id}>
-                {resume.fileName || 'Untitled resume'}
-                {resume.isPrimary ? ' (primary)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        {hasPro ? (
+          <div className="mt-4 max-w-md">
+            <label htmlFor="cover-letter-resume" className="block text-sm font-medium text-gray-700">
+              Resume for cover letters
+            </label>
+            <select
+              id="cover-letter-resume"
+              value={selectedResumeId}
+              onChange={(event) => setSelectedResumeId(event.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+            >
+              <option value="">Choose a ready resume…</option>
+              {readyResumes.map((resume) => (
+                <option key={resume.id} value={resume.id}>
+                  {resume.fileName || 'Untitled resume'}
+                  {resume.isPrimary ? ' (primary)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-gray-500">
+            Personalized cover letters are available on Pro.{' '}
+            <a href="/billing" className="font-semibold text-primary-600 hover:text-primary-700">View plans</a>
+          </p>
+        )}
       </Card>
 
       {message && <div role="status" className="rounded-lg border border-info-200 bg-info-50 p-3 text-sm text-info-700">{message}</div>}
@@ -195,9 +205,9 @@ export default function JobsPage() {
                   size="sm"
                   variant="secondary"
                   onClick={() => void generateCoverLetter(job.id, job.title)}
-                  disabled={!selectedResumeId || generatingJobId === job.id}
+                  disabled={!hasPro || !selectedResumeId || generatingJobId === job.id}
                 >
-                  {generatingJobId === job.id ? 'Generating…' : 'Cover letter'}
+                  {generatingJobId === job.id ? 'Generating…' : hasPro ? 'Cover letter' : 'Cover letter · Pro'}
                 </Button>
                 {job.sourceUrl && <a className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50" href={job.sourceUrl} target="_blank" rel="noreferrer">View source</a>}
               </div>

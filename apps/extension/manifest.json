@@ -7,6 +7,7 @@
   "externally_connectable": {
     "matches": [
       "http://localhost/*",
+      "https://autoapply-phi.vercel.app/*",
       "https://app.applyai.com/*",
       "https://staging.applyai.com/*"
     ]
