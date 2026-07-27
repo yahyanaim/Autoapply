@@ -23,6 +23,8 @@ export interface UsageLimit {
   applicationsMax: number;
   aiRequestsUsed: number;
   aiRequestsMax: number;
+  jobDiscoveriesUsed: number;
+  jobDiscoveriesMax: number;
   resumesUsed: number;
   resumesMax: number;
   storageBytesUsed: number;

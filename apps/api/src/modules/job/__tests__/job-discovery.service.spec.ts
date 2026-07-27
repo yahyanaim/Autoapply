@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ResumeParseStatus } from '@prisma/client';
 import {
@@ -16,6 +20,17 @@ describe('JobDiscoveryService', () => {
     prisma = {
       resume: { findFirst: jest.fn() },
       job: { findMany: jest.fn() },
+      usageLimit: {
+        findUnique: jest.fn().mockResolvedValue({
+          jobDiscoveriesUsed: 0,
+          jobDiscoveriesMax: 3,
+          resetAt: new Date(Date.now() + 86_400_000),
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      $transaction: jest.fn((callback: (client: any) => unknown) =>
+        callback(prisma),
+      ),
     };
     ingestion = { ingest: jest.fn() };
     config = {
@@ -70,6 +85,14 @@ describe('JobDiscoveryService', () => {
     });
 
     expect(result.jobs).toHaveLength(20);
+    expect(result.discoveryUsage).toEqual(
+      expect.objectContaining({
+        used: 1,
+        maximum: 3,
+        remaining: 2,
+        unlimited: false,
+      }),
+    );
     expect(result.jobs[0]).toEqual(
       expect.objectContaining({
         id: 'job-0',
@@ -164,6 +187,118 @@ describe('JobDiscoveryService', () => {
     await expect(
       service.discover('user-1', { resumeId: 'resume-1', limit: 20 }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('enforces the monthly discovery allowance atomically', async () => {
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume-1',
+      parseStatus: ResumeParseStatus.ready,
+      parsedJson: { skills: [], experience: [] },
+    });
+    prisma.usageLimit.findUnique.mockResolvedValue({
+      jobDiscoveriesUsed: 3,
+      jobDiscoveriesMax: 3,
+      resetAt: new Date(Date.now() + 86_400_000),
+    });
+    prisma.usageLimit.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.discover('user-1', { resumeId: 'resume-1', limit: 20 }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.job.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not count a short skill as a substring inside another word', async () => {
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume-1',
+      parseStatus: ResumeParseStatus.ready,
+      parsedJson: {
+        skills: ['Go'],
+        experience: [{ title: 'Backend Engineer' }],
+      },
+    });
+    prisma.job.findMany.mockResolvedValue([
+      {
+        id: 'job-1',
+        source: 'greenhouse',
+        sourceUrl: 'https://example.com/jobs/1',
+        title: 'Operations Coordinator',
+        description: 'Coordinate ongoing reporting and logistics.',
+        location: 'Casablanca',
+        remoteType: null,
+        salaryMin: null,
+        salaryMax: null,
+        scrapedAt: new Date(),
+        createdAt: new Date(),
+        company: null,
+        skills: [],
+        applications: [],
+      },
+    ]);
+
+    const result = await service.discover('user-1', {
+      resumeId: 'resume-1',
+      limit: 20,
+    });
+
+    expect(result.jobs[0]?.matchedResumeSkills).toEqual([]);
+  });
+
+  it('returns the monthly reservation when discovery fails', async () => {
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume-1',
+      parseStatus: ResumeParseStatus.ready,
+      parsedJson: { skills: [], experience: [] },
+    });
+    prisma.job.findMany.mockRejectedValue(new Error('database unavailable'));
+
+    await expect(
+      service.discover('user-1', { resumeId: 'resume-1', limit: 20 }),
+    ).rejects.toThrow('database unavailable');
+    expect(prisma.usageLimit.updateMany).toHaveBeenLastCalledWith({
+      where: {
+        userId: 'user-1',
+        resetAt: expect.any(Date),
+        jobDiscoveriesUsed: { gt: 0 },
+      },
+      data: { jobDiscoveriesUsed: { decrement: 1 } },
+    });
+  });
+
+  it('shares one in-flight source refresh across concurrent discoveries', async () => {
+    config.get.mockImplementation((key: string, fallback: unknown) => {
+      if (key === 'JOB_DISCOVERY_SOURCES') return 'greenhouse:acme';
+      return fallback;
+    });
+    let completeRefresh!: () => void;
+    ingestion.ingest.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          completeRefresh = () =>
+            resolve({ source: 'greenhouse', identifier: 'acme', ingested: 12 });
+        }),
+    );
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume-1',
+      parseStatus: ResumeParseStatus.ready,
+      parsedJson: { skills: [], experience: [] },
+    });
+    prisma.job.findMany.mockResolvedValue([]);
+
+    const first = service.discover('user-1', {
+      resumeId: 'resume-1',
+      limit: 20,
+    });
+    const second = service.discover('user-1', {
+      resumeId: 'resume-1',
+      limit: 20,
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(ingestion.ingest).toHaveBeenCalledTimes(1);
+    completeRefresh();
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
   });
 });
 

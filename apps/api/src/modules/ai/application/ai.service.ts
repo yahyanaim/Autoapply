@@ -108,7 +108,12 @@ export class AIService {
       const now = this.clock.now();
       await transaction.usageLimit.updateMany({
         where: { userId, resetAt: { lt: now } },
-        data: { aiRequestsUsed: 0, applicationsUsed: 0, resetAt: this.getNextResetDate() },
+        data: {
+          aiRequestsUsed: 0,
+          applicationsUsed: 0,
+          jobDiscoveriesUsed: 0,
+          resetAt: this.getNextResetDate(),
+        },
       });
       const usage = await transaction.usageLimit.findUnique({ where: { userId } });
       if (!usage) throw new NotFoundException('Usage limit not found for user');

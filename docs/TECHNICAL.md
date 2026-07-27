@@ -124,18 +124,20 @@ Resume (N) ── (N) Skill
 |---|---|---|
 | userId | String | Unique, FK → User |
 | applicationsUsed | Int | Current period count |
-| applicationsMax | Int | Free: 10, Pro: unlimited |
+| applicationsMax | Int | Free: 10, Pro/Premium: unlimited |
 | aiRequestsUsed | Int | Current period count |
 | aiRequestsMax | Int | Free: 50, Pro: 500, Premium: unlimited |
-| resumesUsed / resumesMax | Int | Stored résumé count and plan cap (Free: 1, Pro: 5) |
-| storageBytesUsed / storageBytesMax | Int | Stored résumé bytes and plan cap |
+| jobDiscoveriesUsed | Int | Current monthly discovery-run count |
+| jobDiscoveriesMax | Int | Free: 3, Pro: 50, Premium: unlimited; each run returns up to 20 ranked jobs |
+| resumesUsed / resumesMax | Int | Stored résumé count and plan cap (Free: 1, Pro: 5, Premium: unlimited) |
+| storageBytesUsed / storageBytesMax | Int | Stored résumé bytes and plan cap (Free: 5 MB, Pro: 25 MB, Premium: 2 GB) |
 | resetAt | DateTime | Period reset timestamp |
 
 ### 2.3 Key Indexes
 
 - `users`: email (unique)
 - `resumes`: userId
-- `jobs`: companyId, sourceUrl (unique)
+- `jobs`: companyId, sourceUrl, sourceKey (unique per public catalog or capturing user)
 - `applications`: userId, jobId, status
 - `ai_requests`: userId, feature, createdAt, inputHash
 - `sessions`: userId, token (unique)

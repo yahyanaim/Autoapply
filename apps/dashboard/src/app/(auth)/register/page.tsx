@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -11,6 +11,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiBaseURL } from '@/lib/api/api-client';
 import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
+import {
+  billingPath,
+  PaidPlan,
+  readRequestedPaidPlan,
+  rememberPostAuthPlan,
+} from '@/lib/post-auth-plan';
 
 const registerSchema = z
   .object({
@@ -33,6 +39,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { register: registerUser } = useAuth();
   const [error, setError] = useState('');
+  const [requestedPlan, setRequestedPlan] = useState<PaidPlan | null>(null);
   const {
     register,
     handleSubmit,
@@ -41,6 +48,10 @@ export default function RegisterPage() {
     resolver: zodResolver(registerSchema),
     defaultValues: { acceptDataProcessing: false },
   });
+
+  useEffect(() => {
+    setRequestedPlan(readRequestedPaidPlan());
+  }, []);
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
@@ -51,13 +62,14 @@ export default function RegisterPage() {
         data.password,
         data.acceptDataProcessing,
       );
-      router.push('/dashboard');
+      router.push(billingPath(requestedPlan));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     }
   };
 
   const handleOAuth = async (provider: 'google' | 'github') => {
+    rememberPostAuthPlan(requestedPlan);
     window.location.href = `${apiBaseURL}/auth/${provider}`;
   };
 
@@ -66,6 +78,11 @@ export default function RegisterPage() {
       <div className="mb-8 text-center">
         <ApplyAILogo className="mx-auto h-10 w-auto" />
         <h1 className="mt-4 text-2xl font-bold text-gray-900">Create your account</h1>
+        {requestedPlan && (
+          <p className="mt-2 text-sm font-medium capitalize text-primary-600">
+            {requestedPlan} selected · payment is confirmed after registration
+          </p>
+        )}
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3">
@@ -148,7 +165,10 @@ export default function RegisterPage() {
 
       <p className="mt-6 text-center text-sm text-gray-600">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-primary-500 hover:text-primary-600">
+        <Link
+          href={requestedPlan ? `/login?plan=${requestedPlan}` : '/login'}
+          className="font-medium text-primary-500 hover:text-primary-600"
+        >
           Sign in
         </Link>
       </p>

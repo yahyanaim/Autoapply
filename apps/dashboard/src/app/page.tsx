@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Separator } from '@/components/ui/separator';
 import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
+import { pricingPlans } from '@/lib/pricing';
 
 const categories = [
   'Technology',
@@ -210,80 +211,6 @@ const comparisonRows = [
     label: 'Follow-up',
     applyAI: 'Keep status, activity, documents, and next steps in one timeline.',
     manual: 'Track progress across inboxes, bookmarks, notes, and spreadsheets.',
-  },
-];
-
-const pricingPlans = [
-  {
-    name: 'Free',
-    price: '$0',
-    description: 'Build your profile and organize a focused job search.',
-    image: '/images/applyai-career-focus.jpg',
-    imageAlt: 'Professional planning a focused job search',
-    imageLabel: 'Build your foundation',
-    currentFeatures: [
-      'Resume upload and structured PDF/DOCX parsing',
-      'Manual application tracker and timeline',
-      '10 tracked applications per month',
-      '50 AI requests per month',
-      '1 stored resume',
-      '5 MB encrypted resume storage',
-      'Profile, consent, export, and deletion controls',
-    ],
-    roadmapFeatures: [],
-    cta: 'Start free',
-  },
-  {
-    name: 'Pro',
-    price: '$19',
-    description: 'The complete assistive workflow for an active job search.',
-    image: '/images/applyai-application-review.jpg',
-    imageAlt: 'Professional reviewing an application',
-    imageLabel: 'Apply with confidence',
-    currentFeatures: [
-      'Everything in Free',
-      'Unlimited tracked applications',
-      'AI Resume Optimizer with fabrication checks and human review',
-      'Personalized Cover Letter Generator',
-      'Application Match Score, missing keywords, and weak-section flags',
-      'Explainable job-to-resume comparison',
-      'Remote, location, salary, and visa profile preferences',
-      'Chrome extension job detection and assistive autofill',
-      '500 AI requests per month',
-      'Up to 5 stored resumes',
-      '25 MB encrypted resume storage',
-    ],
-    roadmapFeatures: [
-      'Official Greenhouse, Lever, and Ashby job aggregation · V1',
-      'Application funnel and response analytics · V1',
-      'Email and browser notifications · V1',
-      'Additional job-site adapters after ToS and legal review · phased',
-    ],
-    cta: 'Choose Pro',
-    popular: true,
-  },
-  {
-    name: 'Premium',
-    price: '$49',
-    description: 'Maximum capacity plus ApplyAI’s advanced career intelligence.',
-    image: '/images/applyai-interview-notes.jpg',
-    imageAlt: 'Professionals preparing for interviews',
-    imageLabel: 'Take the next step',
-    currentFeatures: [
-      'Everything in Pro',
-      'Unlimited AI requests',
-      'Unlimited stored resumes',
-      'Up to 2 GB encrypted resume storage',
-      'All shipped ApplyAI application tools',
-    ],
-    roadmapFeatures: [
-      'Interview Coach for behavioral, technical, system-design, and coding practice · V1',
-      'AI Career Advisor and learning paths · V2',
-      'Salary prediction · V2',
-      'AI Recruiter Chat with natural-language filters · V2',
-      'Voice mock interview mode · V2',
-    ],
-    cta: 'Choose Premium',
   },
 ];
 

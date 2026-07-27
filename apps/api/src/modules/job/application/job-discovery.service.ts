@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -13,14 +14,20 @@ import {
   JobIngestionService,
   JobSource,
 } from './job-ingestion.service';
+import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
 
 const MAX_CANDIDATES = 500;
 const MAX_CONFIGURED_SOURCES = 8;
 const MAX_REFRESHED_JOBS_PER_SOURCE = 250;
 
-interface ConfiguredSource {
+export interface ConfiguredSource {
   source: JobSource;
   identifier: string;
+}
+
+export interface SourceRefreshResult extends ConfiguredSource {
+  status: 'refreshed' | 'cached' | 'failed';
+  ingested?: number;
 }
 
 export interface ResumeSearchProfile {
@@ -32,6 +39,7 @@ export interface ResumeSearchProfile {
 export class JobDiscoveryService {
   private readonly logger = new Logger(JobDiscoveryService.name);
   private lastRefreshAt = 0;
+  private refreshPromise: Promise<SourceRefreshResult[]> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -58,93 +66,119 @@ export class JobDiscoveryService {
       );
     }
 
-    const sourceRefresh = await this.refreshConfiguredSources();
-    const profile = readResumeSearchProfile(resume.parsedJson);
-    const where = this.candidateWhere(userId, input);
-    const candidates = await this.prisma.job.findMany({
-      where,
-      take: MAX_CANDIDATES,
-      orderBy: [{ scrapedAt: 'desc' }, { createdAt: 'desc' }],
-      include: {
-        company: true,
-        skills: true,
-        applications: {
-          where: { userId },
-          select: { id: true, status: true },
-          take: 1,
+    const discoveryUsage = await this.reserveDiscovery(userId);
+    try {
+      const sourceRefresh = await this.refreshConfiguredSources();
+      const profile = readResumeSearchProfile(resume.parsedJson);
+      const where = this.candidateWhere(userId, input);
+      const candidates = await this.prisma.job.findMany({
+        where,
+        take: MAX_CANDIDATES,
+        orderBy: [{ scrapedAt: 'desc' }, { createdAt: 'desc' }],
+        include: {
+          company: true,
+          skills: true,
+          applications: {
+            where: { userId },
+            select: { id: true, status: true },
+            take: 1,
+          },
         },
-      },
-    });
+      });
 
-    const resumeContent = JSON.stringify(resume.parsedJson);
-    const ranked = candidates
-      .filter((job) => Boolean(job.description?.trim()))
-      .map((job) => {
-        const match = calculateMatchScore(
-          { content: resumeContent },
-          `${job.title}\n${(job.description ?? '').slice(0, 50_000)}`,
-        );
-        const roleAlignment = calculateRoleAlignment(profile.roles, job.title);
-        const skillAlignment = calculateResumeSkillAlignment(
-          profile.skills,
-          `${job.title}\n${(job.description ?? '').slice(0, 50_000)}`,
-        );
-        const score = Math.min(
-          100,
-          Math.max(
+      const resumeContent = JSON.stringify(resume.parsedJson);
+      const ranked = candidates
+        .filter((job) => Boolean(job.description?.trim()))
+        .map((job) => {
+          const jobText = `${job.title}\n${(job.description ?? '').slice(
             0,
-            Math.round(
-              match.score * 0.65 +
-                skillAlignment.score * 0.25 +
-                roleAlignment * 0.1,
+            50_000,
+          )}`;
+          const match = calculateMatchScore(
+            { content: resumeContent },
+            jobText,
+          );
+          const roleAlignment = calculateRoleAlignment(
+            profile.roles,
+            job.title,
+          );
+          const skillAlignment = calculateResumeSkillAlignment(
+            profile.skills,
+            jobText,
+          );
+          const score = Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round(
+                match.score * 0.65 +
+                  skillAlignment.score * 0.25 +
+                  roleAlignment * 0.1,
+              ),
             ),
-          ),
-        );
-        return {
-          id: job.id,
-          source: job.source,
-          sourceUrl: job.sourceUrl,
-          title: job.title,
-          description: job.description?.slice(0, 5_000) ?? null,
-          location: job.location,
-          remoteType: job.remoteType,
-          salaryMin: job.salaryMin,
-          salaryMax: job.salaryMax,
-          scrapedAt: job.scrapedAt,
-          createdAt: job.createdAt,
-          company: job.company,
-          skills: job.skills,
-          matchScore: score,
-          matchedResumeSkills: skillAlignment.matched,
-          missingKeywords: match.missingKeywords.slice(0, 12),
-          weakSections: match.weakSections,
-          explanation: [
-            ...match.explanation,
-            `Verified CV skill overlap: ${skillAlignment.score}%`,
-            `Role-title alignment: ${roleAlignment}%`,
-          ],
-          trackedApplication: job.applications[0] ?? null,
-          rankingScore: score + freshnessTieBreaker(job.scrapedAt),
-        };
-      })
-      .sort((left, right) => right.rankingScore - left.rankingScore)
-      .slice(0, Math.min(20, input.limit))
-      .map(({ rankingScore: _rankingScore, ...job }) => job);
+          );
+          return {
+            id: job.id,
+            source: job.source,
+            sourceUrl: job.sourceUrl,
+            title: job.title,
+            description: job.description?.slice(0, 5_000) ?? null,
+            location: job.location,
+            remoteType: job.remoteType,
+            salaryMin: job.salaryMin,
+            salaryMax: job.salaryMax,
+            scrapedAt: job.scrapedAt,
+            createdAt: job.createdAt,
+            company: job.company,
+            skills: job.skills,
+            matchScore: score,
+            matchedResumeSkills: skillAlignment.matched,
+            missingKeywords: match.missingKeywords.slice(0, 12),
+            weakSections: match.weakSections,
+            explanation: [
+              ...match.explanation,
+              `Verified CV skill overlap: ${skillAlignment.score}%`,
+              `Role-title alignment: ${roleAlignment}%`,
+            ],
+            trackedApplication: job.applications[0] ?? null,
+            rankingScore: score + freshnessTieBreaker(job.scrapedAt),
+          };
+        })
+        .sort((left, right) => right.rankingScore - left.rankingScore)
+        .slice(0, Math.min(20, input.limit))
+        .map(({ rankingScore: _rankingScore, ...job }) => job);
 
-    return {
-      resumeId: resume.id,
-      generatedAt: new Date().toISOString(),
-      requestedLimit: Math.min(20, input.limit),
-      totalCandidates: candidates.length,
-      searchProfile: profile,
-      filters: {
-        query: input.query || null,
-        location: input.location || null,
-        remoteType: input.remoteType || null,
-      },
-      sourceRefresh,
-      jobs: ranked,
-    };
+      return {
+        resumeId: resume.id,
+        generatedAt: new Date().toISOString(),
+        requestedLimit: Math.min(20, input.limit),
+        totalCandidates: candidates.filter((job) =>
+          Boolean(job.description?.trim()),
+        ).length,
+        searchProfile: profile,
+        filters: {
+          query: input.query || null,
+          location: input.location || null,
+          remoteType: input.remoteType || null,
+        },
+        discoveryUsage,
+        sourceRefresh,
+        jobs: ranked,
+      };
+    } catch (error) {
+      try {
+        await this.releaseDiscovery(userId, discoveryUsage.resetAt);
+      } catch (releaseError) {
+        this.logger.error(
+          `Failed to release discovery reservation for ${userId}: ${
+            releaseError instanceof Error
+              ? releaseError.message
+              : String(releaseError)
+          }`,
+        );
+      }
+      throw error;
+    }
   }
 
   private candidateWhere(
@@ -183,7 +217,7 @@ export class JobDiscoveryService {
     return { AND: constraints };
   }
 
-  private async refreshConfiguredSources() {
+  private async refreshConfiguredSources(): Promise<SourceRefreshResult[]> {
     const sources = parseConfiguredSources(
       this.config.get<string>('JOB_DISCOVERY_SOURCES', ''),
     );
@@ -200,13 +234,19 @@ export class JobDiscoveryService {
         status: 'cached' as const,
       }));
     }
+    if (this.refreshPromise) return this.refreshPromise;
 
-    const results: Array<{
-      source: JobSource;
-      identifier: string;
-      status: 'refreshed' | 'failed';
-      ingested?: number;
-    }> = [];
+    this.refreshPromise = this.performRefresh(sources, now).finally(() => {
+      this.refreshPromise = null;
+    });
+    return this.refreshPromise;
+  }
+
+  private async performRefresh(
+    sources: ConfiguredSource[],
+    startedAt: number,
+  ): Promise<SourceRefreshResult[]> {
+    const results: SourceRefreshResult[] = [];
     for (const source of sources) {
       try {
         const result = await this.ingestion.ingest(
@@ -228,8 +268,84 @@ export class JobDiscoveryService {
         results.push({ ...source, status: 'failed' });
       }
     }
-    this.lastRefreshAt = now;
+    this.lastRefreshAt = startedAt;
     return results;
+  }
+
+  private async reserveDiscovery(userId: string) {
+    return this.prisma.$transaction(async (transaction) => {
+      const now = new Date();
+      const nextReset = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+      );
+      await transaction.usageLimit.updateMany({
+        where: { userId, resetAt: { lt: now } },
+        data: {
+          applicationsUsed: 0,
+          aiRequestsUsed: 0,
+          jobDiscoveriesUsed: 0,
+          resetAt: nextReset,
+        },
+      });
+      const usage = await transaction.usageLimit.findUnique({
+        where: { userId },
+        select: {
+          jobDiscoveriesUsed: true,
+          jobDiscoveriesMax: true,
+          resetAt: true,
+        },
+      });
+      if (!usage) throw new NotFoundException('Usage limit not found for user');
+      const reserved = await transaction.usageLimit.updateMany({
+        where: {
+          userId,
+          jobDiscoveriesUsed: { lt: usage.jobDiscoveriesMax },
+        },
+        data: { jobDiscoveriesUsed: { increment: 1 } },
+      });
+      if (reserved.count !== 1) {
+        throw new ForbiddenException(
+          'Monthly job-discovery limit reached. Upgrade your plan or wait for the next reset.',
+        );
+      }
+      const currentUsage = await transaction.usageLimit.findUnique({
+        where: { userId },
+        select: {
+          jobDiscoveriesUsed: true,
+          jobDiscoveriesMax: true,
+          resetAt: true,
+        },
+      });
+      if (!currentUsage) {
+        throw new NotFoundException('Usage limit not found for user');
+      }
+      const used = Math.max(
+        usage.jobDiscoveriesUsed + 1,
+        currentUsage.jobDiscoveriesUsed,
+      );
+      const unlimited =
+        currentUsage.jobDiscoveriesMax >= UNLIMITED_PLAN_LIMIT;
+      return {
+        used,
+        maximum: currentUsage.jobDiscoveriesMax,
+        remaining: unlimited
+          ? null
+          : Math.max(0, currentUsage.jobDiscoveriesMax - used),
+        unlimited,
+        resetAt: currentUsage.resetAt,
+      };
+    });
+  }
+
+  private async releaseDiscovery(userId: string, resetAt: Date) {
+    await this.prisma.usageLimit.updateMany({
+      where: {
+        userId,
+        resetAt,
+        jobDiscoveriesUsed: { gt: 0 },
+      },
+      data: { jobDiscoveriesUsed: { decrement: 1 } },
+    });
   }
 }
 
@@ -296,10 +412,10 @@ function calculateResumeSkillAlignment(
   jobText: string,
 ): { score: number; matched: string[] } {
   if (!skills.length) return { score: 50, matched: [] };
-  const normalizedJob = ` ${jobText.toLowerCase().replace(/\s+/g, ' ')} `;
+  const normalizedJob = normalizeSearchText(jobText);
   const matched = skills.filter((skill) => {
-    const normalized = skill.toLowerCase().replace(/\s+/g, ' ').trim();
-    return normalized.length >= 2 && normalizedJob.includes(normalized);
+    const normalized = normalizeSearchText(skill).trim();
+    return normalized.length >= 2 && normalizedJob.includes(` ${normalized} `);
   });
   const denominator = Math.min(skills.length, 8);
   return {
@@ -321,12 +437,20 @@ function tokenizeRole(value: string): string[] {
   ]);
   return cleanLabel(value)
     .toLowerCase()
-    .split(/[^a-z0-9+#]+/)
+    .split(/[^\p{L}\p{N}+#]+/u)
     .filter((token) => token.length >= 3 && !ignored.has(token));
 }
 
 function cleanLabel(value: string): string {
   return value.trim().replace(/\s+/g, ' ').slice(0, 160);
+}
+
+function normalizeSearchText(value: string): string {
+  return ` ${value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}+#.]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()} `;
 }
 
 function freshnessTieBreaker(value: Date): number {

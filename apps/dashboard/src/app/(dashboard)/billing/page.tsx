@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -8,12 +8,30 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { apiClient } from '@/lib/api/api-client';
 import { useSubscription } from '@/lib/api/hooks/use-subscription';
+import {
+  pricingPlans,
+  PublicPricingPlan,
+} from '@/lib/pricing';
+import {
+  PaidPlan,
+  readRequestedPaidPlan,
+} from '@/lib/post-auth-plan';
+
+const paidPlans = pricingPlans.filter(
+  (plan): plan is PublicPricingPlan & { name: 'Pro' | 'Premium' } =>
+    plan.name === 'Pro' || plan.name === 'Premium',
+);
 
 export default function BillingPage() {
   const [error, setError] = useState('');
+  const [requestedPlan, setRequestedPlan] = useState<PaidPlan | null>(null);
   const subscription = useSubscription();
   const checkout = useMutation({ mutationFn: (plan: 'pro' | 'premium') => apiClient.post<{ url: string }>('/billing/checkout-session', { plan }) });
   const portal = useMutation({ mutationFn: () => apiClient.post<{ url: string }>('/billing/portal-session') });
+
+  useEffect(() => {
+    setRequestedPlan(readRequestedPaidPlan());
+  }, []);
 
   const redirect = async (action: () => Promise<{ url: string }>) => {
     setError('');
@@ -26,11 +44,28 @@ export default function BillingPage() {
   };
 
   if (subscription.isLoading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>;
+  const hasManageableSubscription = Boolean(
+    subscription.data?.stripeSubscriptionId &&
+      ['active', 'trialing', 'past_due'].includes(subscription.data.status),
+  );
+
+  const selectPlan = (plan: 'pro' | 'premium') => {
+    if (hasManageableSubscription) {
+      return redirect(() => portal.mutateAsync());
+    }
+    return redirect(() => checkout.mutateAsync(plan));
+  };
 
   return (
     <div className="space-y-6">
       <div><h1 className="text-2xl font-bold text-gray-900">Billing & subscription</h1><p className="mt-1 text-sm text-gray-500">Plans and invoices are securely managed by Stripe.</p></div>
       {(error || subscription.isError) && <div role="alert" className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-700">{error || subscription.error?.message}</div>}
+      {requestedPlan && subscription.data?.plan !== requestedPlan && (
+        <div className="rounded-lg border border-info-200 bg-info-50 p-3 text-sm text-info-700">
+          You selected the <span className="font-semibold capitalize">{requestedPlan}</span>{' '}
+          plan. Review its included limits below, then continue securely with Stripe.
+        </div>
+      )}
 
       {subscription.data && (
         <Card>
@@ -41,9 +76,28 @@ export default function BillingPage() {
         </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <PlanCard name="Pro" price="$19" features={['500 AI requests per month', 'Unlimited application tracking', 'Resume optimization']} disabled={checkout.isPending || subscription.data?.plan === 'pro'} onSelect={() => void redirect(() => checkout.mutateAsync('pro'))} />
-        <PlanCard name="Premium" price="$49" features={['Unlimited AI requests', 'Unlimited application tracking', 'All AI tools']} disabled={checkout.isPending || subscription.data?.plan === 'premium'} onSelect={() => void redirect(() => checkout.mutateAsync('premium'))} />
+      <div className="grid items-start gap-4 md:grid-cols-2">
+        {paidPlans.map((plan) => {
+          const planKey = plan.name.toLowerCase() as 'pro' | 'premium';
+          const isCurrent = subscription.data?.plan === planKey;
+          return (
+            <PlanCard
+              key={plan.name}
+              plan={plan}
+              disabled={
+                checkout.isPending || portal.isPending || Boolean(isCurrent)
+              }
+              buttonLabel={
+                isCurrent
+                  ? 'Current plan'
+                  : hasManageableSubscription
+                    ? 'Manage or change in Stripe'
+                    : `Choose ${plan.name}`
+              }
+              onSelect={() => void selectPlan(planKey)}
+            />
+          );
+        })}
       </div>
 
       <Card>
@@ -55,6 +109,52 @@ export default function BillingPage() {
   );
 }
 
-function PlanCard({ name, price, features, disabled, onSelect }: { name: string; price: string; features: string[]; disabled: boolean; onSelect: () => void }) {
-  return <Card><h2 className="text-xl font-bold text-gray-900">{name}</h2><p className="mt-2"><span className="text-3xl font-bold">{price}</span><span className="text-sm text-gray-500">/month</span></p><ul className="my-5 space-y-2 text-sm text-gray-600">{features.map((feature) => <li key={feature}>✓ {feature}</li>)}</ul><Button className="w-full" onClick={onSelect} disabled={disabled}>{disabled ? 'Current or processing' : `Choose ${name}`}</Button></Card>;
+function PlanCard({
+  plan,
+  disabled,
+  buttonLabel,
+  onSelect,
+}: {
+  plan: PublicPricingPlan;
+  disabled: boolean;
+  buttonLabel: string;
+  onSelect: () => void;
+}) {
+  const primaryFeatures = plan.currentFeatures.slice(0, 6);
+  const additionalFeatures = plan.currentFeatures.slice(6);
+  return (
+    <Card>
+      <h2 className="text-xl font-bold text-gray-900">{plan.name}</h2>
+      <p className="mt-2">
+        <span className="text-3xl font-bold">{plan.price}</span>
+        <span className="text-sm text-gray-500">/month</span>
+      </p>
+      <p className="mt-2 text-sm text-gray-500">{plan.description}</p>
+      <ul className="my-5 space-y-2 text-sm text-gray-600">
+        {primaryFeatures.map((feature) => (
+          <li key={feature}>✓ {feature}</li>
+        ))}
+      </ul>
+      {additionalFeatures.length > 0 && (
+        <details className="mb-5 border-t border-gray-100 pt-3 text-sm">
+          <summary className="cursor-pointer font-semibold text-primary-600">
+            More included features
+          </summary>
+          <ul className="mt-3 space-y-2 text-gray-600">
+            {additionalFeatures.map((feature) => (
+              <li key={feature}>✓ {feature}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <Button className="w-full" onClick={onSelect} disabled={disabled}>
+        {checkoutLabel(disabled, buttonLabel)}
+      </Button>
+    </Card>
+  );
+}
+
+function checkoutLabel(disabled: boolean, label: string) {
+  if (!disabled) return label;
+  return label === 'Current plan' ? label : 'Processing…';
 }

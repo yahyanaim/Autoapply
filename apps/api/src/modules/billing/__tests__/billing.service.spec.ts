@@ -30,6 +30,10 @@ describe('BillingService', () => {
       createCheckoutSession: jest.fn(),
       createPortalSession: jest.fn(),
       retrieveSubscription: jest.fn(),
+      resolveSubscriptionPlan: jest.fn((subscription: any) => {
+        const plan = subscription.metadata?.plan;
+        return plan === 'pro' || plan === 'premium' ? plan : 'free';
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -139,7 +143,11 @@ describe('BillingService', () => {
       });
       expect(prismaMock.usageLimit.updateMany).toHaveBeenCalledWith({
         where: { userId: 'u1' },
-        data: expect.objectContaining({ aiRequestsMax: 50, resumesMax: 1 }),
+        data: expect.objectContaining({
+          aiRequestsMax: 50,
+          jobDiscoveriesMax: 3,
+          resumesMax: 1,
+        }),
       });
     });
 
@@ -172,6 +180,45 @@ describe('BillingService', () => {
       expect(prismaMock.subscription.updateMany).toHaveBeenCalledWith({
         where: { stripeSubscriptionId: 'sub_1' },
         data: expect.objectContaining({ plan: 'free', status: 'canceled' }),
+      });
+    });
+
+    it('uses the actual Stripe price-derived plan after a portal change', async () => {
+      prismaMock.subscription.findFirst.mockResolvedValue({
+        id: 'local_sub',
+        userId: 'u1',
+        plan: 'pro',
+      });
+      stripeMock.resolveSubscriptionPlan.mockReturnValue('premium');
+      stripeMock.retrieveSubscription.mockResolvedValue({
+        id: 'sub_1',
+        status: 'active',
+        metadata: { plan: 'pro' },
+        ...period,
+      });
+
+      await service.handleWebhook({
+        id: 'evt_portal_upgrade',
+        type: 'customer.subscription.updated',
+        data: {
+          object: {
+            id: 'sub_1',
+            status: 'active',
+            metadata: { plan: 'pro' },
+            ...period,
+          },
+        },
+      } as never);
+
+      expect(prismaMock.subscription.updateMany).toHaveBeenCalledWith({
+        where: { stripeSubscriptionId: 'sub_1' },
+        data: expect.objectContaining({ plan: 'premium', status: 'active' }),
+      });
+      expect(prismaMock.usageLimit.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'u1' },
+        data: expect.objectContaining({
+          jobDiscoveriesMax: 2_147_483_647,
+        }),
       });
     });
 

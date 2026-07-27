@@ -422,6 +422,8 @@ model UsageLimit {
   applicationsMax  Int      @default(10)
   aiRequestsUsed   Int      @default(0)
   aiRequestsMax    Int      @default(50)
+  jobDiscoveriesUsed Int    @default(0)
+  jobDiscoveriesMax  Int    @default(3)
   resumesUsed      Int      @default(0)
   resumesMax       Int      @default(1)
   storageBytesUsed Int      @default(0)

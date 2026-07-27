@@ -91,6 +91,13 @@ export interface JobDiscoveryResponse {
     location: string | null;
     remoteType: 'remote' | 'hybrid' | 'onsite' | null;
   };
+  discoveryUsage: {
+    used: number;
+    maximum: number;
+    remaining: number | null;
+    unlimited: boolean;
+    resetAt: string;
+  };
   sourceRefresh: Array<{
     source: 'greenhouse' | 'lever' | 'ashby';
     identifier: string;

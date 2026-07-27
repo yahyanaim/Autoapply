@@ -8,7 +8,8 @@ documents.
 1. Upload and parse a primary PDF or DOCX resume.
 2. After parsing finishes, choose **Find matching jobs**.
 3. ApplyAI refreshes configured approved ATS boards, ranks a bounded candidate
-   pool against the verified CV and returns up to 20 explainable matches.
+   pool against the verified CV and returns up to 20 explainable matches. Plan
+   allowances are 3 runs per month on Free, 50 on Pro, and unlimited on Premium.
 4. Select one recommendation, capture an open job with the extension, or paste
    a job URL and description.
 5. Choose **Prepare selected job**.

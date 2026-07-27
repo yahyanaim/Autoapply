@@ -1,9 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { Spinner } from '@/components/ui/Spinner';
+import {
+  billingPath,
+  consumePostAuthPlan,
+} from '@/lib/post-auth-plan';
 
 export default function OAuthCallbackPage() {
   const router = useRouter();
@@ -11,6 +15,7 @@ export default function OAuthCallbackPage() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isInitialized = useAuthStore((state) => state.isInitialized);
   const [failed, setFailed] = useState(false);
+  const destinationRef = useRef<string | null>(null);
 
   useEffect(() => {
     void initialize();
@@ -18,7 +23,10 @@ export default function OAuthCallbackPage() {
 
   useEffect(() => {
     if (!isInitialized) return;
-    if (isAuthenticated) router.replace('/dashboard');
+    if (isAuthenticated) {
+      destinationRef.current ??= billingPath(consumePostAuthPlan());
+      router.replace(destinationRef.current);
+    }
     else setFailed(true);
   }, [isAuthenticated, isInitialized, router]);
 

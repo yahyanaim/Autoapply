@@ -3,6 +3,7 @@ import { PrismaService } from '../../../database/prisma/prisma.service';
 import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
 import { Prisma, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import Stripe from 'stripe';
+import { PLAN_LIMITS } from '../domain/plan-limits';
 
 @Injectable()
 export class BillingService {
@@ -97,10 +98,8 @@ export class BillingService {
         if (!currentSubscription || currentSubscription.id !== stripeSubscriptionId) {
           throw new BadRequestException('Checkout subscription could not be verified');
         }
-        const { status, effectivePlan } = this.subscriptionEntitlement(
-          currentSubscription,
-          plan,
-        );
+        const { status, effectivePlan } =
+          this.subscriptionEntitlement(currentSubscription);
         const updated = await transaction.subscription.updateMany({
           where: { userId },
           data: {
@@ -161,10 +160,8 @@ export class BillingService {
             },
           });
           if (currentSubscription) {
-            const { status, effectivePlan } = this.subscriptionEntitlement(
-              currentSubscription,
-              subscription.plan,
-            );
+            const { status, effectivePlan } =
+              this.subscriptionEntitlement(currentSubscription);
             await transaction.subscription.updateMany({
               where: { id: subscription.id },
               data: {
@@ -186,10 +183,8 @@ export class BillingService {
         const existing = await transaction.subscription.findFirst({
           where: { stripeSubscriptionId: eventSubscription.id },
         });
-        const { status, effectivePlan } = this.subscriptionEntitlement(
-          sub,
-          existing?.plan,
-        );
+        const { status, effectivePlan } =
+          this.subscriptionEntitlement(sub);
         await transaction.subscription.updateMany({
           where: { stripeSubscriptionId: eventSubscription.id },
           data: {
@@ -251,7 +246,6 @@ export class BillingService {
 
   private subscriptionEntitlement(
     subscription: Stripe.Subscription,
-    fallbackPlan?: SubscriptionPlan,
   ): { status: SubscriptionStatus; effectivePlan: SubscriptionPlan } {
     const statusMap: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
       active: SubscriptionStatus.active,
@@ -264,12 +258,8 @@ export class BillingService {
       paused: SubscriptionStatus.paused,
     };
     const status = statusMap[subscription.status];
-    const metadataPlan = subscription.metadata.plan as SubscriptionPlan | undefined;
     const configuredPlan =
-      metadataPlan === SubscriptionPlan.pro ||
-      metadataPlan === SubscriptionPlan.premium
-        ? metadataPlan
-        : fallbackPlan ?? SubscriptionPlan.free;
+      this.stripeAdapter.resolveSubscriptionPlan(subscription);
     const entitled =
       status === SubscriptionStatus.active ||
       status === SubscriptionStatus.trialing ||
@@ -285,27 +275,10 @@ export class BillingService {
     userId: string,
     plan: SubscriptionPlan,
   ) {
-    const limits = {
-      [SubscriptionPlan.free]: {
-        applicationsMax: 10,
-        aiRequestsMax: 50,
-        resumesMax: 1,
-        storageBytesMax: 5 * 1024 * 1024,
-      },
-      [SubscriptionPlan.pro]: {
-        applicationsMax: 2_147_483_647,
-        aiRequestsMax: 500,
-        resumesMax: 5,
-        storageBytesMax: 25 * 1024 * 1024,
-      },
-      [SubscriptionPlan.premium]: {
-        applicationsMax: 2_147_483_647,
-        aiRequestsMax: 2_147_483_647,
-        resumesMax: 2_147_483_647,
-        storageBytesMax: 2_147_483_647,
-      },
-    }[plan];
-    await transaction.usageLimit.updateMany({ where: { userId }, data: limits });
+    await transaction.usageLimit.updateMany({
+      where: { userId },
+      data: PLAN_LIMITS[plan],
+    });
   }
 
   async getSubscription(userId: string) {

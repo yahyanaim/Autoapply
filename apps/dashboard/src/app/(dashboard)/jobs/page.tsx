@@ -36,6 +36,8 @@ export default function JobsPage() {
   const [message, setMessage] = useState('');
   const jobs = useJobs(filters);
   const discovery = useJobDiscovery();
+  const discoveredResumeId = discovery.data?.resumeId;
+  const resetDiscovery = discovery.reset;
   const { prepare } = useApplications({ limit: 1 });
   const { resumes } = useResumes();
   const subscription = useSubscription();
@@ -82,13 +84,13 @@ export default function JobsPage() {
 
   useEffect(() => {
     if (
-      discovery.data &&
-      discovery.data.resumeId !== selectedResumeId
+      discoveredResumeId &&
+      discoveredResumeId !== selectedResumeId
     ) {
-      discovery.reset();
+      resetDiscovery();
       setSelectedJobId('');
     }
-  }, [discovery, selectedResumeId]);
+  }, [discoveredResumeId, resetDiscovery, selectedResumeId]);
 
   const search = (event: FormEvent) => {
     event.preventDefault();
@@ -227,8 +229,8 @@ export default function JobsPage() {
         </div>
         {!hasPro && (
           <p className="mt-4 text-sm text-gray-500">
-            You can discover and review matches now. Unified CV and cover-letter
-            preparation requires Pro.{' '}
+            Free includes 3 discovery runs per month. Pro includes 50 runs plus
+            unified CV and cover-letter preparation.{' '}
             <a href="/billing" className="font-semibold text-primary-600 hover:text-primary-700">View plans</a>
           </p>
         )}
@@ -255,6 +257,11 @@ export default function JobsPage() {
                 Ranked from {discovery.data.totalCandidates} eligible jobs using
                 the selected CV. Scores explain alignment; they do not guarantee
                 an interview.
+              </p>
+              <p className="mt-2 text-xs font-medium text-gray-500">
+                {discovery.data.discoveryUsage.unlimited
+                  ? 'Unlimited discovery runs on your current plan'
+                  : `${discovery.data.discoveryUsage.used} of ${discovery.data.discoveryUsage.maximum} monthly discovery runs used · ${discovery.data.discoveryUsage.remaining} remaining`}
               </p>
             </div>
             <button

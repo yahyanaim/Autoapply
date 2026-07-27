@@ -69,6 +69,13 @@ export interface JobDiscoveryResult {
     location: string | null;
     remoteType: RemoteType | null;
   };
+  discoveryUsage: {
+    used: number;
+    maximum: number;
+    remaining: number | null;
+    unlimited: boolean;
+    resetAt: string;
+  };
   sourceRefresh: Array<{
     source: 'greenhouse' | 'lever' | 'ashby';
     identifier: string;

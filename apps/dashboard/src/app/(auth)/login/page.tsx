@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
@@ -11,6 +11,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { apiBaseURL } from '@/lib/api/api-client';
 import { ApplyAILogo } from '@/components/brand/ApplyAILogo';
+import {
+  billingPath,
+  PaidPlan,
+  readRequestedPaidPlan,
+  rememberPostAuthPlan,
+} from '@/lib/post-auth-plan';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email'),
@@ -28,6 +34,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
   const [error, setError] = useState('');
+  const [requestedPlan, setRequestedPlan] = useState<PaidPlan | null>(null);
   const {
     register,
     handleSubmit,
@@ -37,17 +44,22 @@ export default function LoginPage() {
     defaultValues: { mfaCode: '' },
   });
 
+  useEffect(() => {
+    setRequestedPlan(readRequestedPaidPlan());
+  }, []);
+
   const onSubmit = async (data: LoginFormData) => {
     try {
       setError('');
       await login(data.email, data.password, data.mfaCode || undefined);
-      router.push('/dashboard');
+      router.push(billingPath(requestedPlan));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     }
   };
 
   const handleOAuth = async (provider: 'google' | 'github') => {
+    rememberPostAuthPlan(requestedPlan);
     window.location.href = `${apiBaseURL}/auth/${provider}`;
   };
 
@@ -56,6 +68,11 @@ export default function LoginPage() {
       <div className="mb-8 text-center">
         <ApplyAILogo className="mx-auto h-10 w-auto" />
         <h1 className="mt-4 text-2xl font-bold text-gray-900">Sign in to your account</h1>
+        {requestedPlan && (
+          <p className="mt-2 text-sm font-medium capitalize text-primary-600">
+            Continue to {requestedPlan} after sign in
+          </p>
+        )}
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3">
@@ -123,7 +140,10 @@ export default function LoginPage() {
 
       <p className="mt-6 text-center text-sm text-gray-600">
         Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-medium text-primary-500 hover:text-primary-600">
+        <Link
+          href={requestedPlan ? `/register?plan=${requestedPlan}` : '/register'}
+          className="font-medium text-primary-500 hover:text-primary-600"
+        >
           Sign up
         </Link>
       </p>

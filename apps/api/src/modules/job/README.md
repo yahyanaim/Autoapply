@@ -9,7 +9,9 @@ There is no server-side LinkedIn or Indeed crawler.
 approved ATS boards subject to a refresh TTL, scores at most 500 complete
 candidate records, and returns no more than 20 explainable recommendations.
 The response identifies already-tracked jobs so the UI cannot accidentally
-create a duplicate application.
+create a duplicate application. Monthly allowances are enforced atomically:
+Free receives 3 runs, Pro receives 50, and Premium receives unlimited runs.
+Failed requests release their reservation.
 
 Configure public sources with a comma-separated environment value:
 
@@ -19,4 +21,6 @@ JOB_DISCOVERY_REFRESH_TTL_MINUTES=30
 ```
 
 Each interactive refresh is limited to eight configured boards and 250 jobs per
-board. A scheduled admin ingestion job remains preferable for larger catalogs.
+board. Concurrent requests within one API process share a single in-flight
+refresh. A scheduled admin ingestion job remains preferable for larger catalogs
+and multi-replica deployments.

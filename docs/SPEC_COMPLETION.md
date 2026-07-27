@@ -25,12 +25,13 @@ external organizations or production infrastructure.
 | Resume optimization and generated ATS CV | Complete | Post-generation validation rejects unsupported claims; verified fields are merged into a persisted classic template with authenticated PDF download. |
 | Cover-letter generation | Complete | Structured provider output validation and bounded tone choices. |
 | Unified application preparation | Complete | One workflow connects tenant-scoped job capture, structured job analysis, optimized CV, cover letter, editing, approval hashes, extension handoff and tracking. |
+| CV-based job discovery | Complete | A ready resume can rank up to 20 jobs per run with verified-skill overlap, role alignment, keyword gaps, tracked-job detection, bounded approved-source refresh, and monthly plan allowances. |
 | Application tracker CRUD | Complete | List/Kanban/review views, preparation and submission states, timeline, notes, delete, and monthly quota visibility enforce tenant ownership. |
 | Assistive extension autofill | Complete | Greenhouse, Lever, Ashby and user-opened Moroccan-board adapters capture jobs and fill only an approved package; unknown questions and final submission remain user-controlled. |
 | Dashboard account linking for the extension | Complete | Two-minute single-use Pro handoff; extension sessions are revoked after downgrade and extension password login is rejected. |
 | Cover-letter dashboard workflow | Complete | Ready-resume selection, generation, review, and specificity regeneration are available on Jobs. |
 | Stripe Free/Pro/Premium billing | Complete | Checkout, portal, webhook ledger and current-state reconciliation. |
-| Per-plan application/AI/resume/storage quotas | Complete | Atomic counters and rollback behavior are implemented. |
+| Per-plan application/AI/discovery/resume/storage quotas | Complete | Atomic counters and rollback behavior are implemented; discovery allows 3 Free, 50 Pro, and unlimited Premium runs per month. |
 | Paid-feature entitlements | Complete | Centralized guards enforce Pro access for optimization, cover letters, and extension connection; dashboard actions mirror backend access. |
 
 ## Security, privacy and reliability
