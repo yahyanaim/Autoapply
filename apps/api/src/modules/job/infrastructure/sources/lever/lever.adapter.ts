@@ -52,13 +52,16 @@ export class LeverAdapter {
   ) {}
 
   async fetchJobs(company: string, limit = 1_000): Promise<number> {
-    const url = `https://api.lever.co/v0/postings/${encodeURIComponent(company)}?mode=json`;
+    const boundedLimit = Math.min(1_000, Math.max(1, limit));
+    const url = `https://api.lever.co/v0/postings/${encodeURIComponent(company)}?mode=json&limit=${boundedLimit}`;
     try {
-      const response = await this.partnerApi.fetch(url);
+      const response = await this.partnerApi.fetch(url, {
+        headers: { Accept: 'application/json' },
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = parsePostings((await response.json()) as unknown).slice(
         0,
-        Math.min(1_000, Math.max(1, limit)),
+        boundedLimit,
       );
 
       for (const posting of data) {

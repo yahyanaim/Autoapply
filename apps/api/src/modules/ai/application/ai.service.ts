@@ -3,6 +3,7 @@ import {
   BadGatewayException,
   Injectable,
   ForbiddenException,
+  Logger,
   NotFoundException,
   Optional,
   PayloadTooLargeException,
@@ -31,6 +32,8 @@ import {
 
 @Injectable()
 export class AIService {
+  private readonly logger = new Logger(AIService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerFactory: AIProviderFactory,
@@ -111,6 +114,7 @@ export class AIService {
         data: {
           aiRequestsUsed: 0,
           applicationsUsed: 0,
+          resumeOptimizationsUsed: 0,
           jobDiscoveriesUsed: 0,
           resetAt: this.getNextResetDate(),
         },
@@ -215,8 +219,42 @@ export class AIService {
       throw new NotFoundException('Job not found');
     }
 
+    const optimizationResetAt =
+      await this.reserveResumeOptimization(userId);
+    try {
+      return await this.performResumeOptimization(
+        userId,
+        resumeId,
+        resume,
+        jobId,
+        job.description ?? '',
+        jobAnalysis,
+      );
+    } catch (error) {
+      try {
+        await this.releaseResumeOptimization(userId, optimizationResetAt);
+      } catch (releaseError) {
+        this.logger.error(
+          `Failed to release resume-optimization reservation for ${userId}: ${
+            releaseError instanceof Error
+              ? releaseError.message
+              : String(releaseError)
+          }`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async performResumeOptimization(
+    userId: string,
+    resumeId: string,
+    resume: Awaited<ReturnType<AIService['getOwnedResume']>>,
+    jobId: string,
+    jobDescription: string,
+    jobAnalysis?: JobAnalysis,
+  ) {
     const resumeContent = JSON.stringify(resume.parsedJson ?? {});
-    const jobDescription = job.description ?? '';
 
     const { content: aiContent } = await this.complete(
       AIRequestFeature.resume_optimize,
@@ -307,6 +345,57 @@ export class AIService {
     };
   }
 
+  private async reserveResumeOptimization(userId: string): Promise<Date> {
+    return this.prisma.$transaction(async (transaction) => {
+      const now = this.clock.now();
+      await transaction.usageLimit.updateMany({
+        where: { userId, resetAt: { lt: now } },
+        data: {
+          aiRequestsUsed: 0,
+          applicationsUsed: 0,
+          resumeOptimizationsUsed: 0,
+          jobDiscoveriesUsed: 0,
+          resetAt: this.getNextResetDate(),
+        },
+      });
+      const usage = await transaction.usageLimit.findUnique({
+        where: { userId },
+        select: {
+          resumeOptimizationsUsed: true,
+          resumeOptimizationsMax: true,
+          resetAt: true,
+        },
+      });
+      if (!usage) throw new NotFoundException('Usage limit not found for user');
+      const reserved = await transaction.usageLimit.updateMany({
+        where: {
+          userId,
+          resumeOptimizationsUsed: {
+            lt: usage.resumeOptimizationsMax,
+          },
+        },
+        data: { resumeOptimizationsUsed: { increment: 1 } },
+      });
+      if (reserved.count !== 1) {
+        throw new ForbiddenException(
+          'Monthly resume-optimization limit reached. Upgrade your plan or wait for the next reset.',
+        );
+      }
+      return usage.resetAt;
+    });
+  }
+
+  private async releaseResumeOptimization(userId: string, resetAt: Date) {
+    await this.prisma.usageLimit.updateMany({
+      where: {
+        userId,
+        resetAt,
+        resumeOptimizationsUsed: { gt: 0 },
+      },
+      data: { resumeOptimizationsUsed: { decrement: 1 } },
+    });
+  }
+
   async generateCoverLetter(
     userId: string,
     jobId: string,
@@ -383,15 +472,27 @@ export class AIService {
   }
 
   async getCostSummary(userId: string, startDate: Date, endDate: Date) {
-    const requests = await this.prisma.aIRequest.findMany({
-      where: {
-        userId,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
+    const [requests, usage] = await Promise.all([
+      this.prisma.aIRequest.findMany({
+        where: {
+          userId,
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
         },
-      },
-    });
+      }),
+      this.prisma.usageLimit.findUnique({
+        where: { userId },
+        select: {
+          aiRequestsUsed: true,
+          aiRequestsMax: true,
+          resumeOptimizationsUsed: true,
+          resumeOptimizationsMax: true,
+          resetAt: true,
+        },
+      }),
+    ]);
 
     const totalCost = requests.reduce((sum, req) => sum + (req.cost ?? 0), 0);
     const totalTokens = requests.reduce(
@@ -409,6 +510,7 @@ export class AIService {
       byFeature[feature].cost += req.cost ?? 0;
       byFeature[feature].tokens += req.tokensUsed ?? 0;
     }
+    const quotaActive = Boolean(usage && usage.resetAt > this.clock.now());
 
     return {
       totalRequests: requests.length,
@@ -417,6 +519,17 @@ export class AIService {
       byFeature,
       startDate,
       endDate,
+      quota: usage
+        ? {
+            aiRequestsUsed:
+              quotaActive ? usage.aiRequestsUsed : 0,
+            aiRequestsMax: usage.aiRequestsMax,
+            resumeOptimizationsUsed:
+              quotaActive ? usage.resumeOptimizationsUsed : 0,
+            resumeOptimizationsMax: usage.resumeOptimizationsMax,
+            resetAt: usage.resetAt,
+          }
+        : null,
     };
   }
 

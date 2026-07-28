@@ -5,8 +5,33 @@ import { PartnerApiClient } from '../partner-api.client';
 interface GreenhouseJob {
   title: string;
   url: string;
-  description?: string;
+  content?: string;
   location?: string;
+}
+
+function toPlainText(value: string): string {
+  let decoded = value;
+  for (let pass = 0; pass < 2; pass += 1) {
+    decoded = decoded.replace(
+      /&(#x?[0-9a-f]+|amp|lt|gt|quot|apos|nbsp);/gi,
+      (entity, code: string) => {
+        const normalized = code.toLowerCase();
+        if (normalized === 'amp') return '&';
+        if (normalized === 'lt') return '<';
+        if (normalized === 'gt') return '>';
+        if (normalized === 'quot') return '"';
+        if (normalized === 'apos') return "'";
+        if (normalized === 'nbsp') return ' ';
+        const numeric = normalized.startsWith('#x')
+          ? Number.parseInt(normalized.slice(2), 16)
+          : Number.parseInt(normalized.slice(1), 10);
+        return Number.isInteger(numeric) && numeric >= 0 && numeric <= 0x10ffff
+          ? String.fromCodePoint(numeric)
+          : entity;
+      },
+    );
+  }
+  return decoded.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function parseJobs(payload: unknown): GreenhouseJob[] {
@@ -36,7 +61,7 @@ function parseJobs(payload: unknown): GreenhouseJob[] {
     return {
       title: job.title,
       url,
-      description: typeof job.description === 'string' ? job.description : undefined,
+      content: typeof job.content === 'string' ? job.content : undefined,
       location: typeof location === 'string' ? location : undefined,
     };
   });
@@ -66,7 +91,7 @@ export class GreenhouseAdapter {
           title: job.title,
           source: 'greenhouse',
           sourceUrl: job.url,
-          description: job.description,
+          description: job.content ? toPlainText(job.content) : undefined,
           location: job.location,
           companyName: boardToken,
         });

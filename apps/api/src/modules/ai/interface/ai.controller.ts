@@ -20,9 +20,11 @@ import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { SubscriptionPlan } from '@prisma/client';
 import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
 import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('ai')
 @Controller('ai')
+@Throttle({ default: { limit: 10, ttl: 60_000 } })
 export class AIController {
   constructor(
     private readonly aiService: AIService,
@@ -54,8 +56,7 @@ export class AIController {
   }
 
   @Post('optimize')
-  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
-  @RequiresPlan(SubscriptionPlan.pro, 'Resume optimization')
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Optimize resume for a specific job' })
   @ApiResponse({ status: 200, description: 'Resume optimized' })

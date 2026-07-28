@@ -66,6 +66,6 @@ import { BillingModule } from '../billing/billing.module';
     RolesGuard,
   ],
   controllers: [AuthController],
-  exports: [AuthService],
+  exports: [AuthService, JwtModule],
 })
 export class AuthModule {}

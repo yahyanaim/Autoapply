@@ -46,7 +46,8 @@ Captured jobs are tenant-scoped. Approved partner-API jobs remain public.
 
 ## Job-source policy
 
-Greenhouse, Lever and Ashby use their approved public ATS interfaces. Indeed
+Greenhouse, Lever and Ashby use their official public JSON APIs. The backend
+does not scrape their web pages. Indeed
 Maroc, Rekrute, Anapec and MarocAnnonces are captured only from a page the user
 has opened through the browser extension. The adapter prefers schema.org
 `JobPosting` data and falls back to page selectors. This is not a server-side
@@ -68,6 +69,6 @@ provider. The extension build must set `VITE_API_BASE_URL` and
 Configure the approved discovery catalog before launch:
 
 ```dotenv
-JOB_DISCOVERY_SOURCES=greenhouse:company-board,lever:company,ashby:organization
+JOB_DISCOVERY_SOURCES=greenhouse:board-token,lever:site-name,ashby:job-board-name
 JOB_DISCOVERY_REFRESH_TTL_MINUTES=30
 ```

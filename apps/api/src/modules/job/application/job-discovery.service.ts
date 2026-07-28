@@ -283,6 +283,7 @@ export class JobDiscoveryService {
         data: {
           applicationsUsed: 0,
           aiRequestsUsed: 0,
+          resumeOptimizationsUsed: 0,
           jobDiscoveriesUsed: 0,
           resetAt: nextReset,
         },

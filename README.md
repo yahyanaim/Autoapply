@@ -271,7 +271,7 @@ This starts all apps via Turborepo:
 
 - **Password hashing**: Argon2id (not bcrypt)
 - **Auth**: Short-lived JWT, rotating server-side sessions, 15-minute idle/8-hour absolute limits, OAuth state validation, one-time extension handoff, and MFA-gated privileged access
-- **Rate limiting**: Redis-backed per-route throttling shared across API replicas, plus ingress limits and atomic plan quotas
+- **Rate limiting**: Redis-backed per-route throttling keyed by verified user ID for authenticated traffic and trusted-proxy IP otherwise, plus ingress limits and atomic plan quotas
 - **Security headers**: Explicit production CSP, one-year HSTS, anti-framing/sniffing, strict referrers, and permissions policy
 - **Input validation**: class-validator DTOs on all endpoints, parameterized queries via Prisma
 - **Dependency hygiene**: frozen lockfile plus a zero-known-vulnerability audit in CI

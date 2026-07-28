@@ -118,31 +118,31 @@ enum ActivityType {
 }
 
 model User {
-  id              String   @id @default(cuid())
-  email           String   @unique
-  passwordHash    String?
-  role            UserRole @default(user)
-  isEmailVerified Boolean  @default(false)
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  passwordHash            String?
+  role                    UserRole  @default(user)
+  isEmailVerified         Boolean   @default(false)
   dataProcessingConsentAt DateTime?
   privacyPolicyVersion    String?
   mfaSecretEncrypted      String?
   mfaEnabledAt            DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  profile       Profile?
-  resumes       Resume[]
-  applications  Application[]
-  coverLetters  CoverLetter[]
-  subscription  Subscription?
-  aiRequests    AIRequest[]
-  notifications Notification[]
-  activityLogs  ActivityLog[]
-  sessions      Session[]
-  usageLimit    UsageLimit?
-  oauthAccounts OAuthAccount[]
+  profile               Profile?
+  resumes               Resume[]
+  applications          Application[]
+  coverLetters          CoverLetter[]
+  subscription          Subscription?
+  aiRequests            AIRequest[]
+  notifications         Notification[]
+  activityLogs          ActivityLog[]
+  sessions              Session[]
+  usageLimit            UsageLimit?
+  oauthAccounts         OAuthAccount[]
   extensionAuthHandoffs ExtensionAuthHandoff[]
-  capturedJobs   Job[]            @relation("CapturedJobs")
+  capturedJobs          Job[]                  @relation("CapturedJobs")
 
   @@index([email])
   @@map("users")
@@ -213,10 +213,10 @@ model Resume {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  versions ResumeVersion[]
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions     ResumeVersion[]
   applications Application[]
-  skills   Skill[]         @relation("ResumeSkills")
+  skills       Skill[]         @relation("ResumeSkills")
 
   @@index([userId])
   @@map("resumes")
@@ -266,21 +266,21 @@ model Company {
 }
 
 model Job {
-  id          String      @id @default(cuid())
-  source      String?
-  sourceUrl   String?
-  sourceKey   String?     @unique
-  title       String
-  companyId   String?
+  id               String      @id @default(cuid())
+  source           String?
+  sourceUrl        String?
+  sourceKey        String?     @unique
+  title            String
+  companyId        String?
   capturedByUserId String?
-  description String?
-  location    String?
-  remoteType  RemoteType?
-  salaryMin   Int?
-  salaryMax   Int?
-  scrapedAt   DateTime    @default(now())
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  description      String?
+  location         String?
+  remoteType       RemoteType?
+  salaryMin        Int?
+  salaryMax        Int?
+  scrapedAt        DateTime    @default(now())
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
   capturedBy     User?           @relation("CapturedJobs", fields: [capturedByUserId], references: [id], onDelete: Cascade)
@@ -295,25 +295,25 @@ model Job {
 }
 
 model Application {
-  id              String            @id @default(cuid())
-  userId          String
-  jobId           String
-  sourceResumeId  String?
-  resumeVersionId String?
-  coverLetterId   String?
-  status          ApplicationStatus @default(draft)
-  preparationStatus ApplicationPreparationStatus @default(job_captured)
-  jobAnalysis     Json?
-  generationError String?
-  approvedAt      DateTime?
-  approvedResumeHash String?
+  id                      String                       @id @default(cuid())
+  userId                  String
+  jobId                   String
+  sourceResumeId          String?
+  resumeVersionId         String?
+  coverLetterId           String?
+  status                  ApplicationStatus            @default(draft)
+  preparationStatus       ApplicationPreparationStatus @default(job_captured)
+  jobAnalysis             Json?
+  generationError         String?
+  approvedAt              DateTime?
+  approvedResumeHash      String?
   approvedCoverLetterHash String?
-  appliedAt       DateTime?
-  source          String?
-  screenshotUrl   String?
-  timeline        Json?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  appliedAt               DateTime?
+  source                  String?
+  screenshotUrl           String?
+  timeline                Json?
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   job           Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -329,18 +329,18 @@ model Application {
 }
 
 model CoverLetter {
-  id          String   @id @default(cuid())
-  userId      String
-  jobId       String?
+  id              String   @id @default(cuid())
+  userId          String
+  jobId           String?
   resumeVersionId String?
-  content     String
-  tone        String?
-  generatedAt DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  content         String
+  tone            String?
+  generatedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   resumeVersion ResumeVersion? @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
-  applications Application[]
+  applications  Application[]
 
   @@index([userId])
   @@index([resumeVersionId])
@@ -415,20 +415,22 @@ model AIRequest {
 }
 
 model UsageLimit {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  period           String
-  applicationsUsed Int      @default(0)
-  applicationsMax  Int      @default(10)
-  aiRequestsUsed   Int      @default(0)
-  aiRequestsMax    Int      @default(50)
-  jobDiscoveriesUsed Int    @default(0)
-  jobDiscoveriesMax  Int    @default(3)
-  resumesUsed      Int      @default(0)
-  resumesMax       Int      @default(1)
-  storageBytesUsed Int      @default(0)
-  storageBytesMax  Int      @default(5242880)
-  resetAt          DateTime
+  id                      String   @id @default(cuid())
+  userId                  String   @unique
+  period                  String
+  applicationsUsed        Int      @default(0)
+  applicationsMax         Int      @default(10)
+  aiRequestsUsed          Int      @default(0)
+  aiRequestsMax           Int      @default(5)
+  resumeOptimizationsUsed Int      @default(0)
+  resumeOptimizationsMax  Int      @default(1)
+  jobDiscoveriesUsed      Int      @default(0)
+  jobDiscoveriesMax       Int      @default(3)
+  resumesUsed             Int      @default(0)
+  resumesMax              Int      @default(1)
+  storageBytesUsed        Int      @default(0)
+  storageBytesMax         Int      @default(5242880)
+  resetAt                 DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -472,17 +474,17 @@ model ActivityLog {
 }
 
 model Session {
-  id         String   @id @default(cuid())
-  userId     String
-  token      String   @unique
-  userAgent  String?
-  ipAddress  String?
-  expiresAt  DateTime
+  id                String            @id @default(cuid())
+  userId            String
+  token             String            @unique
+  userAgent         String?
+  ipAddress         String?
+  expiresAt         DateTime
   absoluteExpiresAt DateTime
-  mfaVerifiedAt DateTime?
-  clientType SessionClientType @default(web)
-  lastUsedAt DateTime @default(now())
-  createdAt  DateTime @default(now())
+  mfaVerifiedAt     DateTime?
+  clientType        SessionClientType @default(web)
+  lastUsedAt        DateTime          @default(now())
+  createdAt         DateTime          @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

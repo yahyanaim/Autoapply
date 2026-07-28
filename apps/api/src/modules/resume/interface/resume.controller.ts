@@ -27,9 +27,6 @@ import { ResumeService } from '../application/resume.service';
 import { OptimizeResumeDto } from './dto/optimize-resume.dto';
 import { AIService } from '../../ai/application/ai.service';
 import { Throttle } from '@nestjs/throttler';
-import { SubscriptionPlan } from '@prisma/client';
-import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
-import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
 import { GeneratedResumePdfService } from '../infrastructure/pdf/generated-resume-pdf.service';
 
 const resumeUploadLimits = {
@@ -147,13 +144,14 @@ export class ResumeController {
   }
 
   @Post(':id/optimize')
-  @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
-  @RequiresPlan(SubscriptionPlan.pro, 'Resume optimization')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Optimize a resume for a job' })
   @ApiResponse({ status: 200, description: 'Resume optimized successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Monthly optimization limit reached' })
   @ApiResponse({ status: 404, description: 'Resume not found' })
   async optimize(
     @CurrentUser('id') userId: string,

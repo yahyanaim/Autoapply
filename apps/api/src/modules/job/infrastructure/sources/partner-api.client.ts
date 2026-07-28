@@ -15,7 +15,7 @@ export class PartnerApiClient {
   private readonly allowedHosts = new Set([
     'boards-api.greenhouse.io',
     'api.lever.co',
-    'jobs.ashbyhq.com',
+    'api.ashbyhq.com',
   ]);
   private readonly circuits = new Map<
     string,

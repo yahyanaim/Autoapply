@@ -28,6 +28,11 @@ describe('PartnerApiClient', () => {
     await expect(
       client.fetch('http://169.254.169.254/latest/meta-data'),
     ).rejects.toThrow(BadRequestException);
+    await expect(
+      client.fetch(
+        'https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobBoardWithTeams',
+      ),
+    ).rejects.toThrow(BadRequestException);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

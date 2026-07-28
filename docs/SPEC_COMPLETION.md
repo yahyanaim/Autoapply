@@ -32,13 +32,13 @@ external organizations or production infrastructure.
 | Cover-letter dashboard workflow | Complete | Ready-resume selection, generation, review, and specificity regeneration are available on Jobs. |
 | Stripe Free/Pro/Premium billing | Complete | Checkout, portal, webhook ledger and current-state reconciliation. |
 | Per-plan application/AI/discovery/resume/storage quotas | Complete | Atomic counters and rollback behavior are implemented; discovery allows 3 Free, 50 Pro, and unlimited Premium runs per month. |
-| Paid-feature entitlements | Complete | Centralized guards enforce Pro access for optimization, cover letters, and extension connection; dashboard actions mirror backend access. |
+| Feature entitlements | Complete | Free receives 5 monthly AI requests and 1 CV optimization; centralized guards keep cover letters, unified preparation, and extension access on Pro/Premium. |
 
 ## Security, privacy and reliability
 
 | Requirement | Status | Evidence / remaining work |
 |---|---|---|
-| Cross-replica throttling | Complete | Atomic Redis-backed Nest throttler. |
+| Cross-replica throttling | Complete | Atomic Redis-backed Nest throttler uses verified user IDs for authenticated requests and IP fallback for public or invalid-token traffic. |
 | Exact public/authenticated/admin rate tiers | Complete | Public 100/15m, authenticated 1000/15m, admin 50/15m, login 10/15m. |
 | Required production security headers | Complete | Explicit CSP, HSTS, frame denial, nosniff, referrer and permissions policy. |
 | HTTPS-only production URLs | Complete | API config, dashboard build and deployment workflows reject HTTP. |

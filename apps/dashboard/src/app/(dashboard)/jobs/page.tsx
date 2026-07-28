@@ -27,6 +27,26 @@ const remoteTypes: Array<{ label: string; value?: RemoteType }> = [
   { label: 'On-site', value: 'onsite' },
 ];
 
+function getJobActionLabel(options: {
+  isPlanReady: boolean;
+  hasPro: boolean;
+  isPreparing: boolean;
+  isTracked: boolean;
+  isRecommendation: boolean;
+  isSelected: boolean;
+}): string {
+  if (!options.isPlanReady) return 'Checking plan…';
+  if (options.isPreparing) {
+    return options.hasPro ? 'Preparing CV + letter…' : 'Optimizing CV…';
+  }
+  if (options.hasPro && options.isTracked) return 'Already in tracker';
+  if (options.isRecommendation && !options.isSelected) return 'Select this job';
+  if (!options.hasPro) return 'Optimize CV · 1 free/month';
+  return options.isRecommendation
+    ? 'Prepare selected job'
+    : 'Prepare application';
+}
+
 export default function JobsPage() {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -39,8 +59,9 @@ export default function JobsPage() {
   const discoveredResumeId = discovery.data?.resumeId;
   const resetDiscovery = discovery.reset;
   const { prepare } = useApplications({ limit: 1 });
-  const { resumes } = useResumes();
+  const { resumes, optimize } = useResumes();
   const subscription = useSubscription();
+  const isPlanReady = subscription.isSuccess;
   const hasPro = hasMinimumPlan(subscription.data, 'pro');
   const [selectedResumeId, setSelectedResumeId] = useState('');
   const [selectedJobId, setSelectedJobId] = useState('');
@@ -121,6 +142,28 @@ export default function JobsPage() {
     }
   };
 
+  const optimizeResumeForJob = async (jobId: string) => {
+    if (!selectedResumeId) {
+      setMessage('Choose a ready resume before optimizing it.');
+      return;
+    }
+    setPreparingJobId(jobId);
+    setMessage('');
+    try {
+      await optimize.mutateAsync({
+        jobId,
+        resumeId: selectedResumeId,
+      });
+      router.push(`/resumes/${selectedResumeId}`);
+    } catch (caught) {
+      setMessage(
+        caught instanceof Error ? caught.message : 'Could not optimize the CV',
+      );
+    } finally {
+      setPreparingJobId('');
+    }
+  };
+
   const discoverMatches = async () => {
     if (!selectedResumeId) {
       setMessage('Choose a ready resume before discovering matching jobs.');
@@ -152,6 +195,10 @@ export default function JobsPage() {
 
   const captureAndPrepare = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isPlanReady) {
+      setMessage('Your plan details are still loading. Please try again.');
+      return;
+    }
     if (!selectedResumeId) {
       setMessage('Choose a ready resume before preparing the application.');
       return;
@@ -166,11 +213,19 @@ export default function JobsPage() {
         description: captureDescription.trim(),
         source: 'manual-capture',
       });
-      const application = await prepare.mutateAsync({
-        jobId: job.id,
-        resumeId: selectedResumeId,
-      });
-      router.push(`/applications/${application.id}`);
+      if (hasPro) {
+        const application = await prepare.mutateAsync({
+          jobId: job.id,
+          resumeId: selectedResumeId,
+        });
+        router.push(`/applications/${application.id}`);
+      } else {
+        await optimize.mutateAsync({
+          jobId: job.id,
+          resumeId: selectedResumeId,
+        });
+        router.push(`/resumes/${selectedResumeId}`);
+      }
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : 'Could not capture the job');
     } finally {
@@ -227,10 +282,11 @@ export default function JobsPage() {
               : 'Find my 20 best matches'}
           </Button>
         </div>
-        {!hasPro && (
+        {isPlanReady && !hasPro && (
           <p className="mt-4 text-sm text-gray-500">
-            Free includes 3 discovery runs per month. Pro includes 50 runs plus
-            unified CV and cover-letter preparation.{' '}
+            Free includes 3 discovery runs, 5 AI requests, and 1 CV
+            optimization per month. Pro includes 50 discovery runs plus
+            unlimited CV optimization and unified cover-letter preparation.{' '}
             <a href="/billing" className="font-semibold text-primary-600 hover:text-primary-700">View plans</a>
           </p>
         )}
@@ -302,7 +358,12 @@ export default function JobsPage() {
 
       <details className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <summary className="cursor-pointer text-sm font-semibold text-gray-900">
-          Job not indexed? Paste it and prepare the complete application
+          Job not indexed? Paste it and{' '}
+          {!isPlanReady
+            ? 'continue after your plan loads'
+            : hasPro
+              ? 'prepare the complete application'
+              : 'optimize your CV'}
         </summary>
         <form onSubmit={captureAndPrepare} className="mt-5 grid gap-4">
           <div className="grid gap-4 md:grid-cols-2">
@@ -340,10 +401,16 @@ export default function JobsPage() {
           />
           <Button
             type="submit"
-            disabled={!hasPro || !selectedResumeId || isCapturing}
+            disabled={!isPlanReady || !selectedResumeId || isCapturing}
             className="w-full md:w-fit"
           >
-            {isCapturing ? 'Preparing CV + letter…' : 'Capture and prepare application'}
+            {isCapturing
+              ? hasPro
+                ? 'Preparing CV + letter…'
+                : 'Optimizing CV…'
+              : hasPro
+                ? 'Capture and prepare application'
+                : 'Capture and use free CV optimization'}
           </Button>
         </form>
       </details>
@@ -359,6 +426,14 @@ export default function JobsPage() {
           const recommendation =
             'matchScore' in job ? (job as JobRecommendation) : null;
           const isSelected = selectedJobId === job.id;
+          const actionLabel = getJobActionLabel({
+            isPlanReady,
+            hasPro,
+            isPreparing: preparingJobId === job.id,
+            isTracked: Boolean(recommendation?.trackedApplication),
+            isRecommendation: Boolean(recommendation),
+            isSelected,
+          });
           const salary = job.salaryMin || job.salaryMax
             ? [job.salaryMin, job.salaryMax].filter(Boolean).map((value) => `$${Number(value).toLocaleString()}`).join(' – ')
             : 'Salary not listed';
@@ -425,21 +500,20 @@ export default function JobsPage() {
                       setSelectedJobId(job.id);
                       return;
                     }
-                    void prepareApplication(job.id);
+                    if (hasPro) {
+                      void prepareApplication(job.id);
+                    } else {
+                      void optimizeResumeForJob(job.id);
+                    }
                   }}
-                  disabled={!hasPro || !selectedResumeId || preparingJobId === job.id || Boolean(recommendation?.trackedApplication)}
+                  disabled={
+                    !isPlanReady ||
+                    !selectedResumeId ||
+                    preparingJobId === job.id ||
+                    (hasPro && Boolean(recommendation?.trackedApplication))
+                  }
                 >
-                  {preparingJobId === job.id
-                    ? 'Preparing CV + letter…'
-                    : recommendation?.trackedApplication
-                      ? 'Already in tracker'
-                      : recommendation && !isSelected
-                        ? 'Select this job'
-                    : hasPro
-                      ? recommendation
-                        ? 'Prepare selected job'
-                        : 'Prepare application'
-                      : 'Prepare application · Pro'}
+                  {actionLabel}
                 </Button>
                 {job.sourceUrl && <a className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50" href={job.sourceUrl} target="_blank" rel="noreferrer">View source</a>}
               </div>

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import Joi from 'joi';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './database/prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -17,6 +17,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { HealthController } from './health.controller';
 import { RedisThrottlerStorage } from './shared/throttling/redis-throttler.storage';
 import { ObservabilityModule } from './shared/observability/observability.module';
+import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttler.guard';
 
 @Module({
   imports: [
@@ -217,7 +218,7 @@ import { ObservabilityModule } from './shared/observability/observability.module
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: UserAwareThrottlerGuard,
     },
   ],
   controllers: [HealthController],

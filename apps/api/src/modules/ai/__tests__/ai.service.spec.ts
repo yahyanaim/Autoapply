@@ -13,6 +13,11 @@ describe('AIService resume ownership and readiness', () => {
     job: { findFirst: jest.fn() },
     user: { findUnique: jest.fn() },
     resumeVersion: { create: jest.fn() },
+    usageLimit: {
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    $transaction: jest.fn(),
   };
   const service = new AIService(prisma as never, {} as never, {} as never);
 
@@ -22,6 +27,15 @@ describe('AIService resume ownership and readiness', () => {
       email: 'candidate@example.com',
       profile: { fullName: 'Candidate Name' },
     });
+    prisma.usageLimit.findUnique.mockResolvedValue({
+      resumeOptimizationsUsed: 0,
+      resumeOptimizationsMax: 1,
+      resetAt: new Date('2026-08-01T00:00:00.000Z'),
+    });
+    prisma.usageLimit.updateMany.mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation(
+      (callback: (transaction: typeof prisma) => unknown) => callback(prisma),
+    );
   });
 
   it('scores only an owned, fully parsed resume', async () => {
@@ -94,6 +108,35 @@ describe('AIService resume ownership and readiness', () => {
       service.optimizeResume('user_1', 'resume_1', 'job_1'),
     ).rejects.toThrow(BadGatewayException);
     expect(prisma.resumeVersion.create).not.toHaveBeenCalled();
+    expect(prisma.usageLimit.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user_1',
+        resetAt: new Date('2026-08-01T00:00:00.000Z'),
+        resumeOptimizationsUsed: { gt: 0 },
+      },
+      data: { resumeOptimizationsUsed: { decrement: 1 } },
+    });
+  });
+
+  it('enforces the monthly resume-optimization allowance atomically', async () => {
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume_1',
+      userId: 'user_1',
+      parseStatus: 'ready',
+      parsedJson: { skills: ['TypeScript'] },
+    });
+    prisma.job.findFirst.mockResolvedValue({
+      id: 'job_1',
+      description: 'TypeScript',
+    });
+    prisma.usageLimit.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.optimizeResume('user_1', 'resume_1', 'job_1'),
+    ).rejects.toThrow('Monthly resume-optimization limit reached');
+    expect(service.complete).not.toHaveBeenCalled();
   });
 
   it('rejects a malformed optimization response', async () => {
@@ -239,5 +282,46 @@ describe('AIService request budgets', () => {
     await expect(
       service.complete(AIRequestFeature.resume_optimize, 'user_1', { resume: 'short' }),
     ).rejects.toThrow(BadRequestException);
+  });
+});
+
+describe('AIService quota summary', () => {
+  it('returns the counters used by the monthly dashboard allowance', async () => {
+    const resetAt = new Date('2026-08-01T00:00:00.000Z');
+    const service = new AIService(
+      {
+        aIRequest: { findMany: jest.fn().mockResolvedValue([]) },
+        usageLimit: {
+          findUnique: jest.fn().mockResolvedValue({
+            aiRequestsUsed: 2,
+            aiRequestsMax: 5,
+            resumeOptimizationsUsed: 1,
+            resumeOptimizationsMax: 1,
+            resetAt,
+          }),
+        },
+      } as never,
+      {} as never,
+      {} as never,
+      { now: () => new Date('2026-07-27T12:00:00.000Z') } as never,
+    );
+
+    await expect(
+      service.getCostSummary(
+        'user_1',
+        new Date('2026-07-01T00:00:00.000Z'),
+        new Date('2026-07-31T23:59:59.999Z'),
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        quota: {
+          aiRequestsUsed: 2,
+          aiRequestsMax: 5,
+          resumeOptimizationsUsed: 1,
+          resumeOptimizationsMax: 1,
+          resetAt,
+        },
+      }),
+    );
   });
 });

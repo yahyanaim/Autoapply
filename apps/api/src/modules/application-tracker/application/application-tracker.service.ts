@@ -512,6 +512,7 @@ export class ApplicationTrackerService {
         data: {
           applicationsUsed: 0,
           aiRequestsUsed: 0,
+          resumeOptimizationsUsed: 0,
           jobDiscoveriesUsed: 0,
           resetAt: this.getNextResetDate(now),
         },
@@ -680,6 +681,7 @@ export class ApplicationTrackerService {
         data: {
           applicationsUsed: 0,
           aiRequestsUsed: 0,
+          resumeOptimizationsUsed: 0,
           jobDiscoveriesUsed: 0,
           resetAt: this.getNextResetDate(now),
         },

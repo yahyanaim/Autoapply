@@ -126,7 +126,8 @@ Resume (N) ── (N) Skill
 | applicationsUsed | Int | Current period count |
 | applicationsMax | Int | Free: 10, Pro/Premium: unlimited |
 | aiRequestsUsed | Int | Current period count |
-| aiRequestsMax | Int | Free: 50, Pro: 500, Premium: unlimited |
+| aiRequestsMax | Int | Free: 5, Pro: 500, Premium: unlimited |
+| resumeOptimizationsUsed / resumeOptimizationsMax | Int | Monthly CV-optimization count and plan cap (Free: 1, Pro/Premium: unlimited) |
 | jobDiscoveriesUsed | Int | Current monthly discovery-run count |
 | jobDiscoveriesMax | Int | Free: 3, Pro: 50, Premium: unlimited; each run returns up to 20 ranked jobs |
 | resumesUsed / resumesMax | Int | Stored résumé count and plan cap (Free: 1, Pro: 5, Premium: unlimited) |
@@ -208,7 +209,7 @@ permissions policy. Development disables only CSP for local Swagger.
 | Insecure Design | Threat-model AI features, sanitize inputs |
 | Security Misconfiguration | Helmet middleware, no default admin accounts |
 | Vulnerable Components | Frozen lockfile, automated tests, and zero-known-vulnerability audit at release review |
-| Authentication Failures | Redis-backed cross-replica throttling, 12+ character passwords, verified OAuth emails and state validation, rotating sessions |
+| Authentication Failures | Redis-backed cross-replica throttling keyed by verified user ID for authenticated traffic and trusted-proxy IP otherwise, 12+ character passwords, verified OAuth emails and state validation, rotating sessions |
 | Data Integrity Failures | Idempotent Stripe webhook ledger and migration-before-rollout deployment |
 | Logging Failures | Request-ID developer traces are separate from persisted auth, access-denial, and queue audit events |
 | SSRF | URL allow-list validation on job ingestion |

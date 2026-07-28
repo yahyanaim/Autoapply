@@ -144,7 +144,8 @@ describe('BillingService', () => {
       expect(prismaMock.usageLimit.updateMany).toHaveBeenCalledWith({
         where: { userId: 'u1' },
         data: expect.objectContaining({
-          aiRequestsMax: 50,
+          aiRequestsMax: 5,
+          resumeOptimizationsMax: 1,
           jobDiscoveriesMax: 3,
           resumesMax: 1,
         }),
