@@ -305,7 +305,15 @@ export default function JobsPage() {
         <Card className="border-primary-200 bg-primary-50/40">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Badge variant="info">CV-matched discovery</Badge>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="info">CV-matched discovery</Badge>
+                <Badge variant="success">No AI tokens used</Badge>
+                {(discovery.data.scoreCache?.hits ?? 0) > 0 && (
+                  <Badge variant="outline">
+                    {discovery.data.scoreCache?.hits} stored scores reused
+                  </Badge>
+                )}
+              </div>
               <h2 className="mt-3 text-lg font-semibold text-gray-900">
                 {discovery.data.jobs.length} of your best available matches
               </h2>
@@ -454,6 +462,9 @@ export default function JobsPage() {
                     <p className="mt-1 text-[11px] font-medium text-gray-500">
                       CV match
                     </p>
+                    <p className="text-[10px] text-gray-400">
+                      {recommendation.matchConfidence}% evidence confidence
+                    </p>
                   </div>
                 ) : job.remoteType ? (
                   <Badge variant={job.remoteType === 'remote' ? 'success' : job.remoteType === 'hybrid' ? 'info' : 'warning'}>{job.remoteType === 'onsite' ? 'on-site' : job.remoteType}</Badge>
@@ -473,7 +484,7 @@ export default function JobsPage() {
                     Why this score?
                   </summary>
                   <ul className="mt-2 space-y-1">
-                    {recommendation.explanation.slice(0, 5).map((line) => (
+                    {recommendation.explanation.slice(0, 8).map((line) => (
                       <li key={line}>• {line}</li>
                     ))}
                   </ul>

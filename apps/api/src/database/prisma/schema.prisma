@@ -217,9 +217,30 @@ model Resume {
   versions     ResumeVersion[]
   applications Application[]
   skills       Skill[]         @relation("ResumeSkills")
+  matchScores  MatchScoreCache[]
 
   @@index([userId])
   @@map("resumes")
+}
+
+model MatchScoreCache {
+  id               String   @id @default(cuid())
+  resumeId         String
+  inputHash        String   @unique
+  algorithmVersion String
+  score            Int
+  confidence       Int
+  matchedKeywords  String[]
+  missingKeywords  String[]
+  weakSections     String[]
+  breakdown        Json
+  explanation      String[]
+  createdAt        DateTime @default(now())
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@index([resumeId])
+  @@map("match_score_cache")
 }
 
 model ResumeVersion {

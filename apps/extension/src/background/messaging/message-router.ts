@@ -199,6 +199,7 @@ export class MessageRouter {
 
     const data = (await response.json()) as {
       score: number;
+      confidence?: number;
       explanation?: string[] | string;
       missingKeywords?: string[];
       weakSections?: string[];
@@ -206,9 +207,12 @@ export class MessageRouter {
     sendResponse({
       result: {
         matchScore: data.score,
+        confidence: data.confidence ?? 0,
         explanation: Array.isArray(data.explanation)
-          ? data.explanation.join(' ')
-          : data.explanation ?? '',
+          ? data.explanation
+          : data.explanation
+            ? [data.explanation]
+            : [],
         missingKeywords: data.missingKeywords ?? [],
         weakSections: data.weakSections ?? [],
       },

@@ -28,8 +28,9 @@ content-scripts/
 3. Adapter's `detectJobPosting()` verifies it's a job page
 4. Adapter extracts job data via `extractJobDescription()`
 5. Job data is sent to background for analysis
-6. Background returns match score
-7. Overlay is injected via Shadow DOM
+6. Backend returns a deterministic, cached match score without an LLM call
+7. Overlay shows the score, evidence confidence, explanation, and key gaps
+   through Shadow DOM
 8. User can prepare one CV + cover-letter package
 9. User reviews and approves it in the dashboard
 10. Extension retrieves only the approved package and fills supported fields
@@ -44,6 +45,8 @@ content-scripts/
 The extension can attach the approved PDF and insert the approved cover letter
 when the target form exposes supported controls. It leaves unknown questions
 untouched and never clicks a final submission control.
+AI tokens are consumed only when the user explicitly prepares or regenerates
+application materials, not when a supported page is detected or scored.
 
 ## Adapter Interface
 

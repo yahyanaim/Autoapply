@@ -7,6 +7,9 @@ export function injectOverlay(
   container: HTMLElement,
   score: number,
   jobId: string,
+  confidence: number,
+  explanation: string[],
+  missingKeywords: string[],
   onPrepare: () => Promise<{ applicationId: string; reviewUrl: string }>,
   onFillApproved: () => Promise<number>,
 ): void {
@@ -54,6 +57,9 @@ export function injectOverlay(
     React.createElement(MatchScoreOverlay, {
       score,
       jobId,
+      confidence,
+      explanation,
+      missingKeywords,
       onClose: () => {
         reactRoot.unmount();
         container.remove();

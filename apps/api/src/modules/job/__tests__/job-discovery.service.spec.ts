@@ -9,11 +9,13 @@ import {
   JobDiscoveryService,
   parseConfiguredSources,
 } from '../application/job-discovery.service';
+import { calculateMatchScore } from '../../ai/domain/match-score';
 
 describe('JobDiscoveryService', () => {
   let prisma: any;
   let ingestion: any;
   let config: any;
+  let matchScoreCache: any;
   let service: JobDiscoveryService;
 
   beforeEach(() => {
@@ -36,10 +38,27 @@ describe('JobDiscoveryService', () => {
     config = {
       get: jest.fn((_key: string, fallback: unknown) => fallback),
     };
+    matchScoreCache = {
+      scoreMany: jest.fn(
+        async (
+          _resumeId: string,
+          resumeContent: string,
+          jobDescriptions: string[],
+        ) =>
+          jobDescriptions.map((jobDescription) => ({
+            ...calculateMatchScore(
+              { content: resumeContent },
+              jobDescription,
+            ),
+            cached: false,
+          })),
+      ),
+    };
     service = new JobDiscoveryService(
       prisma,
       ingestion,
       config as ConfigService,
+      matchScoreCache,
     );
   });
 
@@ -93,6 +112,8 @@ describe('JobDiscoveryService', () => {
         unlimited: false,
       }),
     );
+    expect(result.scoreCache).toEqual({ hits: 0, misses: 24 });
+    expect(matchScoreCache.scoreMany).toHaveBeenCalledTimes(1);
     expect(result.jobs[0]).toEqual(
       expect.objectContaining({
         id: 'job-0',

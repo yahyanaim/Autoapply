@@ -59,6 +59,7 @@ describe('MessageRouter', () => {
       new Response(
         JSON.stringify({
           score: 82,
+          confidence: 91,
           explanation: ['Strong experience.', 'Add Kubernetes.'],
           missingKeywords: ['Kubernetes'],
           weakSections: ['Summary'],
@@ -82,7 +83,8 @@ describe('MessageRouter', () => {
     expect(sendResponse).toHaveBeenCalledWith({
       result: {
         matchScore: 82,
-        explanation: 'Strong experience. Add Kubernetes.',
+        confidence: 91,
+        explanation: ['Strong experience.', 'Add Kubernetes.'],
         missingKeywords: ['Kubernetes'],
         weakSections: ['Summary'],
       },

@@ -7,6 +7,7 @@ import { ClaudeProvider } from './infrastructure/providers/claude.provider';
 import { GeminiProvider } from './infrastructure/providers/gemini.provider';
 import { AIController } from './interface/ai.controller';
 import { BillingModule } from '../billing/billing.module';
+import { MatchScoreCacheService } from './application/match-score-cache.service';
 
 @Module({
   imports: [BillingModule],
@@ -17,8 +18,9 @@ import { BillingModule } from '../billing/billing.module';
     OpenAIProvider,
     ClaudeProvider,
     GeminiProvider,
+    MatchScoreCacheService,
   ],
   controllers: [AIController],
-  exports: [AIService, PromptService],
+  exports: [AIService, PromptService, MatchScoreCacheService],
 })
 export class AIModule {}

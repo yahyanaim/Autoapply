@@ -8,9 +8,10 @@ import { LeverAdapter } from './infrastructure/sources/lever/lever.adapter';
 import { AshbyAdapter } from './infrastructure/sources/ashby/ashby.adapter';
 import { PartnerApiClient } from './infrastructure/sources/partner-api.client';
 import { JobDiscoveryService } from './application/job-discovery.service';
+import { AIModule } from '../ai/ai.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AIModule],
   providers: [
     JobService,
     JobIngestionService,

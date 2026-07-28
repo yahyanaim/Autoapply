@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { AIRequestFeature } from '@prisma/client';
 import { AIService } from '../application/ai.service';
+import { calculateMatchScore } from '../domain/match-score';
 
 describe('AIService resume ownership and readiness', () => {
   const prisma = {
@@ -19,7 +20,20 @@ describe('AIService resume ownership and readiness', () => {
     },
     $transaction: jest.fn(),
   };
-  const service = new AIService(prisma as never, {} as never, {} as never);
+  const matchScoreCache = {
+    score: jest.fn(
+      async (_resumeId: string, resumeContent: string, jobDescription: string) => ({
+        ...calculateMatchScore({ content: resumeContent }, jobDescription),
+        cached: false,
+      }),
+    ),
+  };
+  const service = new AIService(
+    prisma as never,
+    {} as never,
+    {} as never,
+    matchScoreCache as never,
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -250,6 +264,7 @@ describe('AIService request budgets', () => {
       prisma as never,
       providerFactory as never,
       promptService as never,
+      {} as never,
     );
 
     await expect(
@@ -277,6 +292,7 @@ describe('AIService request budgets', () => {
       } as never,
       providerFactory as never,
       { loadTemplate: jest.fn().mockReturnValue('System\n## Resume\n{{resume}}') } as never,
+      {} as never,
     );
 
     await expect(
@@ -301,6 +317,7 @@ describe('AIService quota summary', () => {
           }),
         },
       } as never,
+      {} as never,
       {} as never,
       {} as never,
       { now: () => new Date('2026-07-27T12:00:00.000Z') } as never,

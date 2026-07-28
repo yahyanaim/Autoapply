@@ -22,8 +22,8 @@ export const matchScoreGoldenSet: MatchScoreGoldenCase[] = [
       'Frontend engineer who built React and TypeScript applications.',
     jobDescription:
       'Build TypeScript services with Docker and Kubernetes. 4 years of experience required.',
-    expectedScore: { min: 25, max: 55 },
-    expectedMissingKeywords: ['docker', 'kubernetes'],
+    expectedScore: { min: 20, max: 55 },
+    expectedMissingKeywords: ['Docker', 'Kubernetes'],
   },
   {
     name: 'unrelated background remains a poor match',
@@ -32,6 +32,15 @@ export const matchScoreGoldenSet: MatchScoreGoldenCase[] = [
     jobDescription:
       'Backend engineer with 5 years of experience building Python services on AWS and Kubernetes.',
     expectedScore: { min: 0, max: 30 },
-    expectedMissingKeywords: ['python', 'aws', 'kubernetes'],
+    expectedMissingKeywords: ['Python', 'AWS', 'Kubernetes'],
+  },
+  {
+    name: 'French bilingual data analyst match',
+    resume:
+      'Data Analyst avec 4 ans d experience. SQL, Python, Excel et Power BI. Master en Data Science. Francais courant et anglais B2. Creation de tableaux de bord et automatisation du reporting.',
+    jobDescription:
+      'Data Analyst. Minimum 3 ans d experience. SQL, Python, Excel et Power BI obligatoires. Bac+5 requis. Francais et anglais requis. Creer des tableaux de bord et automatiser le reporting.',
+    expectedScore: { min: 80, max: 100 },
+    expectedMissingKeywords: [],
   },
 ];

@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma, RemoteType, ResumeParseStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma/prisma.service';
-import { calculateMatchScore } from '../../ai/domain/match-score';
+import { MatchScoreCacheService } from '../../ai/application/match-score-cache.service';
 import { DiscoverJobsDto } from '../interface/dto/discover-jobs.dto';
 import {
   JobIngestionService,
@@ -45,6 +45,7 @@ export class JobDiscoveryService {
     private readonly prisma: PrismaService,
     private readonly ingestion: JobIngestionService,
     private readonly config: ConfigService,
+    private readonly matchScoreCache: MatchScoreCacheService,
   ) {}
 
   async discover(userId: string, input: DiscoverJobsDto) {
@@ -87,17 +88,22 @@ export class JobDiscoveryService {
       });
 
       const resumeContent = JSON.stringify(resume.parsedJson);
-      const ranked = candidates
-        .filter((job) => Boolean(job.description?.trim()))
-        .map((job) => {
-          const jobText = `${job.title}\n${(job.description ?? '').slice(
-            0,
-            50_000,
-          )}`;
-          const match = calculateMatchScore(
-            { content: resumeContent },
-            jobText,
-          );
+      const completeCandidates = candidates.filter((job) =>
+        Boolean(job.description?.trim()),
+      );
+      const jobTexts = completeCandidates.map(
+        (job) =>
+          `${job.title}\n${(job.description ?? '').slice(0, 50_000)}`,
+      );
+      const matches = await this.matchScoreCache.scoreMany(
+        resume.id,
+        resumeContent,
+        jobTexts,
+      );
+      const ranked = completeCandidates
+        .map((job, index) => {
+          const jobText = jobTexts[index]!;
+          const match = matches[index]!;
           const roleAlignment = calculateRoleAlignment(
             profile.roles,
             job.title,
@@ -132,6 +138,9 @@ export class JobDiscoveryService {
             company: job.company,
             skills: job.skills,
             matchScore: score,
+            matchConfidence: match.confidence,
+            scoreBreakdown: match.breakdown,
+            matchedKeywords: match.matchedKeywords,
             matchedResumeSkills: skillAlignment.matched,
             missingKeywords: match.missingKeywords.slice(0, 12),
             weakSections: match.weakSections,
@@ -155,6 +164,10 @@ export class JobDiscoveryService {
         totalCandidates: candidates.filter((job) =>
           Boolean(job.description?.trim()),
         ).length,
+        scoreCache: {
+          hits: matches.filter((match) => match.cached).length,
+          misses: matches.filter((match) => !match.cached).length,
+        },
         searchProfile: profile,
         filters: {
           query: input.query || null,

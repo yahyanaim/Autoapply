@@ -37,6 +37,16 @@ export interface JobSearchResult {
 
 export interface JobRecommendation extends Job {
   matchScore: number;
+  matchConfidence: number;
+  scoreBreakdown: {
+    skills: number | null;
+    experience: number | null;
+    responsibilities: number | null;
+    education: number | null;
+    languages: number | null;
+    certifications: number | null;
+  };
+  matchedKeywords: string[];
   matchedResumeSkills: string[];
   missingKeywords: string[];
   weakSections: string[];
@@ -75,6 +85,10 @@ export interface JobDiscoveryResult {
     remaining: number | null;
     unlimited: boolean;
     resetAt: string;
+  };
+  scoreCache?: {
+    hits: number;
+    misses: number;
   };
   sourceRefresh: Array<{
     source: 'greenhouse' | 'lever' | 'ashby';

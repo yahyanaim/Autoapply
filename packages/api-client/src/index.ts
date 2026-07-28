@@ -22,6 +22,7 @@ export type {
   AiMatchScoreRequest,
   AiMatchScoreTextRequest,
   AiMatchScoreResponse,
+  MatchScoreBreakdown,
   AiOptimizeRequest,
   AiOptimizeResponse,
   AiCoverLetterRequest,

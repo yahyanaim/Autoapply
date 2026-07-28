@@ -29,6 +29,7 @@ import {
   JobAnalysisValidationError,
   readJobAnalysis,
 } from '../domain/job-analysis';
+import { MatchScoreCacheService } from './match-score-cache.service';
 
 @Injectable()
 export class AIService {
@@ -38,6 +39,7 @@ export class AIService {
     private readonly prisma: PrismaService,
     private readonly providerFactory: AIProviderFactory,
     private readonly promptService: PromptService,
+    private readonly matchScoreCache: MatchScoreCacheService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
@@ -143,33 +145,46 @@ export class AIService {
     }
 
     const resumeContent = JSON.stringify(resume.parsedJson ?? {});
-    const jobDescription = job.description ?? '';
+    const jobDescription = `${job.title}\n${job.description ?? ''}`.slice(
+      0,
+      50_000,
+    );
 
-    const result = calculateMatchScore(
-      { content: resumeContent },
+    const result = await this.matchScoreCache.score(
+      resume.id,
+      resumeContent,
       jobDescription,
     );
 
     return {
       score: result.score,
+      confidence: result.confidence,
+      matchedKeywords: result.matchedKeywords,
       missingKeywords: result.missingKeywords,
       weakSections: result.weakSections,
+      breakdown: result.breakdown,
       explanation: result.explanation,
+      cached: result.cached,
     };
   }
 
   async matchScoreText(userId: string, resumeId: string, jobDescription: string) {
     const resume = await this.getOwnedResume(userId, resumeId);
-    const result = calculateMatchScore(
-      { content: JSON.stringify(resume.parsedJson ?? {}) },
+    const result = await this.matchScoreCache.score(
+      resume.id,
+      JSON.stringify(resume.parsedJson ?? {}),
       jobDescription,
     );
 
     return {
       score: result.score,
+      confidence: result.confidence,
+      matchedKeywords: result.matchedKeywords,
       missingKeywords: result.missingKeywords,
       weakSections: result.weakSections,
+      breakdown: result.breakdown,
       explanation: result.explanation,
+      cached: result.cached,
     };
   }
 

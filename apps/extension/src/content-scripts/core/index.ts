@@ -11,7 +11,8 @@ import {
 
 interface MatchResult {
   matchScore: number;
-  explanation: string;
+  confidence: number;
+  explanation: string[];
   missingKeywords: string[];
   weakSections: string[];
 }
@@ -136,7 +137,12 @@ async function analyzeCurrentPage(showOverlay: boolean): Promise<MatchResult> {
 
   const response = await sendRuntimeMessage<{ result?: MatchResult; error?: string }>({
     type: 'GET_MATCH_SCORE',
-    payload: { jobDescription: jobData.description },
+    payload: {
+      jobDescription: `${jobData.title}\n${jobData.description}`.slice(
+        0,
+        50_000,
+      ),
+    },
   });
   if (!response.result) throw new Error(response.error || 'Match scoring failed');
 
@@ -149,6 +155,9 @@ async function analyzeCurrentPage(showOverlay: boolean): Promise<MatchResult> {
       container,
       response.result.matchScore,
       `${adapter.name}:${jobData.url}`,
+      response.result.confidence,
+      response.result.explanation,
+      response.result.missingKeywords,
       () => prepareApplication(jobData),
       () => fillApprovedPackage(adapter, jobData.url),
     );

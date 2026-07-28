@@ -10,6 +10,13 @@ There is no server-side LinkedIn or Indeed crawler.
 `POST /jobs/discover` accepts a ready resume, refreshes operator-configured
 approved ATS boards subject to a refresh TTL, scores at most 500 complete
 candidate records, and returns no more than 20 explainable recommendations.
+Scoring uses the versioned explainable engine documented in
+`../ai/domain/MATCH_SCORE.md`. It is deterministic and consumes no
+language-model tokens. Results are
+cached using hashes of the selected resume, job text, and scoring-algorithm
+version; raw job descriptions are not duplicated in the cache. AI analysis,
+CV generation, and cover-letter generation begin only after the user selects a
+job and explicitly prepares or optimizes it.
 The response identifies already-tracked jobs so the UI cannot accidentally
 create a duplicate application. Monthly allowances are enforced atomically:
 Free receives 3 runs, Pro receives 50, and Premium receives unlimited runs.

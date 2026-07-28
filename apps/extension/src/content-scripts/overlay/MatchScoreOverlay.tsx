@@ -3,6 +3,9 @@ import React, { useState } from 'react';
 interface MatchScoreOverlayProps {
   score: number;
   jobId: string;
+  confidence: number;
+  explanation: string[];
+  missingKeywords: string[];
   onClose: () => void;
   onPrepare: () => Promise<{ applicationId: string; reviewUrl: string }>;
   onFillApproved: () => Promise<number>;
@@ -11,6 +14,9 @@ interface MatchScoreOverlayProps {
 export function MatchScoreOverlay({
   score,
   jobId,
+  confidence,
+  explanation,
+  missingKeywords,
   onClose,
   onPrepare,
   onFillApproved,
@@ -102,7 +108,31 @@ export function MatchScoreOverlay({
         <div className={`text-xs font-medium ${getScoreColor(score)}`}>
           {getScoreLabel(score)}
         </div>
+        {confidence > 0 && (
+          <div className="mt-1 text-[10px] text-gray-500">
+            Evidence confidence: {confidence}%
+          </div>
+        )}
       </div>
+
+      {explanation.length > 0 && (
+        <details className="mb-3 rounded-xl bg-gray-50 p-3 text-[11px] leading-4 text-gray-600">
+          <summary className="cursor-pointer font-semibold text-gray-800">
+            Why this score?
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {explanation.slice(0, 5).map((line) => (
+              <li key={line}>• {line}</li>
+            ))}
+          </ul>
+          {missingKeywords.length > 0 && (
+            <p className="mt-2">
+              <span className="font-semibold text-gray-700">Missing:</span>{' '}
+              {missingKeywords.slice(0, 8).join(', ')}
+            </p>
+          )}
+        </details>
+      )}
 
       <button
         onClick={handlePrepare}

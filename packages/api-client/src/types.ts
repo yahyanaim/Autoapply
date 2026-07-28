@@ -74,6 +74,9 @@ export interface JobDiscoveryRequest {
 }
 export interface JobRecommendationRecord extends JobRecord {
   matchScore: number;
+  matchConfidence: number;
+  scoreBreakdown: MatchScoreBreakdown;
+  matchedKeywords: string[];
   matchedResumeSkills: string[];
   missingKeywords: string[];
   weakSections: string[];
@@ -98,6 +101,10 @@ export interface JobDiscoveryResponse {
     unlimited: boolean;
     resetAt: string;
   };
+  scoreCache: {
+    hits: number;
+    misses: number;
+  };
   sourceRefresh: Array<{
     source: 'greenhouse' | 'lever' | 'ashby';
     identifier: string;
@@ -121,7 +128,24 @@ export interface ApplicationUpdateResponse { id: string; status: string; updated
 
 export interface AiMatchScoreRequest { resumeId: string; jobId: string }
 export interface AiMatchScoreTextRequest { resumeId: string; jobDescription: string }
-export interface AiMatchScoreResponse { score: number; missingKeywords: string[]; weakSections: string[]; explanation: string }
+export interface AiMatchScoreResponse {
+  score: number;
+  confidence: number;
+  matchedKeywords: string[];
+  missingKeywords: string[];
+  weakSections: string[];
+  breakdown: MatchScoreBreakdown;
+  explanation: string[];
+  cached: boolean;
+}
+export interface MatchScoreBreakdown {
+  skills: number | null;
+  experience: number | null;
+  responsibilities: number | null;
+  education: number | null;
+  languages: number | null;
+  certifications: number | null;
+}
 export interface AiOptimizeRequest { resumeId: string; jobId: string }
 export interface AiOptimizeResponse {
   versionId: string;
