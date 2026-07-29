@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   GatewayTimeoutException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -22,6 +23,8 @@ interface DahlChatResponse {
 
 @Injectable()
 export class DahlCareerChatProvider implements CareerChatProvider {
+  private readonly logger = new Logger(DahlCareerChatProvider.name);
+
   constructor(private readonly config: ConfigService) {}
 
   async complete(messages: CareerChatMessage[]): Promise<CareerChatCompletion> {
@@ -60,6 +63,13 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       });
 
       if (!response.ok) {
+        const requestId =
+          response.headers.get('x-request-id') ??
+          response.headers.get('x-correlation-id') ??
+          response.headers.get('traceparent');
+        this.logger.error(
+          `Dahl request rejected with HTTP ${response.status}${requestId ? ` (request ${requestId})` : ''}`,
+        );
         throw new BadGatewayException('The Morocco career assistant is temporarily unavailable');
       }
 
@@ -80,6 +90,9 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       if (controller.signal.aborted) {
         throw new GatewayTimeoutException('The Morocco career assistant took too long to answer');
       }
+      this.logger.error(
+        `Dahl request failed before a response (${error instanceof Error ? error.name : 'unknown error'})`,
+      );
       throw new BadGatewayException('The Morocco career assistant is temporarily unavailable');
     } finally {
       clearTimeout(timeout);
