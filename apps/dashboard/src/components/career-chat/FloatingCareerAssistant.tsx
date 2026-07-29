@@ -227,7 +227,7 @@ export function FloatingCareerAssistant() {
                     Morocco jobs
                   </span>
                 </div>
-                <p className="mt-0.5 text-xs text-gray-500">Independent Dahl career assistant</p>
+                <p className="mt-0.5 text-xs text-gray-500">Career Assistant</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
