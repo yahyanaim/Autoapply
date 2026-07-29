@@ -69,10 +69,13 @@ describe('DahlCareerChatProvider', () => {
       }),
     );
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(String(request.body))).toEqual(
+    expect(JSON.parse(String(request.body))).toEqual({
+      model: 'MiniMaxAI/MiniMax-M2.7',
+      messages: [{ role: 'user', content: 'Hello' }],
+    });
+    expect(request.headers).toEqual(
       expect.objectContaining({
-        model: 'MiniMaxAI/MiniMax-M2.7',
-        max_tokens: 700,
+        'User-Agent': 'ApplyAI-Nori/1.0 (+https://autoapply-phi.vercel.app)',
       }),
     );
   });
@@ -85,6 +88,34 @@ describe('DahlCareerChatProvider', () => {
 
     await expect(provider.complete([{ role: 'user', content: 'Hello' }])).rejects.toBeInstanceOf(
       BadGatewayException,
+    );
+  });
+
+  it('probes key authentication without logging provider response content after a 403', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(new Response('blocked upstream response', { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ available_tokens: 99_999_999 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    global.fetch = fetchMock as typeof fetch;
+    const provider = new DahlCareerChatProvider(config);
+
+    await expect(provider.complete([{ role: 'user', content: 'Hello' }])).rejects.toBeInstanceOf(
+      BadGatewayException,
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://inference.dahl.global/tokens/current',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer test-key-not-a-secret',
+        }),
+      }),
     );
   });
 });
