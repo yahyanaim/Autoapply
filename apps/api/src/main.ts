@@ -11,7 +11,7 @@ import { loadRootModule } from './root-module.loader';
 async function bootstrap() {
   const rootModule = await loadRootModule();
   const app = await NestFactory.create<NestExpressApplication>(rootModule, {
-    bufferLogs: true,
+    bufferLogs: process.env.CAREER_CHAT_STANDALONE !== 'true',
     rawBody: true,
   });
 
