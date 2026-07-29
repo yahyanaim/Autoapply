@@ -1,354 +1,374 @@
-# ApplyAI — AI-Powered Job Search & Auto-Apply Platform
+# ApplyAI
 
-An AI-driven personal recruiter: parse resumes, score job matches, optimize applications, and manage the entire job search pipeline — with the human always in control.
+ApplyAI is a human-controlled job-search workspace. A candidate uploads a real
+resume, discovers relevant jobs, sees an explainable match score, prepares a
+truthful job-specific CV and cover letter, reviews every change, and can use the
+Chrome extension to fill an approved application package.
 
-## Tech Stack
+ApplyAI assists with applications; it does not send a final application without
+the candidate.
 
-| Layer | Technology |
-|---|---|
-| Backend API | NestJS 11, Prisma 5, PostgreSQL 16, Redis 7, BullMQ |
-| Frontend | Next.js 15, React 19, Tailwind CSS, Zustand, React Query |
-| Chrome Extension | Manifest V3, Vite 6, React 18, Tailwind CSS |
-| AI Providers | Configurable OpenAI, Anthropic Claude, or Google Gemini |
-| Auth | JWT/session rotation, OAuth 2.0, Argon2id, authenticator MFA |
-| Payments | Stripe (subscriptions, billing portal) |
-| Storage | Local development storage or AWS S3 (resumes) |
-| Infrastructure | Docker, Kubernetes, GitHub Actions CI/CD |
-| Monorepo | pnpm 9, Turborepo |
+## End-to-end workflow
 
-## Project Structure
+1. **Upload a resume** — a PDF or DOCX is parsed into verified, structured
+   candidate data.
+2. **Discover jobs** — ApplyAI can refresh approved Greenhouse, Lever, and Ashby
+   public APIs, rank the available jobs against the original resume, and return
+   up to 20 results.
+3. **Choose an opportunity** — the candidate explicitly selects a discovered
+   job, pastes a job description, or captures the job page they opened with the
+   extension.
+4. **Prepare the application** — eligible plans generate a connected package:
+   structured job analysis, truthful optimized CV, and tailored cover letter.
+5. **Review and approve** — the candidate edits or regenerates materials and
+   approves a fixed version.
+6. **Fill and submit** — the extension can fill the approved package. Unknown
+   questions and the final Submit action always remain with the candidate.
+7. **Track progress** — the application, notes, status, and timeline stay in the
+   dashboard.
 
+See [Project use cases](docs/USE_CASES.md) for detailed actors, flows, plan
+branches, failure cases, and product boundaries.
+
+## What is implemented
+
+| Capability              | Current behavior                                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Resume ingestion        | Secure PDF/DOCX upload, parsing, structured candidate data, version history, and classic ATS PDF generation                         |
+| Job discovery           | Approved public JSON APIs for Greenhouse, Lever, and Ashby; up to 20 ranked results per discovery run                               |
+| Match score v2          | Deterministic, explainable comparison of the original verified CV with the job; no LLM tokens are used                              |
+| Application preparation | Connected job analysis, truthful CV optimization, cover letter, review, regeneration, and approval                                  |
+| Chrome extension        | Captures a user-opened job, displays score evidence, and fills an approved package without final submission                         |
+| Moroccan job pages      | User-opened job capture for Indeed Morocco, Rekrute, Anapec, and MarocAnnonces using page data/DOM—not screenshots or bulk crawling |
+| Application tracker     | List, Kanban, notes, timeline, review, and application status management                                                            |
+| Accounts and security   | Email/password, Google/GitHub OAuth, MFA, rotating sessions, extension handoff, consent, export, and deletion                       |
+| Billing and limits      | Stripe Free/Pro/Premium subscriptions with atomic server-side quota enforcement                                                     |
+| Administration          | User/usage metrics and controlled ingestion of approved public job boards                                                           |
+| Morocco career chatbot  | Original scroll-following Nori mascot with a stateless, source-bounded Dahl assistant that is isolated from CV/application AI       |
+
+## Job-source policy
+
+Server-side job discovery does **not** scrape LinkedIn, Indeed, Rekrute, Anapec,
+MarocAnnonces, or arbitrary HTML pages.
+
+The backend aggregates only configured public JSON job-board APIs:
+
+- Greenhouse Job Board API
+- Lever Postings API
+- Ashby public Job Postings API
+
+Configure sources with:
+
+```env
+JOB_DISCOVERY_SOURCES=greenhouse:board-token,lever:site-name,ashby:job-board-name
+JOB_DISCOVERY_REFRESH_TTL_MINUTES=30
 ```
+
+The extension has a separate, user-initiated path for supported Moroccan sites.
+It analyzes the specific job page that the candidate opened. It first reads
+Schema.org `JobPosting` data and then uses bounded DOM selectors. It does not
+take a screenshot and does not crawl search-result pages.
+
+## Explainable match scoring
+
+Match score v2 compares the **original parsed resume** with a job title and
+description. It is deterministic and supports English/French terminology
+aliases. The available categories are:
+
+| Category         | Base weight |
+| ---------------- | ----------: |
+| Skills           |         40% |
+| Experience       |         25% |
+| Responsibilities |         15% |
+| Education        |         10% |
+| Languages        |          7% |
+| Certifications   |          3% |
+
+Categories absent from the job are omitted and the remaining weights are
+normalized. The scorer accounts for employment duration without double-counting
+overlapping dates, gives extra importance to hard requirements, and returns:
+
+- overall score and evidence confidence;
+- category breakdown;
+- matched requirements and resume evidence;
+- missing keywords or requirements;
+- concise explanations of why the score was assigned.
+
+Results are cached by resume/job/scorer-version hashes. Raw duplicate job
+descriptions are not stored in the score cache. Because the scorer is
+deterministic, ranking jobs consumes no AI-provider tokens.
+
+The algorithm is documented in
+[Match score v2](apps/api/src/modules/ai/domain/MATCH_SCORE.md).
+
+## Plans and quotas
+
+Monthly limits are enforced on the backend; hiding a control in the UI is not
+the security boundary.
+
+| Feature                                     |     Free | Pro ($19/month) | Premium ($49/month) |
+| ------------------------------------------- | -------: | --------------: | ------------------: |
+| AI requests                                 |        5 |             500 |           Unlimited |
+| CV optimizations                            |        1 |       Unlimited |           Unlimited |
+| Job-discovery runs                          |        3 |              50 |           Unlimited |
+| Results per discovery run                   | Up to 20 |        Up to 20 |            Up to 20 |
+| Tracked applications                        |       10 |       Unlimited |           Unlimited |
+| Stored resumes                              |        1 |               5 |           Unlimited |
+| Resume storage                              |     5 MB |           25 MB |          Up to 2 GB |
+| Unified preparation workflow                |        — |        Included |            Included |
+| Extension capture and approved-package fill |        — |        Included |            Included |
+
+The deterministic match score and ranking do not consume AI requests. Resume
+parsing, job analysis, CV optimization, and cover-letter generation are AI
+operations and consume the applicable allowance. Public pricing copy and
+server-side entitlements should be changed together.
+
+Premium resume storage is enforced at 2,147,483,647 bytes (approximately 2 GB),
+matching the public pricing copy. The same numeric constant acts as a practical
+unlimited sentinel for count-based quotas, but storage remains bounded.
+
+The Morocco career chatbot has a separate 20-request/hour user-or-IP throttle.
+It does not consume the AI requests shown in this table and does not use the
+existing CV/application AI provider.
+
+## Architecture
+
+ApplyAI is a pnpm/Turborepo monorepo built as a modular monolith.
+
+| Layer            | Technology                                                     |
+| ---------------- | -------------------------------------------------------------- |
+| Backend API      | NestJS 11, Prisma 5, PostgreSQL 16, Redis 7, BullMQ            |
+| Dashboard        | Next.js 15, React 19, Tailwind CSS, Zustand, React Query       |
+| Chrome extension | Manifest V3, Vite 6, React 18, Tailwind CSS                    |
+| AI providers     | Configurable OpenAI, Anthropic Claude, or Google Gemini        |
+| Career chatbot   | Independent Dahl OpenAI-compatible provider and Nori UI        |
+| Authentication   | JWT/session rotation, OAuth 2.0, Argon2id, authenticator MFA   |
+| Billing          | Stripe subscriptions, portal, and idempotent webhooks          |
+| Resume storage   | Local development adapter or AWS S3                            |
+| Delivery         | Docker, Kubernetes manifests, GitHub Actions, Vercel dashboard |
+| Monorepo         | pnpm 10, Turborepo                                             |
+
+Important architectural rules:
+
+- user-owned records are checked against the authenticated user;
+- AI and storage providers sit behind explicit ports/adapters;
+- generated CV content is checked against verified source data to prevent
+  fabricated claims;
+- authenticated throttling uses the verified user ID; public traffic uses a
+  trusted-proxy-aware IP key;
+- final application submission is always a human decision.
+
+## Repository structure
+
+```text
 applyai/
-├── .github/workflows/          # CI and environment deployments
+├── .github/workflows/          # CI and staging/production workflows
 ├── apps/
-│   ├── api/                    # NestJS backend API
-│   │   └── src/
-│   │       ├── main.ts         # App bootstrap
-│   │       ├── app.module.ts   # Root module
-│   │       ├── database/       # Prisma schema + migrations
-│   │       ├── modules/        # Feature modules (hexagonal)
-│   │       │   ├── auth/       # Authentication & authorization
-│   │       │   ├── user/       # User management
-│   │       │   ├── profile/    # Profile management
-│   │       │   ├── resume/     # Resume upload, parse, optimize
-│   │       │   ├── ai/         # AI provider abstraction + scoring
-│   │       │   ├── job/        # Job search + ingestion
-│   │       │   ├── application-tracker/  # Application pipeline
-│   │       │   ├── billing/    # Stripe subscriptions
-│   │       │   ├── notification/ # In-app + email notifications
-│   │       │   └── admin/      # Protected admin APIs and metrics
-│   │       └── shared/         # Guards, interceptors, ports, adapters
-│   ├── dashboard/              # Next.js web dashboard
-│   │   └── src/
-│   │       ├── app/            # App Router pages
-│   │       ├── components/     # UI components + layout
-│   │       └── lib/            # API client, hooks, store
-│   └── extension/              # Chrome extension (Manifest V3)
-│       └── src/
-│           ├── background/     # Service worker, auth, messaging
-│           ├── popup/          # Extension popup UI
-│           ├── options/        # Extension options page
-│           └── content-scripts/ # Job site adapters + overlay
+│   ├── api/                    # NestJS API, workers, Prisma schema/migrations
+│   ├── dashboard/              # Next.js dashboard and marketing site
+│   └── extension/              # Manifest V3 browser extension
 ├── packages/
-│   ├── shared-types/           # Entities, enums, DTOs
-│   ├── design-tokens/          # Nova Design System v2.0 tokens
 │   ├── api-client/             # Typed API client
-│   └── config/                 # Shared tsconfig, eslint, prettier
+│   ├── config/                 # Shared TypeScript/lint/format config
+│   ├── design-tokens/          # Shared design tokens
+│   └── shared-types/           # Shared DTO and domain types
 ├── infra/
-│   ├── docker/                 # Dockerfiles + docker-compose
-│   ├── k8s/                    # Base manifests + staging/production overlays
-│   └── scripts/                # Release automation
-└── docs/                       # ADRs, API docs
+│   ├── docker/                 # Images and full local stack
+│   ├── k8s/                    # Base and environment overlays
+│   └── scripts/                # Release helpers
+└── docs/                       # Architecture, operations, use cases, ADRs
 ```
 
-## Architecture Principles
+The database contains 20 domain models, including users/sessions, profiles,
+resumes and versions, jobs/companies, applications and cover letters,
+subscriptions/payments, usage/audit records, and the hashed match-score cache.
 
-- **Ports & adapters where boundaries matter** — Storage and AI providers are isolated behind explicit interfaces and factories.
-- **Module isolation** — Each NestJS module owns one domain concept with `domain/`, `application/`, `infrastructure/`, `interface/`, `__tests__/` layers.
-- **AI provider abstraction** — All AI calls go through `AIProvider.complete()`. Providers (OpenAI, Claude, Gemini) are swappable via config, not code changes.
-- **Monolith-first** — Single NestJS monolith for MVP. Clean module boundaries enable future service extraction without rewrites.
-- **User-scoped data** — Private records are checked against the authenticated user at service boundaries.
-
-## Getting Started
+## Local development
 
 ### Prerequisites
 
-- Node.js 24.11+ (LTS)
-- pnpm 9
-- Docker & Docker Compose
-- PostgreSQL 16 (or use Docker)
+- Node.js 24.x
+- pnpm 10.x (the repository pins `pnpm@10.30.3`)
+- Docker and Docker Compose
 
-### 1. Clone & Install
+### Install and configure
 
 ```bash
-git clone <repo-url> applyai
+git clone https://github.com/yahyanaim/Autoapply.git applyai
 cd applyai
-pnpm install
-```
-
-### 2. Configure Environment
-
-```bash
+corepack enable
+pnpm install --frozen-lockfile
 cp .env.example .env
-# Edit .env with your API keys and database credentials
 ```
 
-Set `EXTENSION_ID` to the unpacked/published Chrome extension ID before using
-extension authentication. Production extension builds must also set
-`VITE_DASHBOARD_URL` and `VITE_API_BASE_URL` to the deployed HTTPS origins.
-Configure the optional `SMTP_*` values only when email notifications are
-required.
+Set the required database, Redis, AI-provider, authentication, storage, and
+Stripe values in `.env`.
 
-### 3. Start Development Dependencies
+To enable the independent Morocco career chatbot, add a newly rotated Dahl key
+to the **API environment only**:
+
+```env
+CAREER_CHAT_ENABLED=true
+DAHL_CAREER_CHAT_API_KEY=replace-with-a-rotated-server-side-key
+DAHL_CAREER_CHAT_BASE_URL=https://inference.dahl.global/v1
+DAHL_CAREER_CHAT_MODEL=MiniMaxAI/MiniMax-M2.7
+```
+
+The key must never use a `NEXT_PUBLIC_*` or `VITE_*` name. Nori sends no resume
+or profile data and does not share the existing AI request allowance.
+
+For extension authentication, set `EXTENSION_ID` to the unpacked or published
+Chrome extension ID. Extension production builds also need:
+
+```env
+VITE_API_BASE_URL=https://api.example.com
+VITE_DASHBOARD_URL=https://app.example.com
+```
+
+`VITE_API_BASE_URL` is compiled into the extension and tells it where to
+exchange its one-time login code, capture jobs, request scores, and retrieve an
+approved application package. It must be the deployed HTTPS NestJS API origin,
+not the Vercel dashboard URL.
+
+### Start dependencies and migrate
 
 ```bash
 docker compose up -d
-```
-
-This starts PostgreSQL 16 and Redis 7 on localhost only. To run the complete
-containerized stack (including migrations and persistent uploads), use
-`docker compose -f infra/docker/docker-compose.yml up --build` instead.
-
-### 4. Run Database Migrations
-
-```bash
 pnpm --filter @applyai/api prisma:generate
 pnpm --filter @applyai/api prisma:migrate:dev
 ```
 
-### 5. Start Development
+### Run the workspace
 
 ```bash
 pnpm dev
 ```
 
-This starts all apps via Turborepo:
-- API: `http://localhost:3001`
 - Dashboard: `http://localhost:3000`
-- API Docs: `http://localhost:3001/api/docs`
+- API: `http://localhost:3001`
+- Swagger: `http://localhost:3001/api/docs`
+- Liveness: `http://localhost:3001/health`
+- Readiness: `http://localhost:3001/health/ready`
 
-## API Endpoints
+To run the complete containerized stack, including migrations and persistent
+uploads:
 
-### Auth
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/auth/register` | Register with email/password |
-| POST | `/auth/login` | Login; returns a short-lived access token and sets a refresh cookie |
-| POST | `/auth/refresh` | Rotate refresh token |
-| POST | `/auth/logout` | Revoke session |
-| GET | `/auth/profile` | Get current user profile |
-| GET/DELETE | `/auth/sessions/*` | Review and revoke active sessions |
-| POST | `/auth/mfa/setup`, `/auth/mfa/confirm` | Enroll authenticator MFA |
-| POST | `/auth/extension/handoff`, `/auth/extension/exchange` | Single-use dashboard-to-extension sign-in |
-| GET | `/auth/google` | Google OAuth redirect |
-| GET | `/auth/github` | GitHub OAuth redirect |
-
-### Resumes
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/resumes` | Upload resume (PDF/DOCX) |
-| GET | `/resumes` | List user resumes |
-| GET | `/resumes/:id` | Get resume details |
-| DELETE | `/resumes/:id` | Delete resume |
-| POST | `/resumes/:id/optimize` | Optimize resume for a job |
-
-### Jobs
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/jobs/search` | Search jobs with filters |
-| GET | `/jobs/:id` | Get job details |
-
-### Applications
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/applications` | Create application |
-| GET | `/applications` | List applications |
-| GET | `/applications/:id` | Get an owned application |
-| PATCH | `/applications/:id` | Update application status |
-| GET | `/applications/:id/timeline` | Get application timeline |
-| DELETE | `/applications/:id` | Delete an owned tracked application |
-
-### AI
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/ai/match-score` | Score a stored resume against a stored job |
-| POST | `/ai/match-score-text` | Score a stored resume against supplied job text |
-| POST | `/ai/optimize` | Optimize resume for a job |
-| POST | `/ai/cover-letter` | Generate cover letter |
-| GET | `/ai/usage` | Get current usage stats |
-
-### Billing
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/billing/subscription` | Get current plan and recent payments |
-| POST | `/billing/checkout-session` | Create Stripe checkout |
-| POST | `/billing/portal-session` | Create Stripe portal session |
-| POST | `/billing/webhook` | Stripe webhook handler |
-
-### Admin
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/admin/users` | List all users |
-| GET | `/admin/metrics` | Platform metrics |
-| GET | `/admin/ai-usage` | AI usage analytics |
-| POST | `/admin/jobs/ingest` | Ingest a public Greenhouse, Lever, or Ashby board |
-
-## Chrome Extension
-
-### Supported Job Sites
-
-| Site | Status | Adapter |
-|---|---|---|
-| Greenhouse | ✅ Implemented | `adapters/greenhouse/adapter.ts` |
-| Lever | ✅ Implemented | `adapters/lever/adapter.ts` |
-| Ashby | ✅ Implemented | `adapters/ashby/adapter.ts` |
-| LinkedIn | ⚠️ ToS Risk | Not implemented (see Section 0) |
-| Indeed | ⚠️ ToS Risk | Not implemented (see Section 0) |
-| Workday | 📋 Planned | Not implemented |
-| SmartRecruiters | 📋 Planned | Not implemented |
-| BambooHR | 📋 Planned | Not implemented |
-
-### Extension Features
-
-- **Match Score Overlay** — Injects on job pages, shows score badge with accessibility labels
-- **Assistive Autofill** — Populates application forms, user reviews before submit
-- **Quick Actions** — Popup for analyzing the current posting and showing its score
-- **Auth** — User-approved, two-minute single-use dashboard handoff; the extension never asks for a password
-
-## Design System — Nova v2.0
-
-### Colors
-| Token | Value | Usage |
-|---|---|---|
-| `brand.primary` | `#FF6A00` | CTAs, primary actions |
-| `brand.hover` | `#E95E00` | Hover states |
-| `success` | `#22C55E` | Match score 80+, positive states |
-| `warning` | `#F59E0B` | Match score 50-79, caution |
-| `danger` | `#EF4444` | Match score <50, errors |
-| `info` | `#3B82F6` | Informational |
-
-### Typography
-- **Headings**: Inter, 600 weight (h1: 32px, h2: 24px)
-- **Body**: Inter, 400 weight, 16px, line-height 1.5
-- **Code**: JetBrains Mono
-- **Minimum contrast**: 4.5:1 (WCAG AA)
-
-### Spacing
-8-point grid: 4, 8, 12, 16, 24, 32, 40, 48px
-
-### Radius
-- Buttons/inputs: 16px
-- Cards: 24px
-- Modals: 32px
-- Badges: fully rounded
-
-## Database Schema
-
-19 models covering the full domain:
-
-- **User** — Auth, roles, privacy consent, encrypted MFA configuration
-- **ExtensionAuthHandoff** — Short-lived, hashed, single-use extension linking
-- **OAuthAccount** — External identity links
-- **Profile** — Career info, preferences
-- **Resume** — File storage and parsed JSON
-- **ResumeVersion** — Job-specific optimized resume revisions
-- **Skill** — Many-to-many with Resume and Job
-- **Job** — Sources, descriptions, skills
-- **Company** — Employer metadata
-- **Application** — Pipeline tracking with timeline
-- **CoverLetter** — Generated content
-- **Subscription** — Plan management (Free/Pro/Premium)
-- **Payment** — Stripe payment records
-- **StripeWebhookEvent** — Idempotent webhook processing ledger
-- **AIRequest** — Cost tracking per feature/provider
-- **UsageLimit** — Per-tier quotas
-- **Notification** — In-app + email delivery
-- **ActivityLog** — Auth, access-denial, and queue audit records
-- **Session** — Active session, idle/absolute expiry, and MFA verification tracking
-
-## Security
-
-- **Password hashing**: Argon2id (not bcrypt)
-- **Auth**: Short-lived JWT, rotating server-side sessions, 15-minute idle/8-hour absolute limits, OAuth state validation, one-time extension handoff, and MFA-gated privileged access
-- **Rate limiting**: Redis-backed per-route throttling keyed by verified user ID for authenticated traffic and trusted-proxy IP otherwise, plus ingress limits and atomic plan quotas
-- **Security headers**: Explicit production CSP, one-year HSTS, anti-framing/sniffing, strict referrers, and permissions policy
-- **Input validation**: class-validator DTOs on all endpoints, parameterized queries via Prisma
-- **Dependency hygiene**: frozen lockfile plus a zero-known-vulnerability audit in CI
-- **OWASP Top 10** mapped mitigations in `docs/TECHNICAL.md`
-
-## Deployment
-
-### Local Development
 ```bash
-docker compose up -d
-pnpm dev
+docker compose -f infra/docker/docker-compose.yml up --build
 ```
 
-### Staging (auto-deploy on merge to main)
+## Main API surface
+
+All private endpoints require an authenticated, authorized user.
+
+| Area         | Endpoints                                                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Auth         | register, login, refresh, logout, OAuth, MFA, active sessions, extension handoff/exchange                              |
+| Resumes      | upload/list/get/delete, optimize, version history, authenticated version PDF                                           |
+| Jobs         | search/get, capture a user-selected job, discover up to 20 ranked jobs                                                 |
+| Applications | prepare, create/list/get/delete, edit materials, regenerate, approve, approved package, notes, status, timeline, usage |
+| Career chat  | public, bounded `POST /career-chat/messages`; isolated Dahl provider and no persisted conversation                     |
+| AI           | stored/text match score, optimize, cover letter, usage                                                                 |
+| Billing      | subscription, checkout session, billing portal, Stripe webhook                                                         |
+| Admin        | users, platform/AI metrics, approved public-board ingestion                                                            |
+
+Swagger is the canonical request/response reference when the API is running.
+
+## Chrome extension
+
+### Supported page adapters
+
+| Site           | Behavior                                      |
+| -------------- | --------------------------------------------- |
+| Greenhouse     | Capture, score overlay, approved-package fill |
+| Lever          | Capture, score overlay, approved-package fill |
+| Ashby          | Capture, score overlay, approved-package fill |
+| Indeed Morocco | Capture and analyze only the user-opened job  |
+| Rekrute        | Capture and analyze only the user-opened job  |
+| Anapec         | Capture and analyze only the user-opened job  |
+| MarocAnnonces  | Capture and analyze only the user-opened job  |
+
+LinkedIn bulk automation is not implemented. Workday, SmartRecruiters, and
+BambooHR adapters remain future work.
+
+To preview locally:
+
 ```bash
-# GitHub Actions: deploy-staging.yml
-# Builds Docker images → pushes to ECR → kubectl apply
+pnpm --filter @applyai/extension build
 ```
 
-### Production (manual trigger)
+Then open `chrome://extensions`, enable Developer mode, choose **Load
+unpacked**, and select `apps/extension/dist`.
+
+## Verification
+
+Before committing:
+
 ```bash
-# GitHub Actions: deploy-production.yml
-# Requires environment approval
+pnpm check
 ```
 
-### Docker
-```bash
-# API
-docker build -f infra/docker/api.Dockerfile -t applyai-api .
-
-# Dashboard
-docker build -f infra/docker/dashboard.Dockerfile -t applyai-dashboard .
-```
-
-### Vercel dashboard
-
-Deploy the Next.js app as a Vercel monorepo project with Root Directory
-`apps/dashboard`. The checked-in `apps/dashboard/vercel.json` pins the
-framework and workspace-aware install/build commands. Configure
-`NEXT_PUBLIC_API_URL` with the public HTTPS API origin.
-
-The NestJS API must run separately on container infrastructure with PostgreSQL,
-Redis, BullMQ workers, and S3-compatible storage. See
-[`docs/VERCEL_DEPLOYMENT.md`](docs/VERCEL_DEPLOYMENT.md) for the complete
-configuration and verification checklist.
-
-## Testing
+This generates the Prisma client, lints, type-checks, tests, builds, and audits
+dependencies. Service-backed suites can also be run explicitly:
 
 ```bash
-# Run all tests
-pnpm test
-
-# Run specific module tests
-pnpm exec turbo run test --filter=@applyai/api
-
-# Run the API tests directly
-pnpm --filter @applyai/api test
-
-# Run PostgreSQL/Redis API and BullMQ lifecycle integration tests
 pnpm --filter @applyai/api test:integration
-
-# Run the staging core journey (requires E2E_API_URL and configured dependencies)
 pnpm --filter @applyai/api test:e2e
 ```
 
-## Development Workflow
+The E2E suite requires its documented environment and dependencies.
 
-1. Create feature branch from `main`
-2. Implement with tests (follow Appendix A execution order in `Prompt.md`)
-3. Run `pnpm check` before committing
-4. Open PR — CI runs lint, typecheck, test, build
-5. Merge to main → auto-deploy to staging
-6. Manual promote to production
+## Deployment
 
-## Legal Notice
+### Dashboard on Vercel
 
-Automated interaction with LinkedIn, Indeed, Greenhouse, Lever, Workday, etc. may violate those platforms' Terms of Service. This project implements **assistive** features (user-in-the-loop autofill) for MVP. Fully unattended auto-submit is a Phase 3+ feature gated behind legal review and official partner APIs only.
+Use `apps/dashboard` as the Vercel Root Directory and set
+`NEXT_PUBLIC_API_URL` to the public HTTPS API origin. The dashboard does not
+contain the backend.
+
+### Backend
+
+Deploy the NestJS API and workers on container infrastructure with PostgreSQL,
+Redis/BullMQ, S3-compatible storage, AI-provider credentials, and Stripe
+configuration. Apply production Prisma migrations before serving traffic.
+
+### Extension
+
+Build the extension with its real `VITE_API_BASE_URL` and
+`VITE_DASHBOARD_URL`, update manifest origins when domains change, and set the
+resulting browser extension ID as `EXTENSION_ID` on the backend.
+
+See [Vercel and backend deployment](docs/VERCEL_DEPLOYMENT.md) for the complete
+configuration and verification checklist.
+
+## Security, privacy, and legal boundaries
+
+- passwords use Argon2id; sessions rotate and have idle/absolute expiry;
+- production applies CSP, HSTS, anti-framing/sniffing, referrer, and
+  permissions policies;
+- resume storage is user-scoped and production uploads request S3 server-side
+  encryption;
+- consent, data export, and account erasure are implemented;
+- AI inputs, outputs, time, cost, and plan quotas are bounded;
+- Nori uses a separate server-only key and rate limit, stores no conversation,
+  and receives no private resume/profile/application data;
+- the extension never answers unknown screening questions or clicks final
+  Submit;
+- use of any job source must follow its current terms, robots policy, privacy
+  obligations, and applicable law.
+
+Unattended auto-apply and unauthorized HTML crawling are intentionally outside
+the current product boundary.
+
+## More documentation
+
+- [Project use cases](docs/USE_CASES.md)
+- [Unified application workflow](docs/UNIFIED_APPLICATION_WORKFLOW.md)
+- [Technical architecture](docs/TECHNICAL.md)
+- [Specification completion matrix](docs/SPEC_COMPLETION.md)
+- [Data dictionary](docs/DATA_DICTIONARY.md)
+- [Incident response](docs/INCIDENT_RESPONSE.md)
+- [Architecture decisions](docs/ADRS)
 
 ## License
 
