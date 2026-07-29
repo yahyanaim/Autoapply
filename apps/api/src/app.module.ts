@@ -18,6 +18,7 @@ import { HealthController } from './health.controller';
 import { RedisThrottlerStorage } from './shared/throttling/redis-throttler.storage';
 import { ObservabilityModule } from './shared/observability/observability.module';
 import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttler.guard';
+import { CareerChatModule } from './modules/career-chat/career-chat.module';
 
 @Module({
   imports: [
@@ -39,8 +40,7 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
             !value || Buffer.from(value, 'base64').length === 32
               ? value
               : helpers.message({
-                  custom:
-                    'MFA_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
+                  custom: 'MFA_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
                 }),
           )
           .default(''),
@@ -52,7 +52,9 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
         CORS_ALLOWED_ORIGINS: Joi.string().allow('').default(''),
         TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
         EXTENSION_ID: Joi.string().allow('').optional(),
-        REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).default('redis://localhost:6379'),
+        REDIS_URL: Joi.string()
+          .uri({ scheme: ['redis', 'rediss'] })
+          .default('redis://localhost:6379'),
         STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
         S3_BUCKET_RESUMES: Joi.string().when('STORAGE_DRIVER', {
           is: 's3',
@@ -70,19 +72,37 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
         AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD: Joi.number().integer().min(1).max(20).default(3),
         AI_CIRCUIT_BREAKER_RESET_MS: Joi.number().integer().min(1_000).max(600_000).default(30_000),
         PARTNER_API_TIMEOUT_MS: Joi.number().integer().min(1_000).max(120_000).default(15_000),
-        PARTNER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD: Joi.number().integer().min(1).max(20).default(3),
-        PARTNER_API_CIRCUIT_BREAKER_RESET_MS: Joi.number().integer().min(1_000).max(600_000).default(30_000),
+        PARTNER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD: Joi.number()
+          .integer()
+          .min(1)
+          .max(20)
+          .default(3),
+        PARTNER_API_CIRCUIT_BREAKER_RESET_MS: Joi.number()
+          .integer()
+          .min(1_000)
+          .max(600_000)
+          .default(30_000),
         JOB_DISCOVERY_SOURCES: Joi.string().allow('').default(''),
         JOB_DISCOVERY_REFRESH_TTL_MINUTES: Joi.number().integer().min(5).max(1440).default(30),
         OPENAI_API_KEY: Joi.string().allow('').default(''),
         ANTHROPIC_API_KEY: Joi.string().allow('').default(''),
         GOOGLE_AI_API_KEY: Joi.string().allow('').default(''),
+        CAREER_CHAT_ENABLED: Joi.boolean().default(false),
+        DAHL_CAREER_CHAT_API_KEY: Joi.string().allow('').default(''),
+        DAHL_CAREER_CHAT_BASE_URL: Joi.string().uri().default('https://inference.dahl.global/v1'),
+        DAHL_CAREER_CHAT_MODEL: Joi.string().max(200).default('MiniMaxAI/MiniMax-M2.7'),
+        DAHL_CAREER_CHAT_TIMEOUT_MS: Joi.number().integer().min(1_000).max(120_000).default(30_000),
+        DAHL_CAREER_CHAT_MAX_OUTPUT_TOKENS: Joi.number().integer().min(128).max(2_048).default(700),
         STRIPE_SECRET_KEY: Joi.string().allow('').default(''),
         STRIPE_WEBHOOK_SECRET: Joi.string().allow('').default(''),
         STRIPE_PRO_PRICE_ID: Joi.string().allow('').default(''),
         STRIPE_PREMIUM_PRICE_ID: Joi.string().allow('').default(''),
-        STRIPE_SUCCESS_URL: Joi.string().uri().default('http://localhost:3000/billing?checkout=success'),
-        STRIPE_CANCEL_URL: Joi.string().uri().default('http://localhost:3000/billing?checkout=cancelled'),
+        STRIPE_SUCCESS_URL: Joi.string()
+          .uri()
+          .default('http://localhost:3000/billing?checkout=success'),
+        STRIPE_CANCEL_URL: Joi.string()
+          .uri()
+          .default('http://localhost:3000/billing?checkout=cancelled'),
         SMTP_HOST: Joi.string().hostname().allow('').default(''),
         SMTP_PORT: Joi.number().port().default(587),
         SMTP_SECURE: Joi.boolean().default(false),
@@ -109,7 +129,9 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
           const requireTogether = (keys: string[], label: string) => {
             const present = keys.filter((key) => Boolean(configured[key]));
             if (present.length > 0 && present.length !== keys.length) {
-              return helpers.message({ custom: `${label} configuration is incomplete` });
+              return helpers.message({
+                custom: `${label} configuration is incomplete`,
+              });
             }
             return undefined;
           };
@@ -140,12 +162,11 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
                 custom: `The API key for AI_PROVIDER=${String(configured.AI_PROVIDER)} is required in production`,
               });
             }
-            for (const key of [
-              'AI_INPUT_COST_PER_MILLION',
-              'AI_OUTPUT_COST_PER_MILLION',
-            ]) {
+            for (const key of ['AI_INPUT_COST_PER_MILLION', 'AI_OUTPUT_COST_PER_MILLION']) {
               if (!(Number(configured[key]) > 0)) {
-                return helpers.message({ custom: `${key} must be greater than zero in production` });
+                return helpers.message({
+                  custom: `${key} must be greater than zero in production`,
+                });
               }
             }
             for (const key of [
@@ -155,12 +176,27 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
               'STRIPE_PREMIUM_PRICE_ID',
             ]) {
               if (!configured[key]) {
-                return helpers.message({ custom: `${key} is required in production` });
+                return helpers.message({
+                  custom: `${key} is required in production`,
+                });
               }
             }
             if (!configured.MFA_ENCRYPTION_KEY) {
               return helpers.message({
                 custom: 'MFA_ENCRYPTION_KEY is required in production',
+              });
+            }
+            if (configured.CAREER_CHAT_ENABLED && !configured.DAHL_CAREER_CHAT_API_KEY) {
+              return helpers.message({
+                custom: 'DAHL_CAREER_CHAT_API_KEY is required when CAREER_CHAT_ENABLED=true',
+              });
+            }
+            if (
+              configured.CAREER_CHAT_ENABLED &&
+              !usesHttps(configured.DAHL_CAREER_CHAT_BASE_URL)
+            ) {
+              return helpers.message({
+                custom: 'DAHL_CAREER_CHAT_BASE_URL must use HTTPS in production',
               });
             }
             for (const key of [
@@ -171,7 +207,9 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
               'GITHUB_CALLBACK_URL',
             ]) {
               if (configured[key] && !usesHttps(configured[key])) {
-                return helpers.message({ custom: `${key} must use HTTPS in production` });
+                return helpers.message({
+                  custom: `${key} must use HTTPS in production`,
+                });
               }
             }
             const corsOrigins = String(configured.CORS_ALLOWED_ORIGINS ?? '')
@@ -211,6 +249,7 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
     JobModule,
     ApplicationModule,
     AIModule,
+    CareerChatModule,
     BillingModule,
     NotificationModule,
     AdminModule,
