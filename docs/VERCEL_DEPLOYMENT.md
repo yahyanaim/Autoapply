@@ -79,6 +79,7 @@ To enable Nori, configure these values on the **API deployment**, not the
 dashboard project:
 
 ```text
+CAREER_CHAT_STANDALONE=true
 CAREER_CHAT_ENABLED=true
 DAHL_CAREER_CHAT_API_KEY=<newly rotated Dahl key>
 DAHL_CAREER_CHAT_BASE_URL=https://inference.dahl.global/v1
@@ -87,6 +88,12 @@ DAHL_CAREER_CHAT_MODEL=MiniMaxAI/MiniMax-M2.7
 
 Never prefix the Dahl key with `NEXT_PUBLIC_` or `VITE_`. Redeploy the API after
 changing it. The dashboard needs no chatbot secret.
+
+`CAREER_CHAT_STANDALONE=true` is intended for a Nori-only Vercel API project.
+It deliberately bypasses the full ApplyAI module graph, so PostgreSQL, Redis,
+JWT, storage, billing, and the primary AI provider are not required. Only the
+health and career-chat routes are available in this mode. Remove the flag when
+deploying the complete backend on its production infrastructure.
 
 Update OAuth callback URLs to the public API domain. Never commit `.env`; add
 secrets through the hosting providers.
