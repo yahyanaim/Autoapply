@@ -32,7 +32,7 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       throw new ServiceUnavailableException('The Morocco career assistant is not enabled');
     }
 
-    const apiKey = this.config.get<string>('DAHL_CAREER_CHAT_API_KEY', '');
+    const apiKey = this.config.get<string>('DAHL_CAREER_CHAT_API_KEY', '').trim();
     if (!apiKey) {
       throw new ServiceUnavailableException('The Morocco career assistant is not configured');
     }
@@ -52,12 +52,11 @@ export class DahlCareerChatProvider implements CareerChatProvider {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
+          'User-Agent': 'ApplyAI-Nori/1.0 (+https://autoapply-phi.vercel.app)',
         },
         body: JSON.stringify({
           model,
           messages,
-          temperature: 0.2,
-          max_tokens: this.config.get<number>('DAHL_CAREER_CHAT_MAX_OUTPUT_TOKENS', 700),
         }),
         signal: controller.signal,
       });
@@ -70,6 +69,9 @@ export class DahlCareerChatProvider implements CareerChatProvider {
         this.logger.error(
           `Dahl request rejected with HTTP ${response.status}${requestId ? ` (request ${requestId})` : ''}`,
         );
+        if (response.status === 403) {
+          await this.logAuthenticationProbe(baseUrl, apiKey, controller.signal);
+        }
         throw new BadGatewayException('The Morocco career assistant is temporarily unavailable');
       }
 
@@ -96,6 +98,30 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       throw new BadGatewayException('The Morocco career assistant is temporarily unavailable');
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  private async logAuthenticationProbe(
+    baseUrl: string,
+    apiKey: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const serviceRoot = baseUrl.endsWith('/v1') ? baseUrl.slice(0, -3) : new URL(baseUrl).origin;
+
+    try {
+      const response = await fetch(`${serviceRoot}/tokens/current`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+          'User-Agent': 'ApplyAI-Nori/1.0 (+https://autoapply-phi.vercel.app)',
+        },
+        signal,
+      });
+      this.logger.error(`Dahl authentication probe returned HTTP ${response.status}`);
+    } catch (error) {
+      this.logger.error(
+        `Dahl authentication probe failed (${error instanceof Error ? error.name : 'unknown error'})`,
+      );
     }
   }
 }
