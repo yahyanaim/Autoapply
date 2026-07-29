@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma/prisma.service';
-
-const OFFICIAL_MOROCCO_CAREER_SOURCES = [
-  'https://www.anapec.org/',
-  'https://www.emploi-public.ma/',
-  'https://www.travail.gov.ma/',
-] as const;
+import {
+  OFFICIAL_MOROCCO_CAREER_SOURCES,
+  officialMoroccoCareerContext,
+} from './career-chat-context.sources';
+import type {
+  CareerChatContext,
+  CareerChatContextProvider,
+} from '../domain/career-chat-context.interface';
 
 const MOROCCO_LOCATION_TERMS = [
   'Morocco',
@@ -23,13 +25,8 @@ const MOROCCO_LOCATION_TERMS = [
   'Oujda',
 ] as const;
 
-export interface CareerChatContext {
-  text: string;
-  allowedSources: string[];
-}
-
 @Injectable()
-export class CareerChatContextService {
+export class CareerChatContextService implements CareerChatContextProvider {
   constructor(private readonly prisma: PrismaService) {}
 
   async build(): Promise<CareerChatContext> {
@@ -69,8 +66,7 @@ export class CareerChatContextService {
 
     return {
       text: [
-        'Trusted general Morocco career resources:',
-        ...OFFICIAL_MOROCCO_CAREER_SOURCES.map((source) => `- ${source}`),
+        officialMoroccoCareerContext(),
         '',
         'Recently indexed public Morocco job listings:',
         listings,
