@@ -13,6 +13,23 @@ isolated from `modules/ai`.
 - Does not receive resume, profile, application, or account data.
 - Conversation messages are sent for the current response and are not persisted.
 
+## Standalone deployment
+
+Set `CAREER_CHAT_STANDALONE=true` on a deployment dedicated to Nori. The
+bootstrap loader then imports `CareerChatStandaloneModule` instead of the full
+`AppModule`.
+
+Standalone mode:
+
+- does not import or connect Prisma, PostgreSQL, Redis/BullMQ, JWT auth, Stripe,
+  S3 storage, or the existing AI providers;
+- uses only the dedicated Dahl key and bounded official Morocco career context;
+- exposes `GET /health`, `GET /health/ready`, and
+  `POST /career-chat/messages`;
+- applies an independent in-memory IP throttle suitable for a single serverless
+  instance. Use a provider-level or shared rate limiter before scaling across
+  multiple instances.
+
 ## Endpoint
 
 ```text
@@ -38,7 +55,9 @@ variable for it.
 The assistant receives:
 
 - a small set of official Morocco career-resource URLs;
-- at most six recently indexed, public, Morocco-located ApplyAI jobs;
+- in the full API, at most six recently indexed, public, Morocco-located
+  ApplyAI jobs;
+- in standalone mode, no database listings;
 - no private or user-captured jobs.
 
 Only allow-listed sources actually cited by the model are returned as clickable

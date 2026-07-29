@@ -6,10 +6,11 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
-import { AppModule } from './app.module';
+import { loadRootModule } from './root-module.loader';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+  const rootModule = await loadRootModule();
+  const app = await NestFactory.create<NestExpressApplication>(rootModule, {
     bufferLogs: true,
     rawBody: true,
   });

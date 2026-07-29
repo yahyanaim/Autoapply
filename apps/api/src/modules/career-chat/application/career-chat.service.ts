@@ -4,7 +4,10 @@ import {
   CareerChatMessage,
   CareerChatProvider,
 } from '../domain/career-chat-provider.interface';
-import { CareerChatContextService } from './career-chat-context.service';
+import {
+  CAREER_CHAT_CONTEXT,
+  CareerChatContextProvider,
+} from '../domain/career-chat-context.interface';
 
 const MAX_CONVERSATION_CHARACTERS = 8_000;
 const MAX_PROVIDER_MESSAGES = 10;
@@ -46,7 +49,8 @@ export class CareerChatService {
   constructor(
     @Inject(CAREER_CHAT_PROVIDER)
     private readonly provider: CareerChatProvider,
-    private readonly contextService: CareerChatContextService,
+    @Inject(CAREER_CHAT_CONTEXT)
+    private readonly contextService: CareerChatContextProvider,
   ) {}
 
   async answer(messages: CareerChatMessage[]): Promise<CareerChatResult> {

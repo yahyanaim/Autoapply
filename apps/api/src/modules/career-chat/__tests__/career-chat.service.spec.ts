@@ -1,6 +1,6 @@
 import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import { CareerChatService } from '../application/career-chat.service';
-import { CareerChatContextService } from '../application/career-chat-context.service';
+import { CareerChatContextProvider } from '../domain/career-chat-context.interface';
 import { CareerChatProvider } from '../domain/career-chat-provider.interface';
 
 describe('CareerChatService', () => {
@@ -9,7 +9,7 @@ describe('CareerChatService', () => {
   };
   const contextService = {
     build: jest.fn(),
-  } as unknown as jest.Mocked<CareerChatContextService>;
+  } as unknown as jest.Mocked<CareerChatContextProvider>;
   let service: CareerChatService;
 
   beforeEach(() => {
