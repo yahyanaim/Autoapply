@@ -91,10 +91,49 @@ describe('DahlCareerChatProvider', () => {
     );
   });
 
+  it('retries a rejected system role with a guarded Dahl-compatible conversation', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(new Response('system role rejected', { status: 403 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            model: 'MiniMaxAI/MiniMax-M2.7',
+            choices: [{ message: { content: 'Compatible answer' } }],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    global.fetch = fetchMock as typeof fetch;
+    const provider = new DahlCareerChatProvider(config);
+
+    await expect(
+      provider.complete([
+        { role: 'system', content: 'Stay within Morocco career guidance.' },
+        { role: 'user', content: 'Help me prepare.' },
+      ]),
+    ).resolves.toEqual({
+      answer: 'Compatible answer',
+      model: 'MiniMaxAI/MiniMax-M2.7',
+    });
+
+    const retry = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    const retryBody = JSON.parse(String(retry.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(retryBody.messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(retryBody.messages[0]?.content).toContain('Stay within Morocco career guidance.');
+  });
+
   it('probes key authentication without logging provider response content after a 403', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(new Response('blocked upstream response', { status: 403 }))
+      .mockResolvedValueOnce(new Response('blocked compatible response', { status: 403 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ available_tokens: 99_999_999 }), {
           status: 200,
@@ -104,12 +143,15 @@ describe('DahlCareerChatProvider', () => {
     global.fetch = fetchMock as typeof fetch;
     const provider = new DahlCareerChatProvider(config);
 
-    await expect(provider.complete([{ role: 'user', content: 'Hello' }])).rejects.toBeInstanceOf(
-      BadGatewayException,
-    );
+    await expect(
+      provider.complete([
+        { role: 'system', content: 'Career instructions' },
+        { role: 'user', content: 'Hello' },
+      ]),
+    ).rejects.toBeInstanceOf(BadGatewayException);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       'https://inference.dahl.global/tokens/current',
       expect.objectContaining({
         headers: expect.objectContaining({
