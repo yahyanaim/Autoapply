@@ -327,6 +327,10 @@ export class AIService {
     const fabrications = detectFabrications(
       { content: `${resumeContent}\n${verifiedResumeText}` },
       { content: optimizedText },
+      {
+        original: resume.parsedJson,
+        optimized: generatedDocument,
+      },
     );
     if (fabrications.length > 0) {
       throw new BadGatewayException('AI output failed fabrication safety validation');
