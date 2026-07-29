@@ -50,7 +50,8 @@ export class CareerChatService {
   ) {}
 
   async answer(messages: CareerChatMessage[]): Promise<CareerChatResult> {
-    if (!messages.length || messages.at(-1)?.role !== 'user') {
+    const latestMessage = messages[messages.length - 1];
+    if (!latestMessage || latestMessage.role !== 'user') {
       throw new BadRequestException('The conversation must end with a user question');
     }
 
