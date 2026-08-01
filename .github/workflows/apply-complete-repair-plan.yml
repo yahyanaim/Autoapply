@@ -1,0 +1,31 @@
+name: Apply complete repair plan
+
+on:
+  push:
+    branches:
+      - agent/complete-repair-plan
+    paths:
+      - .github/workflows/apply-complete-repair-plan.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-repair-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repair branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply the tested repair patch
+        shell: bash
+        run: |
+          git apply --index complete-repair-plan.patch
+          git rm complete-repair-plan.patch
+          git rm .github/workflows/apply-complete-repair-plan.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Complete security and reliability repair plan"
+          git push
