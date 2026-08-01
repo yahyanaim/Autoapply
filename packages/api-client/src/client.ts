@@ -11,6 +11,8 @@ import type {
   ResumeUploadResponse,
   ResumeListResponse,
   ResumeVersionsResponse,
+  ResumeOptimizeRequest,
+  ResumeOptimizeResponse,
   JobSearchRequest,
   JobSearchResponse,
   JobDiscoveryRequest,
@@ -20,6 +22,8 @@ import type {
   ApplicationCreateResponse,
   ApplicationUpdateRequest,
   ApplicationUpdateResponse,
+  ApplicationRegenerateRequest,
+  ApplicationRegenerateResponse,
   AiMatchScoreRequest,
   AiMatchScoreTextRequest,
   AiMatchScoreResponse,
@@ -47,7 +51,9 @@ export class ApiClient {
       withCredentials: options.client !== 'extension',
       headers: {
         'Content-Type': 'application/json',
-        ...(options.client === 'extension' ? { 'X-ApplyAI-Client': 'extension' } : {}),
+        ...(options.client === 'extension'
+          ? { 'X-ApplyAI-Client': 'extension' }
+          : {}),
       },
     });
 
@@ -58,7 +64,7 @@ export class ApiClient {
         const message = error.response?.data?.message ?? error.message;
         const code = error.response?.data?.code ?? 'UNKNOWN_ERROR';
         throw new ApiError(status, message, code);
-      }
+      },
     );
   }
 
@@ -77,13 +83,23 @@ export class ApiClient {
       return res.data;
     },
 
-    register: async (data: AuthRegisterRequest): Promise<AuthRegisterResponse> => {
-      const res = await this.http.post<AuthRegisterResponse>('/auth/register', data);
+    register: async (
+      data: AuthRegisterRequest,
+    ): Promise<AuthRegisterResponse> => {
+      const res = await this.http.post<AuthRegisterResponse>(
+        '/auth/register',
+        data,
+      );
       return res.data;
     },
 
-    refresh: async (data: AuthRefreshRequest = {}): Promise<AuthRefreshResponse> => {
-      const res = await this.http.post<AuthRefreshResponse>('/auth/refresh', data);
+    refresh: async (
+      data: AuthRefreshRequest = {},
+    ): Promise<AuthRefreshResponse> => {
+      const res = await this.http.post<AuthRefreshResponse>(
+        '/auth/refresh',
+        data,
+      );
       return res.data;
     },
 
@@ -97,12 +113,18 @@ export class ApiClient {
   };
 
   resumes = {
-    upload: async (data: ResumeUploadRequest): Promise<ResumeUploadResponse> => {
+    upload: async (
+      data: ResumeUploadRequest,
+    ): Promise<ResumeUploadResponse> => {
       const formData = new FormData();
       formData.append('file', data.file);
-      const res = await this.http.post<ResumeUploadResponse>('/resumes', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await this.http.post<ResumeUploadResponse>(
+        '/resumes',
+        formData,
+        {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        },
+      );
       return res.data;
     },
 
@@ -128,70 +150,191 @@ export class ApiClient {
       );
       return res.data;
     },
+
+    optimize: async (
+      resumeId: string,
+      data: ResumeOptimizeRequest,
+    ): Promise<ResumeOptimizeResponse> => {
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<ResumeOptimizeResponse>(
+        `/resumes/${resumeId}/optimize`,
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ??
+              `sdk-resume-optimize:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
+      return res.data;
+    },
   };
 
   jobs = {
     search: async (params: JobSearchRequest): Promise<JobSearchResponse> => {
-      const res = await this.http.get<JobSearchResponse>('/jobs/search', { params });
+      const res = await this.http.get<JobSearchResponse>('/jobs/search', {
+        params,
+      });
       return res.data;
     },
 
-    discover: async (data: JobDiscoveryRequest): Promise<JobDiscoveryResponse> => {
-      const res = await this.http.post<JobDiscoveryResponse>('/jobs/discover', data);
+    discover: async (
+      data: JobDiscoveryRequest,
+    ): Promise<JobDiscoveryResponse> => {
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<JobDiscoveryResponse>(
+        '/jobs/discover',
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ??
+              `sdk-discover:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
       return res.data;
     },
   };
 
   applications = {
-    create: async (data: ApplicationCreateRequest): Promise<ApplicationCreateResponse> => {
-      const res = await this.http.post<ApplicationCreateResponse>('/applications', data);
+    create: async (
+      data: ApplicationCreateRequest,
+    ): Promise<ApplicationCreateResponse> => {
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<ApplicationCreateResponse>(
+        '/applications',
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ?? `sdk-create:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
       return res.data;
     },
 
-    prepare: async (data: ApplicationPrepareRequest): Promise<ApplicationCreateResponse> => {
-      const res = await this.http.post<ApplicationCreateResponse>('/applications/prepare', data);
+    prepare: async (
+      data: ApplicationPrepareRequest,
+    ): Promise<ApplicationCreateResponse> => {
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<ApplicationCreateResponse>(
+        '/applications/prepare',
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ?? `sdk-prepare:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
       return res.data;
     },
 
     update: async (
       id: string,
-      data: ApplicationUpdateRequest
+      data: ApplicationUpdateRequest,
     ): Promise<ApplicationUpdateResponse> => {
-      const res = await this.http.patch<ApplicationUpdateResponse>(`/applications/${id}`, data);
+      const res = await this.http.patch<ApplicationUpdateResponse>(
+        `/applications/${id}`,
+        data,
+      );
+      return res.data;
+    },
+
+    regenerate: async (
+      id: string,
+      data: ApplicationRegenerateRequest,
+    ): Promise<ApplicationRegenerateResponse> => {
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<ApplicationRegenerateResponse>(
+        `/applications/${id}/regenerate`,
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ??
+              `sdk-application-regenerate:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
       return res.data;
     },
   };
 
   ai = {
-    matchScore: async (data: AiMatchScoreRequest): Promise<AiMatchScoreResponse> => {
-      const res = await this.http.post<AiMatchScoreResponse>('/ai/match-score', data);
+    matchScore: async (
+      data: AiMatchScoreRequest,
+    ): Promise<AiMatchScoreResponse> => {
+      const res = await this.http.post<AiMatchScoreResponse>(
+        '/ai/match-score',
+        data,
+      );
       return res.data;
     },
 
-    matchScoreText: async (data: AiMatchScoreTextRequest): Promise<AiMatchScoreResponse> => {
-      const res = await this.http.post<AiMatchScoreResponse>('/ai/match-score-text', data);
+    matchScoreText: async (
+      data: AiMatchScoreTextRequest,
+    ): Promise<AiMatchScoreResponse> => {
+      const res = await this.http.post<AiMatchScoreResponse>(
+        '/ai/match-score-text',
+        data,
+      );
       return res.data;
     },
 
     optimize: async (data: AiOptimizeRequest): Promise<AiOptimizeResponse> => {
-      const res = await this.http.post<AiOptimizeResponse>('/ai/optimize', data);
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<AiOptimizeResponse>(
+        '/ai/optimize',
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ??
+              `sdk-ai-optimize:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
       return res.data;
     },
 
-    coverLetter: async (data: AiCoverLetterRequest): Promise<AiCoverLetterResponse> => {
-      const res = await this.http.post<AiCoverLetterResponse>('/ai/cover-letter', data);
+    coverLetter: async (
+      data: AiCoverLetterRequest,
+    ): Promise<AiCoverLetterResponse> => {
+      const { idempotencyKey, ...payload } = data;
+      const res = await this.http.post<AiCoverLetterResponse>(
+        '/ai/cover-letter',
+        payload,
+        {
+          headers: {
+            'Idempotency-Key':
+              idempotencyKey ??
+              `sdk-cover-letter:${globalThis.crypto.randomUUID()}`,
+          },
+        },
+      );
       return res.data;
     },
   };
 
   billing = {
-    checkout: async (data: BillingCheckoutRequest): Promise<BillingCheckoutResponse> => {
-      const res = await this.http.post<BillingCheckoutResponse>('/billing/checkout-session', data);
+    checkout: async (
+      data: BillingCheckoutRequest,
+    ): Promise<BillingCheckoutResponse> => {
+      const res = await this.http.post<BillingCheckoutResponse>(
+        '/billing/checkout-session',
+        data,
+      );
       return res.data;
     },
 
     portal: async (): Promise<BillingPortalResponse> => {
-      const res = await this.http.post<BillingPortalResponse>('/billing/portal-session');
+      const res = await this.http.post<BillingPortalResponse>(
+        '/billing/portal-session',
+      );
       return res.data;
     },
   };

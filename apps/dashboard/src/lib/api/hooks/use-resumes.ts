@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { apiClient } from '@/lib/api/api-client';
+import { createMutationIdempotencyStore } from '@/lib/api/mutation-idempotency';
 
 export interface Resume {
   id: string;
@@ -23,7 +25,36 @@ export interface OptimizeResult {
   missingKeywords: string[];
   weakSections: string[];
   fabrications: unknown[];
+  truthfulness: TruthfulnessReport;
   document: GeneratedResumeDocument;
+}
+
+export type ClaimClassification =
+  'supported' | 'safe_rewording' | 'needs_confirmation' | 'unsupported_blocked';
+
+export interface TruthfulnessFinding {
+  classification: ClaimClassification;
+  type:
+    | 'experience'
+    | 'title'
+    | 'date'
+    | 'skill'
+    | 'education'
+    | 'certification'
+    | 'metric'
+    | 'language'
+    | 'project'
+    | 'narrative';
+  section: string;
+  detail: string;
+  original?: string;
+  proposed?: string;
+}
+
+export interface TruthfulnessReport {
+  status: 'passed' | 'review_required' | 'blocked';
+  summary: Record<ClaimClassification, number>;
+  findings: TruthfulnessFinding[];
 }
 
 export interface GeneratedResumeDocument {
@@ -73,17 +104,23 @@ export interface ResumeVersion {
   missingKeywords: string[];
   weakSections: string[];
   generatedAt: string;
+  truthfulness: TruthfulnessReport | null;
 }
 
 export function useResumes() {
   const queryClient = useQueryClient();
+  const optimizeIdempotency = useRef(
+    createMutationIdempotencyStore('resume-optimize'),
+  ).current;
 
   const resumes = useQuery<Resume[]>({
     queryKey: ['resumes'],
     queryFn: () => apiClient.get('/resumes'),
     refetchInterval: (query) =>
-      query.state.data?.some((resume) =>
-        resume.parseStatus === 'pending' || resume.parseStatus === 'processing',
+      query.state.data?.some(
+        (resume) =>
+          resume.parseStatus === 'pending' ||
+          resume.parseStatus === 'processing',
       )
         ? 2_000
         : false,
@@ -96,8 +133,18 @@ export function useResumes() {
 
   const optimize = useMutation({
     mutationFn: ({ resumeId, jobId }: { resumeId: string; jobId: string }) =>
-      apiClient.post<OptimizeResult>(`/resumes/${resumeId}/optimize`, { jobId }),
+      apiClient.post<OptimizeResult>(
+        `/resumes/${resumeId}/optimize`,
+        { jobId },
+        {
+          'Idempotency-Key': optimizeIdempotency.keyFor({
+            resumeId,
+            jobId,
+          }),
+        },
+      ),
     onSuccess: (_result, variables) => {
+      optimizeIdempotency.clear(variables);
       void queryClient.invalidateQueries({ queryKey: ['resumes'] });
       void queryClient.invalidateQueries({
         queryKey: ['resume-versions', variables.resumeId],
@@ -106,7 +153,8 @@ export function useResumes() {
   });
 
   const remove = useMutation({
-    mutationFn: (resumeId: string) => apiClient.delete<Resume>(`/resumes/${resumeId}`),
+    mutationFn: (resumeId: string) =>
+      apiClient.delete<Resume>(`/resumes/${resumeId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['resumes'] }),
   });
 

@@ -33,8 +33,13 @@ async function flushAsyncUpdates() {
 }
 
 function enterQuestion(value: string) {
-  const textarea = requiredElement<HTMLTextAreaElement>('textarea[aria-label="Question for Nori"]');
-  const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+  const textarea = requiredElement<HTMLTextAreaElement>(
+    'textarea[aria-label="Question for Nori"]',
+  );
+  const setValue = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
   act(() => {
     setValue?.call(textarea, value);
     textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -71,6 +76,21 @@ describe('FloatingCareerAssistant', () => {
     expect(container.textContent).toContain('Chat messages are not stored');
   });
 
+  it('closes the assistant without clearing the conversation state', () => {
+    openAssistant();
+
+    click('button[aria-label="Close career assistant"]');
+
+    expect(
+      container.querySelector('[aria-label="Nori, Morocco career assistant"]'),
+    ).toBeNull();
+    expect(
+      requiredElement<HTMLButtonElement>(
+        'button[aria-label="Ask Nori about jobs in Morocco"]',
+      ),
+    ).toBeTruthy();
+  });
+
   it('sends the user question to the career-chat API and renders the answer and source', async () => {
     vi.useFakeTimers();
     post.mockResolvedValue({
@@ -100,13 +120,16 @@ describe('FloatingCareerAssistant', () => {
     });
 
     expect(container.textContent).toContain('Use the official ANAPEC portal.');
-    expect(requiredElement<HTMLAnchorElement>('a[href="https://www.anapec.org/"]').href).toBe(
-      'https://www.anapec.org/',
-    );
+    expect(
+      requiredElement<HTMLAnchorElement>('a[href="https://www.anapec.org/"]')
+        .href,
+    ).toBe('https://www.anapec.org/');
   });
 
   it('shows a provider failure without losing the user question', async () => {
-    post.mockRejectedValue(new Error('Career Assistant is temporarily unavailable'));
+    post.mockRejectedValue(
+      new Error('Career Assistant is temporarily unavailable'),
+    );
     openAssistant();
 
     enterQuestion('Help me prepare for an interview');
@@ -114,6 +137,8 @@ describe('FloatingCareerAssistant', () => {
 
     await flushAsyncUpdates();
     expect(container.textContent).toContain('Help me prepare for an interview');
-    expect(container.textContent).toContain('Career Assistant is temporarily unavailable');
+    expect(container.textContent).toContain(
+      'Career Assistant is temporarily unavailable',
+    );
   });
 });

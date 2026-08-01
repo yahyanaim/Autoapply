@@ -102,9 +102,15 @@ enum SessionClientType {
   extension
 }
 
+enum IdempotencyStatus {
+  pending
+  completed
+}
+
 enum ActivityType {
   auth_login
   auth_logout
+  auth_token_reuse
   resume_upload
   resume_optimize
   application_create
@@ -143,6 +149,8 @@ model User {
   oauthAccounts         OAuthAccount[]
   extensionAuthHandoffs ExtensionAuthHandoff[]
   capturedJobs          Job[]                  @relation("CapturedJobs")
+  refreshTokenHistory   RefreshTokenHistory[]
+  idempotencyRecords    IdempotencyRecord[]
 
   @@index([email])
   @@map("users")
@@ -213,10 +221,10 @@ model Resume {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions     ResumeVersion[]
   applications Application[]
-  skills       Skill[]         @relation("ResumeSkills")
+  skills       Skill[]           @relation("ResumeSkills")
   matchScores  MatchScoreCache[]
 
   @@index([userId])
@@ -329,6 +337,8 @@ model Application {
   approvedAt              DateTime?
   approvedResumeHash      String?
   approvedCoverLetterHash String?
+  idempotencyKey          String?
+  idempotencyFingerprint  String?
   appliedAt               DateTime?
   source                  String?
   screenshotUrl           String?
@@ -342,6 +352,7 @@ model Application {
   resumeVersion ResumeVersion? @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
   coverLetter   CoverLetter?   @relation(fields: [coverLetterId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, idempotencyKey])
   @@index([userId])
   @@index([jobId])
   @@index([sourceResumeId])
@@ -512,4 +523,40 @@ model Session {
   @@index([userId])
   @@index([token])
   @@map("sessions")
+}
+
+model RefreshTokenHistory {
+  id         String    @id @default(cuid())
+  sessionId  String
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime  @default(now())
+  detectedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_token_history")
+}
+
+model IdempotencyRecord {
+  id          String            @id @default(cuid())
+  userId      String
+  key         String
+  operation   String
+  fingerprint String
+  status      IdempotencyStatus @default(pending)
+  response    Json?
+  expiresAt   DateTime
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

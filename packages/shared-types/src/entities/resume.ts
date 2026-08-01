@@ -62,6 +62,35 @@ export interface ResumeVersion {
   missingKeywords: string[];
   weakSections: string[];
   generatedAt: string;
+  truthfulness?: TruthfulnessReport | null;
+}
+
+export type ClaimClassification =
+  'supported' | 'safe_rewording' | 'needs_confirmation' | 'unsupported_blocked';
+
+export interface TruthfulnessFinding {
+  classification: ClaimClassification;
+  type:
+    | 'experience'
+    | 'title'
+    | 'date'
+    | 'skill'
+    | 'education'
+    | 'certification'
+    | 'metric'
+    | 'language'
+    | 'project'
+    | 'narrative';
+  section: string;
+  detail: string;
+  original?: string;
+  proposed?: string;
+}
+
+export interface TruthfulnessReport {
+  status: 'passed' | 'review_required' | 'blocked';
+  summary: Record<ClaimClassification, number>;
+  findings: TruthfulnessFinding[];
 }
 
 export interface GeneratedResumeDocument {

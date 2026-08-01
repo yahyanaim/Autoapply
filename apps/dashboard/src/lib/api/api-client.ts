@@ -1,4 +1,6 @@
-const baseURL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001').replace(/\/$/, '');
+const baseURL = (
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+).replace(/\/$/, '');
 
 export interface SessionUser {
   id: string;
@@ -47,7 +49,10 @@ class ApiClient {
     this.sessionExpiredHandler = handler;
   }
 
-  private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  private async request<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<T> {
     const { params, retryOnUnauthorized = true, ...fetchOptions } = options;
     const url = new URL(endpoint, `${baseURL}/`);
 
@@ -56,7 +61,11 @@ class ApiClient {
     });
 
     const headers = new Headers(fetchOptions.headers);
-    if (fetchOptions.body && !(fetchOptions.body instanceof FormData) && !headers.has('Content-Type')) {
+    if (
+      fetchOptions.body &&
+      !(fetchOptions.body instanceof FormData) &&
+      !headers.has('Content-Type')
+    ) {
       headers.set('Content-Type', 'application/json');
     }
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
@@ -75,7 +84,10 @@ class ApiClient {
     ) {
       try {
         await this.refresh();
-        return this.request<T>(endpoint, { ...options, retryOnUnauthorized: false });
+        return this.request<T>(endpoint, {
+          ...options,
+          retryOnUnauthorized: false,
+        });
       } catch {
         this.token = null;
         this.sessionExpiredHandler?.();
@@ -84,8 +96,12 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({ message: `Request failed (${response.status})` }));
-      const message = Array.isArray(payload.message) ? payload.message.join(', ') : payload.message;
+      const payload = await response
+        .json()
+        .catch(() => ({ message: `Request failed (${response.status})` }));
+      const message = Array.isArray(payload.message)
+        ? payload.message.join(', ')
+        : payload.message;
       throw new Error(message || `Request failed (${response.status})`);
     }
 
@@ -153,10 +169,11 @@ class ApiClient {
     return response.blob();
   }
 
-  post<T>(endpoint: string, body?: unknown): Promise<T> {
+  post<T>(endpoint: string, body?: unknown, headers?: HeadersInit): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: body === undefined ? undefined : JSON.stringify(body),
+      headers,
     });
   }
 
@@ -181,10 +198,16 @@ class ApiClient {
     });
   }
 
-  upload<T>(endpoint: string, file: File, fields: Record<string, string> = {}): Promise<T> {
+  upload<T>(
+    endpoint: string,
+    file: File,
+    fields: Record<string, string> = {},
+  ): Promise<T> {
     const formData = new FormData();
     formData.append('file', file);
-    Object.entries(fields).forEach(([key, value]) => formData.append(key, value));
+    Object.entries(fields).forEach(([key, value]) =>
+      formData.append(key, value),
+    );
     return this.request<T>(endpoint, { method: 'POST', body: formData });
   }
 
@@ -224,7 +247,10 @@ class ApiClient {
     try {
       await this.refreshPromise?.catch(() => undefined);
       await this.withSessionLock(() =>
-        this.request('/auth/logout', { method: 'POST', retryOnUnauthorized: false }),
+        this.request('/auth/logout', {
+          method: 'POST',
+          retryOnUnauthorized: false,
+        }),
       );
     } finally {
       this.token = null;

@@ -1,9 +1,17 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ResumeParseStatus } from '@prisma/client';
+import {
+  ApplicationStatus,
+  ResumeParseStatus,
+  SubscriptionPlan,
+  SubscriptionStatus,
+} from '@prisma/client';
 import request from 'supertest';
+import type Stripe from 'stripe';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma/prisma.service';
+import { MatchScoreCacheService } from '../src/modules/ai/application/match-score-cache.service';
+import { BillingService } from '../src/modules/billing/application/billing.service';
 
 describe('API integration: workflow quotas and ownership', () => {
   let app: INestApplication;
@@ -11,7 +19,9 @@ describe('API integration: workflow quotas and ownership', () => {
   const marker = `workflow-integration-${Date.now()}`;
   const ownerEmail = `owner-${marker}@example.com`;
   const otherEmail = `other-${marker}@example.com`;
-  const emails = [ownerEmail, otherEmail];
+  const disposableEmail = `privacy-${marker}@example.com`;
+  const emails = [ownerEmail, otherEmail, disposableEmail];
+  const stripeEventIds: string[] = [];
   let ownerId: string;
   let otherId: string;
   let ownerToken: string;
@@ -20,7 +30,9 @@ describe('API integration: workflow quotas and ownership', () => {
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL?.includes('test')) {
-      throw new Error('Integration tests require an isolated DATABASE_URL containing "test"');
+      throw new Error(
+        'Integration tests require an isolated DATABASE_URL containing "test"',
+      );
     }
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -44,7 +56,8 @@ describe('API integration: workflow quotas and ownership', () => {
     });
     ownerId = users.find((user) => user.email === ownerEmail)?.id ?? '';
     otherId = users.find((user) => user.email === otherEmail)?.id ?? '';
-    if (!ownerId || !otherId) throw new Error('Integration users were not created');
+    if (!ownerId || !otherId)
+      throw new Error('Integration users were not created');
 
     const publicJob = await prisma.job.create({
       data: {
@@ -59,6 +72,9 @@ describe('API integration: workflow quotas and ownership', () => {
   });
 
   afterAll(async () => {
+    await prisma?.stripeWebhookEvent.deleteMany({
+      where: { eventId: { in: stripeEventIds } },
+    });
     await prisma?.user.deleteMany({ where: { email: { in: emails } } });
     if (publicJobId) {
       await prisma?.job.deleteMany({ where: { id: publicJobId } });
@@ -133,14 +149,53 @@ describe('API integration: workflow quotas and ownership', () => {
       request(app.getHttpServer())
         .post('/applications')
         .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Idempotency-Key', `${marker}:quota-first`)
         .send({ jobId: publicJobId }),
       request(app.getHttpServer())
         .post('/applications')
         .set('Authorization', `Bearer ${ownerToken}`)
+        .set('Idempotency-Key', `${marker}:quota-second`)
         .send({ jobId: publicJobId }),
     ]);
 
-    expect(responses.map((response) => response.status).sort()).toEqual([201, 403]);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      201, 403,
+    ]);
+    await expect(
+      prisma.application.count({
+        where: { userId: ownerId, jobId: publicJobId },
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.usageLimit.findUniqueOrThrow({
+        where: { userId: ownerId },
+        select: { applicationsUsed: true },
+      }),
+    ).resolves.toEqual({ applicationsUsed: 1 });
+  });
+
+  it('returns the same application for a retried idempotent request', async () => {
+    await prisma.application.deleteMany({ where: { userId: ownerId } });
+    await prisma.usageLimit.update({
+      where: { userId: ownerId },
+      data: { applicationsUsed: 0, applicationsMax: 10 },
+    });
+    const idempotencyKey = `${marker}:same-create-retry`;
+
+    const first = await request(app.getHttpServer())
+      .post('/applications')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Idempotency-Key', idempotencyKey)
+      .send({ jobId: publicJobId })
+      .expect(201);
+    const retried = await request(app.getHttpServer())
+      .post('/applications')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Idempotency-Key', idempotencyKey)
+      .send({ jobId: publicJobId })
+      .expect(201);
+
+    expect(retried.body.id).toBe(first.body.id);
     await expect(
       prisma.application.count({
         where: { userId: ownerId, jobId: publicJobId },
@@ -195,6 +250,7 @@ describe('API integration: workflow quotas and ownership', () => {
     await request(app.getHttpServer())
       .post('/applications')
       .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Idempotency-Key', `${marker}:foreign-resume`)
       .send({
         jobId: publicJobId,
         resumeVersionId: resumeVersion.id,
@@ -203,6 +259,7 @@ describe('API integration: workflow quotas and ownership', () => {
     await request(app.getHttpServer())
       .post('/applications')
       .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Idempotency-Key', `${marker}:foreign-letter`)
       .send({
         jobId: publicJobId,
         coverLetterId: coverLetter.id,
@@ -239,5 +296,183 @@ describe('API integration: workflow quotas and ownership', () => {
       .expect((response) => {
         expect(response.body.id).toBe(privateJob.id);
       });
+  });
+
+  it('persists only valid application transitions and their timeline', async () => {
+    await prisma.application.deleteMany({ where: { userId: ownerId } });
+    await prisma.usageLimit.update({
+      where: { userId: ownerId },
+      data: { applicationsUsed: 0, applicationsMax: 10 },
+    });
+
+    const created = await request(app.getHttpServer())
+      .post('/applications')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Idempotency-Key', `${marker}:status-flow`)
+      .send({ jobId: publicJobId })
+      .expect(201);
+
+    const submitted = await request(app.getHttpServer())
+      .patch(`/applications/${created.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ status: ApplicationStatus.submitted })
+      .expect(200);
+    expect(submitted.body.status).toBe(ApplicationStatus.submitted);
+    expect(submitted.body.appliedAt).toBeTruthy();
+
+    await request(app.getHttpServer())
+      .patch(`/applications/${created.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ status: ApplicationStatus.interview })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/applications/${created.body.id}`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ status: ApplicationStatus.viewed })
+      .expect(400);
+
+    const persisted = await prisma.application.findUniqueOrThrow({
+      where: { id: created.body.id },
+      select: { status: true, appliedAt: true, timeline: true },
+    });
+    expect(persisted.status).toBe(ApplicationStatus.interview);
+    expect(persisted.appliedAt).toBeInstanceOf(Date);
+    expect(persisted.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: ApplicationStatus.draft }),
+        expect.objectContaining({ status: ApplicationStatus.submitted }),
+        expect.objectContaining({ status: ApplicationStatus.interview }),
+      ]),
+    );
+  });
+
+  it('reuses an identical match score and invalidates it when CV evidence changes', async () => {
+    const resume = await prisma.resume.create({
+      data: {
+        userId: ownerId,
+        originalFileUrl: `/uploads/resumes/cache-${marker}.pdf`,
+        parsedJson: {
+          skills: ['SQL'],
+          experience: [],
+          education: [],
+          projects: [],
+          languages: ['French'],
+          certifications: [],
+        },
+        parseStatus: ResumeParseStatus.ready,
+      },
+    });
+    const cache = app.get(MatchScoreCacheService);
+    const jobDescription =
+      'Data analyst role requiring SQL, Tableau, and French reporting.';
+
+    const first = await cache.score(
+      resume.id,
+      'Data analyst with SQL and French reporting experience.',
+      jobDescription,
+    );
+    const repeated = await cache.score(
+      resume.id,
+      'Data analyst with SQL and French reporting experience.',
+      jobDescription,
+    );
+    const changed = await cache.score(
+      resume.id,
+      'Data analyst with SQL, Tableau, and French reporting experience.',
+      jobDescription,
+    );
+
+    expect(first.cached).toBe(false);
+    expect(repeated).toEqual(expect.objectContaining({ cached: true }));
+    expect(changed.cached).toBe(false);
+    await expect(
+      prisma.matchScoreCache.count({ where: { resumeId: resume.id } }),
+    ).resolves.toBe(2);
+  });
+
+  it('processes the same Stripe webhook event only once', async () => {
+    const eventId = `evt_${marker}`;
+    stripeEventIds.push(eventId);
+    const stripeSubscriptionId = `sub_${marker}`;
+    await prisma.subscription.update({
+      where: { userId: ownerId },
+      data: {
+        stripeSubscriptionId,
+        plan: SubscriptionPlan.pro,
+        status: SubscriptionStatus.active,
+      },
+    });
+    const event = {
+      id: eventId,
+      type: 'customer.subscription.deleted',
+      data: {
+        object: {
+          id: stripeSubscriptionId,
+          object: 'subscription',
+          status: 'canceled',
+        },
+      },
+    } as unknown as Stripe.Event;
+    const billing = app.get(BillingService);
+
+    await expect(billing.handleWebhook(event)).resolves.toEqual({
+      received: true,
+    });
+    await expect(billing.handleWebhook(event)).resolves.toEqual({
+      received: true,
+      duplicate: true,
+    });
+    await expect(
+      prisma.stripeWebhookEvent.count({ where: { eventId } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.subscription.findUniqueOrThrow({
+        where: { userId: ownerId },
+        select: { plan: true, status: true },
+      }),
+    ).resolves.toEqual({
+      plan: SubscriptionPlan.free,
+      status: SubscriptionStatus.canceled,
+    });
+  });
+
+  it('exports selected personal data and permanently deletes the account', async () => {
+    const token = await register(disposableEmail);
+    const disposable = await prisma.user.findUniqueOrThrow({
+      where: { email: disposableEmail },
+      select: { id: true },
+    });
+
+    const exported = await request(app.getHttpServer())
+      .get('/users/me/export')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect('Content-Disposition', /applyai-data-export\.json/);
+
+    expect(exported.body).toEqual(
+      expect.objectContaining({
+        formatVersion: '1.0',
+        account: expect.objectContaining({
+          id: disposable.id,
+          email: disposableEmail,
+        }),
+      }),
+    );
+    expect(exported.body.account).not.toHaveProperty('passwordHash');
+    expect(exported.body.account).not.toHaveProperty('mfaSecretEncrypted');
+
+    await request(app.getHttpServer())
+      .delete('/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ confirmation: 'DELETE MY ACCOUNT' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.message).toBe('Account and personal data deleted');
+      });
+
+    await expect(
+      prisma.user.findUnique({ where: { id: disposable.id } }),
+    ).resolves.toBeNull();
   });
 });

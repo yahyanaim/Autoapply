@@ -1,7 +1,21 @@
 'use client';
 
-import { FormEvent, KeyboardEvent, useEffect, useId, useRef, useState } from 'react';
-import { ArrowUp, ExternalLink, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
+import {
+  FormEvent,
+  KeyboardEvent,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
+import {
+  ArrowUp,
+  ExternalLink,
+  RotateCcw,
+  ShieldCheck,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { apiClient } from '@/lib/api/api-client';
 
 type ChatRole = 'user' | 'assistant';
@@ -67,7 +81,10 @@ export function FloatingCareerAssistant() {
         return;
       }
 
-      const maximumScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      const maximumScroll = Math.max(
+        1,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
       const progress = Math.min(1, Math.max(0, window.scrollY / maximumScroll));
       const verticalTravel = Math.max(0, window.innerHeight - 230);
       const curve = Math.sin(progress * Math.PI * 5);
@@ -126,14 +143,21 @@ export function FloatingCareerAssistant() {
   const revealAnswer = (response: CareerChatResponse) => {
     const id = nextMessageId.current++;
     const chunkSize = Math.max(1, Math.ceil(response.answer.length / 120));
+    const safeSources = response.sources
+      .map(safeSourceUrl)
+      .filter((source): source is string => source !== null)
+      .slice(0, 6);
     let visibleCharacters = 0;
     setMessages((current) => [
       ...current,
-      { id, role: 'assistant', content: '', sources: response.sources },
+      { id, role: 'assistant', content: '', sources: safeSources },
     ]);
 
     typingTimer.current = window.setInterval(() => {
-      visibleCharacters = Math.min(response.answer.length, visibleCharacters + chunkSize);
+      visibleCharacters = Math.min(
+        response.answer.length,
+        visibleCharacters + chunkSize,
+      );
       setMessages((current) =>
         current.map((message) =>
           message.id === id
@@ -169,9 +193,14 @@ export function FloatingCareerAssistant() {
     setAnswering(true);
 
     try {
-      const response = await apiClient.post<CareerChatResponse>('/career-chat/messages', {
-        messages: nextMessages.slice(-10).map(({ role, content }) => ({ role, content })),
-      });
+      const response = await apiClient.post<CareerChatResponse>(
+        '/career-chat/messages',
+        {
+          messages: nextMessages
+            .slice(-10)
+            .map(({ role, content }) => ({ role, content })),
+        },
+      );
       revealAnswer(response);
     } catch (caught) {
       setMessages((current) => [
@@ -214,7 +243,10 @@ export function FloatingCareerAssistant() {
   return (
     <>
       {open && (
-        <section className="career-chat-panel" aria-label="Nori, Morocco career assistant">
+        <section
+          className="career-chat-panel"
+          aria-label="Nori, Morocco career assistant"
+        >
           <header className="career-chat-header">
             <div className="flex min-w-0 items-center gap-3">
               <div className="h-11 w-11 shrink-0">
@@ -222,7 +254,9 @@ export function FloatingCareerAssistant() {
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="truncate text-sm font-bold text-gray-950">Ask Nori</h2>
+                  <h2 className="truncate text-sm font-bold text-gray-950">
+                    Ask Nori
+                  </h2>
                   <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-700">
                     Morocco jobs
                   </span>
@@ -347,13 +381,19 @@ export function FloatingCareerAssistant() {
         }}
       >
         {!open && !flight.active && (
-          <span className="career-assistant-callout">Ask Nori about jobs in Morocco</span>
+          <span className="career-assistant-callout">
+            Ask Nori about jobs in Morocco
+          </span>
         )}
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
           className="career-assistant-trigger"
-          aria-label={open ? 'Close Nori career assistant' : 'Ask Nori about jobs in Morocco'}
+          aria-label={
+            open
+              ? 'Close Nori career assistant'
+              : 'Ask Nori about jobs in Morocco'
+          }
           aria-expanded={open}
         >
           <NoriMascot thinking={answering} />
@@ -371,7 +411,23 @@ function sourceLabel(source: string): string {
   }
 }
 
-function NoriMascot({ thinking, compact = false }: { thinking: boolean; compact?: boolean }) {
+function safeSourceUrl(source: string): string | null {
+  try {
+    const url = new URL(source);
+    if (url.protocol !== 'https:' || url.username || url.password) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function NoriMascot({
+  thinking,
+  compact = false,
+}: {
+  thinking: boolean;
+  compact?: boolean;
+}) {
   const instanceId = useId().replaceAll(':', '');
   const bodyGradientId = `nori-body-${instanceId}`;
   const glassGradientId = `nori-glass-${instanceId}`;
@@ -395,7 +451,13 @@ function NoriMascot({ thinking, compact = false }: { thinking: boolean; compact?
           <stop offset="1" stopColor="#fff7ed" />
         </linearGradient>
         <filter id={shadowId} x="-40%" y="-40%" width="180%" height="200%">
-          <feDropShadow dx="0" dy="8" stdDeviation="7" floodColor="#7c2d12" floodOpacity="0.2" />
+          <feDropShadow
+            dx="0"
+            dy="8"
+            stdDeviation="7"
+            floodColor="#7c2d12"
+            floodOpacity="0.2"
+          />
         </filter>
       </defs>
 
@@ -428,9 +490,19 @@ function NoriMascot({ thinking, compact = false }: { thinking: boolean; compact?
         />
       </g>
 
-      <path d="M52 18V10" stroke="#9a3412" strokeWidth="3" strokeLinecap="round" />
+      <path
+        d="M52 18V10"
+        stroke="#9a3412"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
       <circle cx="52" cy="7" r="4" fill="#fb923c" />
-      <path d="M18 45H12M92 45H86" stroke="#ea580c" strokeWidth="7" strokeLinecap="round" />
+      <path
+        d="M18 45H12M92 45H86"
+        stroke="#ea580c"
+        strokeWidth="7"
+        strokeLinecap="round"
+      />
 
       <rect
         x="18"

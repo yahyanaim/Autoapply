@@ -4,10 +4,23 @@ export interface UserSummary {
   role: string;
 }
 
-export interface AuthLoginRequest { email: string; password: string }
-export interface AuthRegisterRequest { email: string; password: string; fullName?: string }
-export interface AuthRefreshRequest { refreshToken?: string }
-export interface AuthResponse { accessToken: string; refreshToken?: string; user: UserSummary }
+export interface AuthLoginRequest {
+  email: string;
+  password: string;
+}
+export interface AuthRegisterRequest {
+  email: string;
+  password: string;
+  fullName?: string;
+}
+export interface AuthRefreshRequest {
+  refreshToken?: string;
+}
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken?: string;
+  user: UserSummary;
+}
 export type AuthLoginResponse = AuthResponse;
 export type AuthRegisterResponse = AuthResponse;
 export type AuthRefreshResponse = AuthResponse;
@@ -26,7 +39,9 @@ export interface ResumeRecord {
   createdAt: string;
   updatedAt: string;
 }
-export interface ResumeUploadRequest { file: File }
+export interface ResumeUploadRequest {
+  file: File;
+}
 export type ResumeUploadResponse = ResumeRecord;
 export type ResumeListResponse = ResumeRecord[];
 export interface ResumeVersionRecord {
@@ -41,6 +56,11 @@ export interface ResumeVersionRecord {
   generatedAt: string;
 }
 export type ResumeVersionsResponse = ResumeVersionRecord[];
+export interface ResumeOptimizeRequest {
+  jobId: string;
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
+}
 
 export interface JobSearchRequest {
   query?: string;
@@ -64,13 +84,20 @@ export interface JobRecord {
   skills: Array<{ id: string; name: string }>;
   createdAt: string;
 }
-export interface JobSearchResponse { jobs: JobRecord[]; total: number; page: number; limit: number }
+export interface JobSearchResponse {
+  jobs: JobRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
 export interface JobDiscoveryRequest {
   resumeId: string;
   query?: string;
   location?: string;
   remoteType?: 'remote' | 'hybrid' | 'onsite';
   limit?: number;
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
 }
 export interface JobRecommendationRecord extends JobRecord {
   matchScore: number;
@@ -114,20 +141,56 @@ export interface JobDiscoveryResponse {
   jobs: JobRecommendationRecord[];
 }
 
-export interface ApplicationCreateRequest { jobId: string; resumeVersionId?: string; coverLetterId?: string }
-export interface ApplicationPrepareRequest { jobId: string; resumeId: string }
+export interface ApplicationCreateRequest {
+  jobId: string;
+  resumeVersionId?: string;
+  coverLetterId?: string;
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
+}
+export interface ApplicationPrepareRequest {
+  jobId: string;
+  resumeId: string;
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
+}
 export interface ApplicationCreateResponse {
   id: string;
   jobId: string;
   status: string;
-  preparationStatus: 'job_captured' | 'analyzing' | 'generating' | 'ready_for_review' | 'ready_to_submit' | 'generation_failed';
+  preparationStatus:
+    | 'job_captured'
+    | 'analyzing'
+    | 'generating'
+    | 'ready_for_review'
+    | 'ready_to_submit'
+    | 'generation_failed';
   createdAt: string;
 }
-export interface ApplicationUpdateRequest { status: 'draft' | 'submitted' | 'viewed' | 'interview' | 'offer' | 'rejected' }
-export interface ApplicationUpdateResponse { id: string; status: string; updatedAt: string }
+export interface ApplicationUpdateRequest {
+  status: 'draft' | 'submitted' | 'viewed' | 'interview' | 'offer' | 'rejected';
+}
+export interface ApplicationUpdateResponse {
+  id: string;
+  status: string;
+  updatedAt: string;
+}
+export interface ApplicationRegenerateRequest {
+  target: 'resume' | 'cover_letter' | 'all';
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
+}
+export type ApplicationRegenerateResponse = ApplicationCreateResponse &
+  Record<string, unknown>;
 
-export interface AiMatchScoreRequest { resumeId: string; jobId: string }
-export interface AiMatchScoreTextRequest { resumeId: string; jobDescription: string }
+export interface AiMatchScoreRequest {
+  resumeId: string;
+  jobId: string;
+}
+export interface AiMatchScoreTextRequest {
+  resumeId: string;
+  jobDescription: string;
+}
 export interface AiMatchScoreResponse {
   score: number;
   confidence: number;
@@ -146,7 +209,12 @@ export interface MatchScoreBreakdown {
   languages: number | null;
   certifications: number | null;
 }
-export interface AiOptimizeRequest { resumeId: string; jobId: string }
+export interface AiOptimizeRequest {
+  resumeId: string;
+  jobId: string;
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
+}
 export interface AiOptimizeResponse {
   versionId: string;
   optimizedText: string;
@@ -156,6 +224,7 @@ export interface AiOptimizeResponse {
   fabrications: unknown[];
   document: GeneratedResumeDocument;
 }
+export type ResumeOptimizeResponse = AiOptimizeResponse;
 export interface GeneratedResumeDocument {
   template: 'classic-ats-v1';
   contact: {
@@ -192,12 +261,48 @@ export interface GeneratedResumeDocument {
   certifications: string[];
   languages: string[];
 }
-export interface AiCoverLetterRequest { resumeId: string; jobId: string; tone?: string }
-export interface AiCoverLetterResponse { id: string; userId: string; jobId: string | null; content: string; tone: string | null; generatedAt: string }
+export interface AiCoverLetterRequest {
+  resumeId: string;
+  jobId: string;
+  tone?: string;
+  /** Reuse this key when retrying the same payload after a lost response. */
+  idempotencyKey?: string;
+}
+export interface AiCoverLetterResponse {
+  id: string;
+  userId: string;
+  jobId: string | null;
+  content: string;
+  tone: string | null;
+  generatedAt: string;
+}
 
-export interface BillingCheckoutRequest { plan: 'pro' | 'premium' }
-export interface BillingCheckoutResponse { sessionId: string; url: string }
-export interface BillingPortalResponse { url: string }
+export interface BillingCheckoutRequest {
+  plan: 'pro' | 'premium';
+}
+export interface BillingCheckoutResponse {
+  sessionId: string;
+  url: string;
+}
+export interface BillingPortalResponse {
+  url: string;
+}
 
-export interface AdminUsersResponse { users: Array<UserSummary & { isEmailVerified: boolean; createdAt: string; updatedAt: string }>; total: number; page: number; limit: number }
-export interface AdminMetricsResponse { totalUsers: number; totalApplications: number; totalJobs: number; activeSubscriptions: number }
+export interface AdminUsersResponse {
+  users: Array<
+    UserSummary & {
+      isEmailVerified: boolean;
+      createdAt: string;
+      updatedAt: string;
+    }
+  >;
+  total: number;
+  page: number;
+  limit: number;
+}
+export interface AdminMetricsResponse {
+  totalUsers: number;
+  totalApplications: number;
+  totalJobs: number;
+  activeSubscriptions: number;
+}

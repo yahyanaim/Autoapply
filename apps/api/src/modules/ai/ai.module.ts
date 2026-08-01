@@ -8,9 +8,10 @@ import { GeminiProvider } from './infrastructure/providers/gemini.provider';
 import { AIController } from './interface/ai.controller';
 import { BillingModule } from '../billing/billing.module';
 import { MatchScoreCacheService } from './application/match-score-cache.service';
+import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
 
 @Module({
-  imports: [BillingModule],
+  imports: [BillingModule, IdempotencyModule],
   providers: [
     AIService,
     PromptService,

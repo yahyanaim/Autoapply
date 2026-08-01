@@ -14,7 +14,10 @@ export class LocalStorageAdapter implements StoragePort {
     }
   }
 
-  async uploadFile(file: { buffer: Buffer; originalname: string; mimetype: string }, folder: string): Promise<string> {
+  async uploadFile(
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    folder: string,
+  ): Promise<string> {
     const targetFolder = path.join(this.uploadDir, folder);
     if (!fs.existsSync(targetFolder)) {
       fs.mkdirSync(targetFolder, { recursive: true });
@@ -40,9 +43,20 @@ export class LocalStorageAdapter implements StoragePort {
     return fs.promises.readFile(this.resolveFile(fileUrl));
   }
 
+  async checkHealth(): Promise<void> {
+    await fs.promises.access(
+      this.uploadDir,
+      fs.constants.R_OK | fs.constants.W_OK,
+    );
+  }
+
   private resolveFile(fileUrl: string): string {
-    if (!fileUrl.startsWith('/uploads/')) throw new Error('Unexpected local storage URL');
-    const filePath = path.resolve(this.uploadDir, fileUrl.slice('/uploads/'.length));
+    if (!fileUrl.startsWith('/uploads/'))
+      throw new Error('Unexpected local storage URL');
+    const filePath = path.resolve(
+      this.uploadDir,
+      fileUrl.slice('/uploads/'.length),
+    );
     if (!filePath.startsWith(`${path.resolve(this.uploadDir)}${path.sep}`)) {
       throw new Error('Invalid local storage path');
     }

@@ -1,4 +1,5 @@
 # ApplyAI — AI-Powered Job Search & Auto-Apply Platform
+
 ## Master Technical & Product Specification (Execution-Ready)
 
 **Document purpose:** This is a build specification intended to be handed directly to an AI coding agent (e.g., Claude Code) or an engineering team to execute in phases. It converts the original concept brief into a structured, sequenced, and testable engineering plan. Each section is self-contained enough to be pulled out and used as a standalone prompt/ticket.
@@ -11,12 +12,12 @@
 
 This revision was produced by reading and applying four of your skill files, not just general knowledge. Concretely:
 
-| Skill | Where it shaped this document |
-|---|---|
-| **hqse-software-engineering** | Section 2.3 (component/interface design, encapsulation, tracing vs. logging), Section 6 (async/failure handling), Section 19 (adversarial testing, boundary conditions, regression policy), Section 12 (estimation + contingency, dependency sequencing) |
-| **backend-development** (incl. `backend-security.md`, `backend-architecture.md`) | Section 6 (monolith-first justified against the skill's own decision matrix), Section 9 (OWASP Top 10 2025 mapped mitigations, Argon2id, exact rate-limit tiers, security headers) |
-| **nova-design-system** | Section 10 rewritten to use your actual v2.0 tokens (color palette, type scale, 8pt spacing, radius/shadow system) instead of generic "modern minimal" direction |
-| **behavioral-guidelines** | Appendix A rewritten as explicit build instructions for the coding agent — simplicity-first, surgical changes only, no speculative abstraction, stop-and-ask on ambiguity |
+| Skill                                                                            | Where it shaped this document                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **hqse-software-engineering**                                                    | Section 2.3 (component/interface design, encapsulation, tracing vs. logging), Section 6 (async/failure handling), Section 19 (adversarial testing, boundary conditions, regression policy), Section 12 (estimation + contingency, dependency sequencing) |
+| **backend-development** (incl. `backend-security.md`, `backend-architecture.md`) | Section 6 (monolith-first justified against the skill's own decision matrix), Section 9 (OWASP Top 10 2025 mapped mitigations, Argon2id, exact rate-limit tiers, security headers)                                                                       |
+| **nova-design-system**                                                           | Section 10 rewritten to use your actual v2.0 tokens (color palette, type scale, 8pt spacing, radius/shadow system) instead of generic "modern minimal" direction                                                                                         |
+| **behavioral-guidelines**                                                        | Appendix A rewritten as explicit build instructions for the coding agent — simplicity-first, surgical changes only, no speculative abstraction, stop-and-ask on ambiguity                                                                                |
 
 Sections not tied to a specific skill (business/marketing/pricing) are left as general product judgment.
 
@@ -26,8 +27,8 @@ Sections not tied to a specific skill (business/marketing/pricing) are left as g
 
 Before any engineering work begins, flag this explicitly to stakeholders — it changes MVP scope:
 
-- **Automated interaction with LinkedIn, Indeed, Greenhouse, Lever, Workday, etc. (scraping job data or auto-submitting applications) generally violates those platforms' Terms of Service.** LinkedIn in particular actively detects and bans automation (see *hiQ Labs v. LinkedIn* and LinkedIn's own enforcement history). This is a business risk, not just a technical one — accounts can be banned, and B2B partners may refuse to integrate with a tool that automates against their ToS.
-- **Recommended posture for MVP:** build the *assistive* layer first (resume parsing, optimization, match scoring, cover letter generation, application tracking, and a **user-in-the-loop autofill** extension that fills a form the user reviews and submits themselves) and treat **fully unattended auto-submit** as a Phase 3+ feature gated behind explicit legal review, and ideally implemented only against platforms with **official partner APIs** (e.g., Greenhouse Job Board API, Lever Postings API, Ashby API) rather than DOM scraping of LinkedIn/Indeed.
+- **Automated interaction with LinkedIn, Indeed, Greenhouse, Lever, Workday, etc. (scraping job data or auto-submitting applications) generally violates those platforms' Terms of Service.** LinkedIn in particular actively detects and bans automation (see _hiQ Labs v. LinkedIn_ and LinkedIn's own enforcement history). This is a business risk, not just a technical one — accounts can be banned, and B2B partners may refuse to integrate with a tool that automates against their ToS.
+- **Recommended posture for MVP:** build the _assistive_ layer first (resume parsing, optimization, match scoring, cover letter generation, application tracking, and a **user-in-the-loop autofill** extension that fills a form the user reviews and submits themselves) and treat **fully unattended auto-submit** as a Phase 3+ feature gated behind explicit legal review, and ideally implemented only against platforms with **official partner APIs** (e.g., Greenhouse Job Board API, Lever Postings API, Ashby API) rather than DOM scraping of LinkedIn/Indeed.
 - Data protection: resumes and application data are sensitive personal data. GDPR/CCPA compliance is a Day-1 architectural constraint, not a later add-on (see Section 9 and Section 18).
 
 This document proceeds with the full vision as requested, but every section involving auto-apply or scraping is marked **[ToS-Risk]** so the team can consciously choose scope.
@@ -37,23 +38,27 @@ This document proceeds with the full vision as requested, but every section invo
 ## 1. Product Requirements Document (PRD)
 
 ### 1.1 Problem Statement
+
 Job seekers spend disproportionate time on low-leverage, repetitive work — tailoring resumes per role, filling near-identical application forms, and manually tracking status — while the actual differentiators of a strong application (relevance, keyword alignment to the job description, and a compelling narrative) are hard to get right without expert help.
 
 ### 1.2 Product Vision
+
 ApplyAI acts as an AI-driven personal recruiter: it understands a candidate's profile, finds relevant roles, scores fit, optimizes materials per job, and manages the entire pipeline — with the person retaining control over what's actually submitted.
 
 ### 1.3 Target Users (Personas)
-| Persona | Primary Need | Key Feature |
-|---|---|---|
-| Student / New Grad | Volume + guidance | ATS Score, Interview Coach |
-| Junior Developer | Confidence, keyword gaps | Resume Optimizer, Match Score |
-| Senior Engineer | Time savings, targeting | AI Recruiter Chat filters |
-| Designer / PM | Narrative quality | Cover Letter Generator |
-| Career Changer | Skill gap mapping | AI Career Advisor |
-| International Applicant | Visa/relocation filtering | Advanced search filters |
-| Remote Worker | Geography-agnostic search | Remote-only job aggregation |
+
+| Persona                 | Primary Need              | Key Feature                   |
+| ----------------------- | ------------------------- | ----------------------------- |
+| Student / New Grad      | Volume + guidance         | ATS Score, Interview Coach    |
+| Junior Developer        | Confidence, keyword gaps  | Resume Optimizer, Match Score |
+| Senior Engineer         | Time savings, targeting   | AI Recruiter Chat filters     |
+| Designer / PM           | Narrative quality         | Cover Letter Generator        |
+| Career Changer          | Skill gap mapping         | AI Career Advisor             |
+| International Applicant | Visa/relocation filtering | Advanced search filters       |
+| Remote Worker           | Geography-agnostic search | Remote-only job aggregation   |
 
 ### 1.4 Success Metrics (Product KPIs)
+
 - Activation: % of signups who upload a resume and get a Match Score within 24h
 - Core loop engagement: applications tracked per active user per week
 - Quality signal: interview rate per application (self-reported + inferred from status changes)
@@ -62,15 +67,16 @@ ApplyAI acts as an AI-driven personal recruiter: it understands a candidate's pr
 
 ### 1.5 Business Model — Tiered SaaS
 
-| Tier | Price positioning | Includes |
-|---|---|---|
-| **Free** | $0 | Resume upload & parsing, limited applications/month (e.g., 10), manual job tracker |
-| **Pro** | Mid-tier monthly | Unlimited tracked applications, AI Resume Optimizer, AI Cover Letter Generator, ATS Score, Job Match Score |
+| Tier        | Price positioning                  | Includes                                                                                                           |
+| ----------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Free**    | $0                                 | Resume upload & parsing, limited applications/month (e.g., 10), manual job tracker                                 |
+| **Pro**     | Mid-tier monthly                   | Unlimited tracked applications, AI Resume Optimizer, AI Cover Letter Generator, ATS Score, Job Match Score         |
 | **Premium** | Top-tier monthly / annual discount | Everything in Pro + AI Interview Coach, AI Career Advisor, Salary Prediction, AI Recruiter Chat, Team/Org accounts |
 
 Pricing specifics (exact $ figures, annual discount %, seat-based pricing for Team accounts) should be validated against competitor pricing (Teal, Simplify, LazyApply, JobCopilot) during Phase 0 discovery rather than fixed in this document.
 
 ### 1.6 Non-Goals (explicitly out of scope for MVP)
+
 - Fully unattended auto-submission on platforms without an official API **[ToS-Risk]**
 - Native mobile apps (web-responsive only for MVP)
 - Multi-language UI localization (English-first, i18n architecture ready but not populated)
@@ -80,6 +86,7 @@ Pricing specifics (exact $ figures, annual discount %, seat-based pricing for Te
 ## 2. System Architecture Overview
 
 ### 2.1 High-Level Components
+
 ```
 ┌─────────────────┐   ┌──────────────────────┐   ┌─────────────────┐
 │ Chrome Extension │──▶│   Backend API (NestJS) │◀──│  Web Dashboard   │
@@ -102,6 +109,7 @@ Pricing specifics (exact $ figures, annual discount %, seat-based pricing for Te
 ```
 
 ### 2.2 Guiding Architectural Principles
+
 - **Clean/hexagonal architecture**: domain logic isolated from framework, DB, and AI-provider specifics.
 - **AI-provider abstraction**: every AI call goes through a single internal interface (`AIProvider.complete()`) so providers can be swapped or A/B tested without touching business logic.
 - **Idempotent job processing**: every long-running task (parsing, optimization, auto-fill) runs as a queued job with retries, so a failed API call never corrupts state.
@@ -165,30 +173,37 @@ Key fields per entity (non-exhaustive, implementation should expand):
 Full OpenAPI/Swagger spec to be generated in implementation; representative surface below.
 
 **Auth**
+
 - `POST /auth/register` `POST /auth/login` `POST /auth/refresh` `POST /auth/logout`
 - `GET /auth/google` `GET /auth/github` (OAuth callbacks)
 
 **Profile & Resume**
+
 - `GET/PUT /profile`
 - `POST /resumes` (upload) → triggers async parse job
 - `GET /resumes/:id` `DELETE /resumes/:id`
 - `POST /resumes/:id/optimize` (body: jobDescription) → returns matchScore, missingKeywords, ResumeVersion
 
 **Jobs**
+
 - `GET /jobs/search?query=&location=&remote=&salaryMin=...`
 - `GET /jobs/:id`
 
 **Applications**
+
 - `POST /applications` `GET /applications` `PATCH /applications/:id` `GET /applications/:id/timeline`
 
 **AI**
+
 - `POST /ai/cover-letter` `POST /ai/interview-questions` `POST /ai/career-advice`
 - `POST /ai/recruiter-chat` (streamed via WebSocket)
 
 **Billing**
+
 - `POST /billing/checkout-session` `POST /billing/portal-session` `POST /billing/webhook` (Stripe)
 
 **Admin**
+
 - `GET /admin/users` `GET /admin/metrics` `GET /admin/ai-usage`
 
 All endpoints require JWT auth except `/auth/*`; rate-limited per Section 9.
@@ -200,6 +215,7 @@ All endpoints require JWT auth except `/auth/*`; rate-limited per Section 9.
 **Stack:** Manifest V3, React, TypeScript, Vite, Tailwind CSS.
 
 **Components:**
+
 - **Content Scripts** — injected per supported site (LinkedIn, Greenhouse, Lever, Ashby, Workday, SmartRecruiters, BambooHR, Indeed). Each site gets its own adapter module implementing a shared `JobPageAdapter` interface: `detectJobPosting()`, `extractJobDescription()`, `findFormFields()`, `fillField()`.
 - **Background Service Worker** — owns auth token storage, message routing between content scripts and the backend API, and job queueing for autofill.
 - **Popup** — quick actions: "Analyze this job," "Show Match Score," "Generate Cover Letter."
@@ -217,7 +233,8 @@ All endpoints require JWT auth except `/auth/*`; rate-limited per Section 9.
 
 ### 6.1 Monolith-First, Not Microservices (explicit decision)
 
-Per the backend-development skill's own architecture decision matrix — *"Monolith: small team, MVP, unclear domain boundaries → Low complexity, simple, fast development"* vs. *"Microservices: large team, clear domains, need independent scaling → High complexity"* — ApplyAI ships as a **single modular NestJS monolith** through MVP and V1. Reasons specific to this product:
+Per the backend-development skill's own architecture decision matrix — _"Monolith: small team, MVP, unclear domain boundaries → Low complexity, simple, fast development"_ vs. _"Microservices: large team, clear domains, need independent scaling → High complexity"_ — ApplyAI ships as a **single modular NestJS monolith** through MVP and V1. Reasons specific to this product:
+
 - Team size at this stage doesn't justify per-service deployment overhead.
 - Domain boundaries (resume parsing vs. matching vs. billing) aren't proven stable yet — splitting early risks a **distributed monolith** (the skill's #1 listed anti-pattern: services that all depend on each other anyway, but now with network latency).
 - A shared PostgreSQL database with clean module boundaries (Section 2.3) gives ACID transactions where they matter (billing, usage limits) without distributed-transaction complexity (sagas, eventual consistency) that the product doesn't need yet.
@@ -225,6 +242,7 @@ Per the backend-development skill's own architecture decision matrix — *"Monol
 **Re-evaluate microservices only when a concrete trigger appears**: e.g., the AI/job-processing workload needs to scale independently of the API layer at a rate that's cost-inefficient inside the monolith, or a second team needs to own a domain independently. Until then, splitting is premature.
 
 ### 6.2 Module Boundaries (NestJS modules)
+
 - `AuthModule`, `UserModule`, `ProfileModule`
 - `ResumeModule` (parsing, optimization)
 - `JobModule` (search aggregation, ingestion)
@@ -235,6 +253,7 @@ Per the backend-development skill's own architecture decision matrix — *"Monol
 - `AdminModule`
 
 ### 6.3 Queue Design (BullMQ) — with resilience requirements
+
 - `resume-parse` — PDF/DOCX → structured JSON
 - `resume-optimize` — resume + JD → match score + optimized version
 - `job-ingest` — scheduled ingestion from partner APIs/feeds
@@ -254,19 +273,23 @@ Every queue job writes to `ActivityLog` for observability and to support the "re
 ## 7. AI Architecture
 
 ### 7.1 Provider Abstraction
+
 ```
 interface AIProvider {
   complete(prompt: PromptTemplate, context: object): Promise<AIResponse>
 }
 ```
+
 Implementations: `OpenAIProvider`, `ClaudeProvider`, `GeminiProvider`, `OpenRouterProvider`, `LocalModelProvider`. Selection can be per-feature (e.g., long-form cover letters on one model, fast classification on a cheaper one) via config, not code changes.
 
 ### 7.2 Prompt Template System
+
 Each AI feature has a versioned prompt template stored in the DB or a `prompts/` directory (`resume_optimize.v3.md`, `cover_letter.v2.md`, etc.) so prompts can be iterated without redeploys, and so `AIRequest` logs can record which template version produced which output (needed for quality regression debugging).
 
 ### 7.3 Core AI Features & Guardrails
+
 - **Resume Parsing**: PDF/DOCX → structured JSON (skills, experience, education, projects, certifications, languages). Use a deterministic parser (e.g., layout-aware extraction) as a first pass, AI as a normalization/cleanup step — do not rely on AI alone for extraction accuracy.
-- **Match Scoring**: resume JSON + job description → numeric score + missing-keyword list + weak-section flags. Should be explainable (show *why* the score is what it is), not a black box.
+- **Match Scoring**: resume JSON + job description → numeric score + missing-keyword list + weak-section flags. Should be explainable (show _why_ the score is what it is), not a black box.
 - **Resume Optimization**: **must never invent experience, titles, or dates the user didn't provide.** Enforce this with a post-generation validation pass that diffs claimed facts against the source resume and flags/rejects fabrications.
 - **Cover Letter Generation**: company + role + resume → personalized letter. Guardrail against generic filler via a template review process (see Section 10 tone constraints) and a "regenerate with more specificity" option.
 - **Interview Coach**: question generation by category (behavioral/technical/system design/coding) + mock interview mode + structured feedback.
@@ -274,6 +297,7 @@ Each AI feature has a versioned prompt template stored in the DB or a `prompts/`
 - **Recruiter Chat**: natural-language job search/filter interface (e.g., "remote React jobs in Europe paying over 80k, companies under 500 people") — parses into structured filter object, then queries the job index; does not itself decide to submit applications without confirmation.
 
 ### 7.4 Cost & Abuse Controls
+
 - Per-tier monthly AI-request quotas enforced at the `AIModule` level before any provider call.
 - Token/cost logging per request (`AIRequest.tokensUsed`, `.cost`) rolled up into admin dashboards for margin monitoring.
 - Caching of identical (resume, job-description) match-score requests to avoid redundant spend.
@@ -295,26 +319,28 @@ Each AI feature has a versioned prompt template stored in the DB or a `prompts/`
 
 Mapped directly to current OWASP priorities, with the specific mitigation this project must implement — not a generic checklist:
 
-| # | Risk | Mitigation for ApplyAI |
-|---|---|---|
-| 1 | Broken Access Control (28% of vulnerabilities — the single largest category) | RBAC via NestJS Guards on every endpoint; deny-by-default; authorization enforced server-side only (never trust the extension's client-side state); log every access-control failure |
-| 2 | Cryptographic Failures | **Argon2id** for password hashing (not bcrypt — bcrypt is the 2025 legacy choice per the skill's own guidance); TLS 1.3 in transit; AES-256 for resume/PII at rest; `crypto.randomBytes()` for all tokens, never `Math.random()` |
-| 3 | Injection | Parameterized queries via Prisma exclusively — no raw SQL string interpolation anywhere, including admin tooling; `class-validator` DTOs with allow-list field filtering on every mutating endpoint |
-| 4 | Insecure Design | Threat-model each AI feature before building it — specifically: what happens if a user submits a job description containing a prompt injection aimed at the resume optimizer? (validate/sanitize AI inputs, don't just trust them) |
-| 5 | Security Misconfiguration | `helmet` middleware with explicit CSP (`default-src 'self'`), HSTS (`max-age=31536000; includeSubDomains`), no default admin accounts, no verbose stack traces in production error responses |
-| 6 | Vulnerable/Supply Chain Components | Dependabot + `npm audit`/SCA in CI on every PR; lockfile integrity checks — relevant given the extension pulls in a wide dependency surface for 8 site adapters |
-| 7 | Authentication Failures | Rate limit login at **10 attempts/15 min**; 12+ character password minimum with complexity; session timeout 15 min idle / 8 hr absolute; MFA mandatory for `platform_admin` and `org_admin` roles |
-| 8 | Software & Data Integrity Failures | Signed/immutable CI builds; checksum verification on the Chrome extension bundle before Web Store submission |
-| 9 | Logging & Monitoring Failures | Centralized logging (auth events, access-control failures) separate from the developer-facing tracing system (Section 2.3); alerting on anomalous patterns (e.g., one account attempting 500 auto-fills/hour) |
-| 10 | SSRF | Allow-list validation on any URL ApplyAI fetches server-side (job postings, company career pages) — relevant because Section 11's job-ingest pipeline fetches external URLs by design |
+| #   | Risk                                                                         | Mitigation for ApplyAI                                                                                                                                                                                                             |
+| --- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Broken Access Control (28% of vulnerabilities — the single largest category) | RBAC via NestJS Guards on every endpoint; deny-by-default; authorization enforced server-side only (never trust the extension's client-side state); log every access-control failure                                               |
+| 2   | Cryptographic Failures                                                       | **Argon2id** for password hashing (not bcrypt — bcrypt is the 2025 legacy choice per the skill's own guidance); TLS 1.3 in transit; AES-256 for resume/PII at rest; `crypto.randomBytes()` for all tokens, never `Math.random()`   |
+| 3   | Injection                                                                    | Parameterized queries via Prisma exclusively — no raw SQL string interpolation anywhere, including admin tooling; `class-validator` DTOs with allow-list field filtering on every mutating endpoint                                |
+| 4   | Insecure Design                                                              | Threat-model each AI feature before building it — specifically: what happens if a user submits a job description containing a prompt injection aimed at the resume optimizer? (validate/sanitize AI inputs, don't just trust them) |
+| 5   | Security Misconfiguration                                                    | `helmet` middleware with explicit CSP (`default-src 'self'`), HSTS (`max-age=31536000; includeSubDomains`), no default admin accounts, no verbose stack traces in production error responses                                       |
+| 6   | Vulnerable/Supply Chain Components                                           | Dependabot + `npm audit`/SCA in CI on every PR; lockfile integrity checks — relevant given the extension pulls in a wide dependency surface for 8 site adapters                                                                    |
+| 7   | Authentication Failures                                                      | Rate limit login at **10 attempts/15 min**; 12+ character password minimum with complexity; session timeout 15 min idle / 8 hr absolute; MFA mandatory for `platform_admin` and `org_admin` roles                                  |
+| 8   | Software & Data Integrity Failures                                           | Signed/immutable CI builds; checksum verification on the Chrome extension bundle before Web Store submission                                                                                                                       |
+| 9   | Logging & Monitoring Failures                                                | Centralized logging (auth events, access-control failures) separate from the developer-facing tracing system (Section 2.3); alerting on anomalous patterns (e.g., one account attempting 500 auto-fills/hour)                      |
+| 10  | SSRF                                                                         | Allow-list validation on any URL ApplyAI fetches server-side (job postings, company career pages) — relevant because Section 11's job-ingest pipeline fetches external URLs by design                                              |
 
 **Rate limit tiers (exact, not "reasonable limits"):**
+
 - Public/unauthenticated endpoints: 100 requests / 15 min
 - Authenticated API: 1000 requests / 15 min
 - Auth endpoints (login/register): 10 attempts / 15 min
 - Admin endpoints: 50 requests / 15 min
 
 **Security headers (required on every response):**
+
 ```
 Strict-Transport-Security: max-age=31536000; includeSubDomains
 Content-Security-Policy: default-src 'self'
@@ -325,6 +351,7 @@ Permissions-Policy: geolocation=(), microphone=()
 ```
 
 **Beyond OWASP — product-specific compliance:**
+
 - [ ] GDPR: data export endpoint, right-to-erasure flow, explicit consent for resume storage/AI processing, DPA-ready sub-processor list (OpenAI/Anthropic/etc.)
 - [ ] CCPA: "do not sell my data" posture (default — no data sales)
 - [ ] SOC 2-ready architecture: access logging, least-privilege IAM, change-management trail
@@ -338,14 +365,15 @@ Permissions-Policy: geolocation=(), microphone=()
 Per your nova-design-system skill, this is a **token-locked** system — the AI agent building the UI must use only the values below, not invent new ones ("Never invent new values" is a non-negotiable rule in the skill itself).
 
 **Color tokens:**
-| Role | Value |
-|---|---|
-| Brand primary | `#FF6A00` (hover `#E95E00`, light `#FFF2E8`) |
+
+| Role                              | Value                                         |
+| --------------------------------- | --------------------------------------------- |
+| Brand primary                     | `#FF6A00` (hover `#E95E00`, light `#FFF2E8`)  |
 | Success / Warning / Danger / Info | `#22C55E` / `#F59E0B` / `#EF4444` / `#3B82F6` |
-| Background primary / secondary | `#FFFFFF` / `#F8FAFC` |
-| Border default | `#E5E7EB` |
-| Text primary / secondary | `#111827` / `#6B7280` |
-| Dark mode background primary | `#0F172A` |
+| Background primary / secondary    | `#FFFFFF` / `#F8FAFC`                         |
+| Border default                    | `#E5E7EB`                                     |
+| Text primary / secondary          | `#111827` / `#6B7280`                         |
+| Dark mode background primary      | `#0F172A`                                     |
 
 Use these directly for Match Score badges (success/warning/danger by score band), status pills in the Application Tracker, and the primary CTA ("Optimize Resume," "Generate Cover Letter") — all in `#FF6A00`.
 
@@ -360,6 +388,7 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 **Layout:** mobile-first from 375px; dashboard sidebar 280px expanded / 72px collapsed, breakpoint at 1024px; 12-column grid, 24px gutter.
 
 **Non-negotiables from the skill, carried into this build:**
+
 - No visual clutter — if a dashboard element's purpose isn't obvious in one glance, remove or simplify it
 - WCAG AA minimum on every screen, including the extension overlay (Match Score badge needs a screen-reader label, not just a colored number)
 - Every interactive component (buttons, inputs, score badges) must ship all four states: default, hover, focus, disabled — plus error state on inputs
@@ -372,6 +401,7 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 ## 11. Roadmap — MVP → V1 → V2 → Enterprise
 
 **MVP (Phase 0–1, ~8–10 weeks)**
+
 - Auth, profile, resume upload/parsing
 - Match Score against a pasted/scraped job description
 - Resume Optimizer (assistive, human-reviewed output)
@@ -381,12 +411,14 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 - Free + Pro tiers, Stripe billing
 
 **V1 (Phase 2, ~+6–8 weeks)**
+
 - Job search aggregation via **official partner APIs only** (Greenhouse, Lever, Ashby job board APIs) **— no LinkedIn/Indeed scraping**
 - Dashboard analytics (application funnel, response rates)
 - AI Interview Coach (text mode)
 - Notification system (email + browser)
 
 **V2 (Phase 3, ~+8–12 weeks)**
+
 - AI Career Advisor
 - Salary Prediction
 - AI Recruiter Chat (natural-language filters)
@@ -394,6 +426,7 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 - Reconsider auto-submit **only** for partner-API sources, with explicit per-application user confirmation retained (not fully unattended)
 
 **Enterprise (Phase 4+)**
+
 - Team/org accounts, seat management
 - Admin analytics for career-services teams/universities
 - SSO (SAML), advanced audit logging
@@ -403,24 +436,25 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 
 ## 12. Development Plan (MVP — Week by Week)
 
-**Estimation discipline (per HQSE skill):** the table below is a first-pass estimate — expect it to be wrong, and track estimate-vs-actual per week to recalibrate rather than silently absorbing overruns into later weeks. Budget an explicit **15% contingency** across the 10 weeks (not listed as its own row — distribute it) for the items teams reliably forget: onboarding, documentation, and the inevitable integration friction between the extension and backend auth handoff in Week 7. Dependencies are called out because per the HQSE dependency rule, component B should build against A's *interface* (defined early) with a test stub, not wait for A's full implementation.
+**Estimation discipline (per HQSE skill):** the table below is a first-pass estimate — expect it to be wrong, and track estimate-vs-actual per week to recalibrate rather than silently absorbing overruns into later weeks. Budget an explicit **15% contingency** across the 10 weeks (not listed as its own row — distribute it) for the items teams reliably forget: onboarding, documentation, and the inevitable integration friction between the extension and backend auth handoff in Week 7. Dependencies are called out because per the HQSE dependency rule, component B should build against A's _interface_ (defined early) with a test stub, not wait for A's full implementation.
 
-| Week | Focus | Depends on |
-|---|---|---|
-| 1 | Repo scaffolding (NestJS + Next.js monorepo), CI/CD skeleton, DB schema v1, auth module | — |
-| 2 | Resume upload + storage (S3), deterministic parsing pipeline, structured JSON output | Week 1 schema |
-| 3 | AI provider abstraction layer, prompt template system, resume-optimize feature (backend) | Week 2 parsed JSON shape |
-| 4 | Match Score algorithm + explainability UI, dashboard shell (Next.js), design tokens | Week 3 AI layer; Nova tokens (Section 10) |
-| 5 | Cover Letter Generator (backend + UI), application tracker CRUD | Week 3 AI layer |
-| 6 | Chrome extension scaffolding (Manifest V3), site adapters for 2 pilot sites (e.g., Greenhouse, Lever) | Can start in parallel with Week 2–3 against a stubbed API contract |
-| 7 | Extension autofill (assistive) + Match Score overlay, extension↔backend auth handoff | Week 6 scaffolding + Week 1 auth |
-| 8 | Stripe billing integration, usage limits enforcement, Free/Pro gating | Week 1 schema (Subscription/UsageLimit tables) |
-| 9 | Security hardening pass (Section 9 checklist), GDPR data-export/delete flows | All prior weeks — nothing ships to beta before this |
-| 10 | QA, bug bash, closed beta launch prep, analytics instrumentation | All prior weeks |
+| Week | Focus                                                                                                 | Depends on                                                         |
+| ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1    | Repo scaffolding (NestJS + Next.js monorepo), CI/CD skeleton, DB schema v1, auth module               | —                                                                  |
+| 2    | Resume upload + storage (S3), deterministic parsing pipeline, structured JSON output                  | Week 1 schema                                                      |
+| 3    | AI provider abstraction layer, prompt template system, resume-optimize feature (backend)              | Week 2 parsed JSON shape                                           |
+| 4    | Match Score algorithm + explainability UI, dashboard shell (Next.js), design tokens                   | Week 3 AI layer; Nova tokens (Section 10)                          |
+| 5    | Cover Letter Generator (backend + UI), application tracker CRUD                                       | Week 3 AI layer                                                    |
+| 6    | Chrome extension scaffolding (Manifest V3), site adapters for 2 pilot sites (e.g., Greenhouse, Lever) | Can start in parallel with Week 2–3 against a stubbed API contract |
+| 7    | Extension autofill (assistive) + Match Score overlay, extension↔backend auth handoff                  | Week 6 scaffolding + Week 1 auth                                   |
+| 8    | Stripe billing integration, usage limits enforcement, Free/Pro gating                                 | Week 1 schema (Subscription/UsageLimit tables)                     |
+| 9    | Security hardening pass (Section 9 checklist), GDPR data-export/delete flows                          | All prior weeks — nothing ships to beta before this                |
+| 10   | QA, bug bash, closed beta launch prep, analytics instrumentation                                      | All prior weeks                                                    |
 
 ---
 
 ## 13. Business Plan Summary
+
 - **Wedge**: resume optimization + match scoring is the trust-building entry point (low ToS/legal risk, high perceived value) before any automation trust is required.
 - **Moat over time**: proprietary dataset of (resume, job description, outcome) pairs improves match-scoring accuracy — a data-driven advantage competitors without real user-outcome data can't easily replicate.
 - **Distribution**: Chrome Web Store SEO, university career-center partnerships, developer-community content (the target users are online and searchable).
@@ -429,6 +463,7 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 ---
 
 ## 14. Pricing Strategy Detail
+
 - Anchor Pro price against comparable tools (validate current competitor pricing before finalizing numbers — this space moves quickly).
 - Annual billing discount (commonly 15–25% in this category) to improve cash flow and reduce churn.
 - Team/Enterprise: per-seat pricing with volume discounts, plus a custom tier for university career centers.
@@ -437,6 +472,7 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 ---
 
 ## 15. Marketing Strategy (Outline)
+
 - Content: "ATS score checker" and "resume vs. job description match" as free, no-signup lead magnets (SEO-friendly, low-friction top of funnel)
 - Community: presence in developer/job-seeker communities (Reddit r/cscareerquestions, Discord servers, LinkedIn creator content) — with clear disclosure that ApplyAI is an assistive tool, not a spam-apply bot, to build trust rather than backlash
 - Partnerships: bootcamps, university career centers, coding communities
@@ -445,11 +481,13 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 ---
 
 ## 16. Technical Documentation Requirements
+
 Maintain, from Week 1: architecture decision records (ADRs) for major choices (e.g., "why partner APIs over scraping"), an internal API reference (auto-generated from OpenAPI spec), a runbook for on-call (queue failures, AI provider outages, Stripe webhook failures), and a data dictionary for the schema in Section 3.
 
 ---
 
 ## 17. Deployment Guide (Outline)
+
 - **Environments**: local (Docker Compose) → staging → production
 - **Infra**: Docker images per service, Kubernetes-ready manifests (even if running on ECS/simple compute initially — keep the option open), NGINX/Cloudflare in front for TLS + caching + DDoS protection
 - **Storage**: S3 for resumes/generated PDFs, CloudFront for static asset delivery
@@ -460,6 +498,7 @@ Maintain, from Week 1: architecture decision records (ADRs) for major choices (e
 ---
 
 ## 18. Security Checklist
+
 See Section 9 — treat as the canonical checklist; do not duplicate/diverge.
 
 ---
@@ -469,6 +508,7 @@ See Section 9 — treat as the canonical checklist; do not duplicate/diverge.
 **Pyramid (per backend-development skill):** 70% unit / 20% integration / 10% E2E. Contract tests wherever a module boundary is crossed (e.g., `AIModule` ↔ `ResumeModule`), even inside the monolith — this is what makes a later service split (Section 2.4) low-risk.
 
 **Adversarial mindset (per HQSE skill):** every test suite should be written with the explicit goal of breaking the feature, not confirming it works. For each feature, test:
+
 - The golden path (main-line use case)
 - Boundary conditions: 0, 1, max−1, max, max+1 (e.g., a resume with 0 skills parsed, or 200+ skills)
 - Invalid inputs: malformed PDFs, empty job descriptions, null fields, absurdly large uploads
@@ -476,11 +516,13 @@ See Section 9 — treat as the canonical checklist; do not duplicate/diverge.
 - Concurrency: two devices editing the same resume simultaneously; an autofill job racing a user manually editing the same application
 
 **Design for testability (binding on implementation, not optional):**
+
 - Wrap all non-determinism — `Date.now()`, AI provider calls, `Math.random()` — behind interfaces so tests substitute deterministic fakes (this is the same encapsulation principle as Section 2.3, applied to tests specifically)
 - Dependency injection throughout (NestJS gives this by default — don't bypass it with direct instantiation)
 - Business logic (match scoring, fabrication detection) must be testable without a rendered UI or live network call
 
 **Specific to this product:**
+
 - **Unit tests**: match-score algorithm, fabrication-detection validator (Section 7.3), resume-optimize prompt-output parsing
 - **Integration tests**: API endpoints against a test DB, full BullMQ job lifecycle including retry/dead-letter paths
 - **E2E tests**: signup → upload resume → get match score → generate cover letter → track application, via Playwright
@@ -492,6 +534,7 @@ See Section 9 — treat as the canonical checklist; do not duplicate/diverge.
 ---
 
 ## 20. Production Readiness Checklist
+
 - [ ] All Section 9 security items complete
 - [ ] Load testing on core API paths (auth, resume upload, match score)
 - [ ] AI provider fallback tested (primary provider outage → automatic failover)
@@ -521,7 +564,7 @@ Each step should ship with tests (Section 19) before moving to the next — do n
 
 ### Standing instructions for the agent at every step (per behavioral-guidelines skill)
 
-Paste these alongside whichever section you hand the agent — they govern *how* it should work, not just what to build:
+Paste these alongside whichever section you hand the agent — they govern _how_ it should work, not just what to build:
 
 - **Think before coding.** Before implementing a section, the agent should state its assumptions explicitly (e.g., "assuming `matchScore` is 0–100, not 0–1") and flag anything genuinely ambiguous rather than silently picking an interpretation. If two reasonable interpretations of a spec section exist, it should surface both, not choose silently.
 - **Simplicity first.** No speculative abstraction. If Section 6 says "monolith," the agent should not pre-build microservice-style inter-module RPC scaffolding "for later" — that's exactly the over-engineering the backend-development skill warns against. Minimum code that satisfies the current section, nothing more.

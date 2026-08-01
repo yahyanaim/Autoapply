@@ -16,9 +16,12 @@ import { PrismaModule } from '../../database/prisma/prisma.module';
 import { ResumeParseWorker } from './infrastructure/queue/resume-parse.worker';
 import { BillingModule } from '../billing/billing.module';
 import { GeneratedResumePdfService } from './infrastructure/pdf/generated-resume-pdf.service';
+import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
 
 function redisConnection(configService: ConfigService) {
-  const url = new URL(configService.get<string>('REDIS_URL', 'redis://localhost:6379'));
+  const url = new URL(
+    configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
+  );
   return {
     host: url.hostname,
     port: Number(url.port || 6379),
@@ -29,7 +32,7 @@ function redisConnection(configService: ConfigService) {
 }
 
 @Module({
-  imports: [AIModule, PrismaModule, BillingModule],
+  imports: [AIModule, PrismaModule, BillingModule, IdempotencyModule],
   providers: [
     ResumeService,
     ResumeParser,
@@ -43,7 +46,10 @@ function redisConnection(configService: ConfigService) {
         configService: ConfigService,
         localStorage: LocalStorageAdapter,
         s3Storage: S3StorageAdapter,
-      ) => configService.get('STORAGE_DRIVER', 'local') === 's3' ? s3Storage : localStorage,
+      ) =>
+        configService.get('STORAGE_DRIVER', 'local') === 's3'
+          ? s3Storage
+          : localStorage,
       inject: [ConfigService, LocalStorageAdapter, S3StorageAdapter],
     },
     {

@@ -19,8 +19,11 @@ import { DocxParser } from '../infrastructure/parsers/docx.parser';
 import { Prisma, ResumeParseStatus } from '@prisma/client';
 import {
   GeneratedResumeDocument,
+  generatedResumeToText,
   isGeneratedResumeDocument,
+  verifiedResumeToText,
 } from '../domain/generated-resume';
+import { analyzeResumeTruthfulness } from '../../ai/domain/fabrication-detector';
 
 export const StorageToken = Symbol('StoragePort');
 export const ResumeParseQueueToken = Symbol('ResumeParseQueue');
@@ -71,7 +74,9 @@ export class ResumeService {
       } catch (cleanupError) {
         this.logger.error(
           `Failed to remove uncommitted resume object ${fileUrl}: ${
-            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError)
           }`,
         );
       }
@@ -95,7 +100,9 @@ export class ResumeService {
         this.deleteResumeRecord(userId, resume.id, resume.fileSize ?? 0),
         this.storageAdapter.deleteFile(fileUrl),
       ]);
-      throw new ServiceUnavailableException('Resume processing queue is unavailable');
+      throw new ServiceUnavailableException(
+        'Resume processing queue is unavailable',
+      );
     }
 
     return resume;
@@ -120,7 +127,9 @@ export class ResumeService {
       },
     });
 
-    const fileBuffer = await this.storageAdapter.downloadFile(resume.originalFileUrl);
+    const fileBuffer = await this.storageAdapter.downloadFile(
+      resume.originalFileUrl,
+    );
 
     let rawText: string;
     try {
@@ -135,10 +144,14 @@ export class ResumeService {
         rawText = fileBuffer.toString('utf-8');
       }
     } catch {
-      throw new UnrecoverableResumeParseError('The resume document could not be read');
+      throw new UnrecoverableResumeParseError(
+        'The resume document could not be read',
+      );
     }
     if (!rawText.trim()) {
-      throw new UnrecoverableResumeParseError('The resume contains no readable text');
+      throw new UnrecoverableResumeParseError(
+        'The resume contains no readable text',
+      );
     }
 
     const parsedJson = await this.resumeParser.parse(rawText, resume.userId);
@@ -160,7 +173,8 @@ export class ResumeService {
       where: { id: resumeId },
       data: {
         parseStatus: ResumeParseStatus.failed,
-        parseError: 'Resume parsing failed. Check the file and AI provider configuration, then upload it again.',
+        parseError:
+          'Resume parsing failed. Check the file and AI provider configuration, then upload it again.',
       },
     });
   }
@@ -186,8 +200,12 @@ export class ResumeService {
   }
 
   async listVersions(userId: string, resumeId: string) {
-    await this.assertResumeOwnership(userId, resumeId);
-    return this.prisma.resumeVersion.findMany({
+    const resume = await this.prisma.resume.findFirst({
+      where: { id: resumeId, userId },
+      select: { parsedJson: true },
+    });
+    if (!resume) throw new NotFoundException('Resume not found');
+    const versions = await this.prisma.resumeVersion.findMany({
       where: { resumeId },
       orderBy: { generatedAt: 'desc' },
       select: {
@@ -201,6 +219,29 @@ export class ResumeService {
         weakSections: true,
         generatedAt: true,
       },
+    });
+    return versions.map((version) => {
+      if (
+        !resume.parsedJson ||
+        !isGeneratedResumeDocument(version.documentJson)
+      ) {
+        return { ...version, truthfulness: null };
+      }
+      const verifiedText = verifiedResumeToText(resume.parsedJson);
+      const optimizedText = generatedResumeToText(version.documentJson, false);
+      return {
+        ...version,
+        truthfulness: analyzeResumeTruthfulness(
+          {
+            content: `${JSON.stringify(resume.parsedJson)}\n${verifiedText}`,
+          },
+          { content: optimizedText },
+          {
+            original: resume.parsedJson,
+            optimized: version.documentJson,
+          },
+        ),
+      };
     });
   }
 
@@ -256,7 +297,9 @@ export class ResumeService {
     fileSize: number,
   ) {
     return this.prisma.$transaction(async (transaction) => {
-      const deleted = await transaction.resume.delete({ where: { id: resumeId } });
+      const deleted = await transaction.resume.delete({
+        where: { id: resumeId },
+      });
       await transaction.usageLimit.updateMany({
         where: { userId, resumesUsed: { gt: 0 } },
         data: {
@@ -282,12 +325,15 @@ export class ResumeService {
             const quota = await transaction.usageLimit.findUnique({
               where: { userId },
             });
-            if (!quota) throw new NotFoundException('Usage limit not found for user');
+            if (!quota)
+              throw new NotFoundException('Usage limit not found for user');
             if (
               quota.resumesUsed >= quota.resumesMax ||
               quota.storageBytesUsed + file.size > quota.storageBytesMax
             ) {
-              throw new ForbiddenException('Resume storage limit reached for this plan');
+              throw new ForbiddenException(
+                'Resume storage limit reached for this plan',
+              );
             }
             await transaction.usageLimit.update({
               where: { userId },
@@ -319,15 +365,9 @@ export class ResumeService {
     throw new ServiceUnavailableException('Could not reserve resume storage');
   }
 
-  private async assertResumeOwnership(userId: string, resumeId: string): Promise<void> {
-    const resume = await this.prisma.resume.findFirst({
-      where: { id: resumeId, userId },
-      select: { id: true },
-    });
-    if (!resume) throw new NotFoundException('Resume not found');
-  }
-
-  private validateFile(file: Express.Multer.File | undefined): asserts file is Express.Multer.File {
+  private validateFile(
+    file: Express.Multer.File | undefined,
+  ): asserts file is Express.Multer.File {
     if (!file) throw new BadRequestException('A resume file is required');
     const allowed = new Set([
       'application/pdf',
@@ -338,14 +378,21 @@ export class ResumeService {
     }
     const isPdf = file.mimetype === 'application/pdf';
     const signature = file.buffer.subarray(0, 5).toString('binary');
-    if ((isPdf && signature !== '%PDF-') || (!isPdf && !signature.startsWith('PK'))) {
-      throw new BadRequestException('The uploaded file content does not match its type');
+    if (
+      (isPdf && signature !== '%PDF-') ||
+      (!isPdf && !signature.startsWith('PK'))
+    ) {
+      throw new BadRequestException(
+        'The uploaded file content does not match its type',
+      );
     }
     if (!isPdf) {
       try {
         DocxParser.validateArchive(file.buffer);
       } catch {
-        throw new BadRequestException('The DOCX archive is invalid or expands beyond safe limits');
+        throw new BadRequestException(
+          'The DOCX archive is invalid or expands beyond safe limits',
+        );
       }
     }
   }

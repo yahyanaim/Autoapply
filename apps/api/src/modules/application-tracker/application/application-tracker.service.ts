@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
   Optional,
@@ -16,7 +18,12 @@ import { PrismaService } from '../../../database/prisma/prisma.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { AIService } from '../../ai/application/ai.service';
 import { readJobAnalysis } from '../../ai/domain/job-analysis';
-import { detectFabrications } from '../../ai/domain/fabrication-detector';
+import {
+  analyzeResumeTruthfulness,
+  blockedTruthfulnessFindings,
+  formatTruthfulnessFailure,
+} from '../../ai/domain/fabrication-detector';
+import type { TruthfulnessReport } from '../../ai/domain/fabrication-detector';
 import {
   GeneratedResumeDocument,
   generatedResumeToText,
@@ -40,7 +47,22 @@ export class ApplicationTrackerService {
     jobId: string,
     resumeVersionId?: string,
     coverLetterId?: string,
+    idempotencyKey?: string,
   ) {
+    const idempotencyFingerprint = idempotencyKey
+      ? this.idempotencyFingerprint('create', {
+          jobId,
+          resumeVersionId: resumeVersionId ?? null,
+          coverLetterId: coverLetterId ?? null,
+        })
+      : undefined;
+    const existing = await this.findIdempotentApplication(
+      userId,
+      idempotencyKey,
+      idempotencyFingerprint,
+    );
+    if (existing) return existing;
+
     const job = await this.prisma.job.findFirst({
       where: {
         id: jobId,
@@ -58,7 +80,9 @@ export class ApplicationTrackerService {
       throw new NotFoundException('Resume version not found');
     }
     if (resumeVersion?.jobId && resumeVersion.jobId !== jobId) {
-      throw new BadRequestException('Resume version belongs to a different job');
+      throw new BadRequestException(
+        'Resume version belongs to a different job',
+      );
     }
 
     const coverLetter = coverLetterId
@@ -82,37 +106,64 @@ export class ApplicationTrackerService {
       );
     }
 
-    const usageResetAt = await this.reserveApplication(userId);
     try {
-      return await this.prisma.application.create({
-        data: {
-          userId,
-          jobId,
-          sourceResumeId: resumeVersion?.resumeId,
-          resumeVersionId,
-          coverLetterId,
-          status: ApplicationStatus.draft,
-          preparationStatus:
-            resumeVersionId && coverLetterId
-              ? ApplicationPreparationStatus.ready_for_review
-              : ApplicationPreparationStatus.job_captured,
-          timeline: [
-            {
-              status: ApplicationStatus.draft,
-              timestamp: this.clock.now().toISOString(),
-              note: 'Application created',
-            },
-          ],
-        },
-        include: { job: { include: { company: true, skills: true } } },
+      return await this.prisma.$transaction(async (transaction) => {
+        const application = await transaction.application.create({
+          data: {
+            userId,
+            jobId,
+            sourceResumeId: resumeVersion?.resumeId,
+            resumeVersionId,
+            coverLetterId,
+            idempotencyKey,
+            idempotencyFingerprint,
+            status: ApplicationStatus.draft,
+            preparationStatus:
+              resumeVersionId && coverLetterId
+                ? ApplicationPreparationStatus.ready_for_review
+                : ApplicationPreparationStatus.job_captured,
+            timeline: [
+              {
+                status: ApplicationStatus.draft,
+                timestamp: this.clock.now().toISOString(),
+                note: 'Application created',
+              },
+            ],
+          },
+          include: { job: { include: { company: true, skills: true } } },
+        });
+        await this.reserveApplication(transaction, userId);
+        return application;
       });
     } catch (error) {
-      await this.releaseApplicationReservation(userId, usageResetAt);
+      if (idempotencyKey && this.isIdempotencyConflict(error)) {
+        const raced = await this.findIdempotentApplication(
+          userId,
+          idempotencyKey,
+          idempotencyFingerprint,
+        );
+        if (raced) return raced;
+      }
       throw error;
     }
   }
 
-  async prepare(userId: string, jobId: string, resumeId: string) {
+  async prepare(
+    userId: string,
+    jobId: string,
+    resumeId: string,
+    idempotencyKey?: string,
+  ) {
+    const idempotencyFingerprint = idempotencyKey
+      ? this.idempotencyFingerprint('prepare', { jobId, resumeId })
+      : undefined;
+    const existing = await this.findIdempotentApplication(
+      userId,
+      idempotencyKey,
+      idempotencyFingerprint,
+    );
+    if (existing) return existing;
+
     const [job, resume] = await Promise.all([
       this.prisma.job.findFirst({
         where: {
@@ -131,24 +182,29 @@ export class ApplicationTrackerService {
       throw new BadRequestException('Resume parsing is not complete');
     }
 
-    const usageResetAt = await this.reserveApplication(userId);
     let applicationId: string | undefined;
     try {
-      const created = await this.prisma.application.create({
-        data: {
-          userId,
-          jobId,
-          sourceResumeId: resumeId,
-          status: ApplicationStatus.draft,
-          preparationStatus: ApplicationPreparationStatus.analyzing,
-          timeline: [
-            {
-              type: 'workflow',
-              timestamp: this.clock.now().toISOString(),
-              note: 'Application preparation started',
-            },
-          ],
-        },
+      const created = await this.prisma.$transaction(async (transaction) => {
+        const application = await transaction.application.create({
+          data: {
+            userId,
+            jobId,
+            sourceResumeId: resumeId,
+            idempotencyKey,
+            idempotencyFingerprint,
+            status: ApplicationStatus.draft,
+            preparationStatus: ApplicationPreparationStatus.analyzing,
+            timeline: [
+              {
+                type: 'workflow',
+                timestamp: this.clock.now().toISOString(),
+                note: 'Application preparation started',
+              },
+            ],
+          },
+        });
+        await this.reserveApplication(transaction, userId);
+        return application;
       });
       applicationId = created.id;
 
@@ -193,28 +249,33 @@ export class ApplicationTrackerService {
           ApplicationPreparationStatus.generation_failed,
           'Application preparation failed',
           {
-            generationError:
+            generationError: this.safeGenerationError(
+              error,
               'Application preparation failed. Review the job and resume, then retry.',
+            ),
           },
         ).catch(() => undefined);
-      } else {
-        await this.releaseApplicationReservation(userId, usageResetAt);
+      } else if (idempotencyKey && this.isIdempotencyConflict(error)) {
+        const raced = await this.findIdempotentApplication(
+          userId,
+          idempotencyKey,
+          idempotencyFingerprint,
+        );
+        if (raced) return raced;
       }
       throw error;
     }
   }
 
-  async regenerate(
-    userId: string,
-    id: string,
-    target: RegenerationTarget,
-  ) {
+  async regenerate(userId: string, id: string, target: RegenerationTarget) {
     const application = await this.getOwnedPackage(userId, id);
     if (!application.sourceResumeId) {
       throw new BadRequestException('The source resume is unavailable');
     }
     if (application.status !== ApplicationStatus.draft) {
-      throw new BadRequestException('Submitted applications cannot be regenerated');
+      throw new BadRequestException(
+        'Submitted applications cannot be regenerated',
+      );
     }
 
     const jobAnalysis = application.jobAnalysis
@@ -281,8 +342,10 @@ export class ApplicationTrackerService {
         ApplicationPreparationStatus.generation_failed,
         'Application regeneration failed',
         {
-          generationError:
+          generationError: this.safeGenerationError(
+            error,
             'Application regeneration failed. Check the materials and retry.',
+          ),
         },
       ).catch(() => undefined);
       throw error;
@@ -301,7 +364,9 @@ export class ApplicationTrackerService {
       application.preparationStatus !==
         ApplicationPreparationStatus.ready_to_submit
     ) {
-      throw new BadRequestException('Application materials are not ready to edit');
+      throw new BadRequestException(
+        'Application materials are not ready to edit',
+      );
     }
     if (
       !application.resumeVersion?.documentJson ||
@@ -337,18 +402,28 @@ export class ApplicationTrackerService {
     const verifiedText = verifiedResumeToText(
       application.sourceResume.parsedJson,
     );
-    const fabrications = detectFabrications(
+    const truthfulness = analyzeResumeTruthfulness(
       {
         content: `${JSON.stringify(
           application.sourceResume.parsedJson,
         )}\n${verifiedText}`,
       },
       { content: optimizedText },
+      {
+        original: application.sourceResume.parsedJson,
+        optimized: document,
+      },
     );
-    if (fabrications.length) {
-      throw new BadRequestException(
-        'Edited CV contains claims that are not supported by the original resume',
-      );
+    if (blockedTruthfulnessFindings(truthfulness).length) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'TRUTHFULNESS_VALIDATION_FAILED',
+        message: formatTruthfulnessFailure(
+          truthfulness,
+          'Your edits were not saved because they introduced unsupported claims.',
+        ),
+        truthfulness,
+      });
     }
 
     const updates: Prisma.PrismaPromise<unknown>[] = [
@@ -365,7 +440,8 @@ export class ApplicationTrackerService {
         throw new BadRequestException('Cover letter is unavailable');
       }
       const content = cleanMultilineText(edits.coverLetter, 8_000);
-      if (!content) throw new BadRequestException('Cover letter cannot be empty');
+      if (!content)
+        throw new BadRequestException('Cover letter cannot be empty');
       updates.push(
         this.prisma.coverLetter.update({
           where: { id: application.coverLetter.id },
@@ -393,7 +469,7 @@ export class ApplicationTrackerService {
     return this.get(userId, id);
   }
 
-  async approve(userId: string, id: string) {
+  async approve(userId: string, id: string, confirmQuestionableClaims = false) {
     const application = await this.getOwnedPackage(userId, id);
     if (
       application.preparationStatus !==
@@ -407,6 +483,30 @@ export class ApplicationTrackerService {
       !application.jobAnalysis
     ) {
       throw new BadRequestException('Application package is incomplete');
+    }
+    const truthfulness = this.truthfulnessFor(application);
+    if (truthfulness?.status === 'blocked') {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'TRUTHFULNESS_VALIDATION_FAILED',
+        message: formatTruthfulnessFailure(
+          truthfulness,
+          'The package cannot be approved because it contains unsupported claims.',
+        ),
+        truthfulness,
+      });
+    }
+    if (
+      truthfulness?.status === 'review_required' &&
+      !confirmQuestionableClaims
+    ) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'TRUTHFULNESS_CONFIRMATION_REQUIRED',
+        message:
+          'Confirm the highlighted wording before approving this application package.',
+        truthfulness,
+      });
     }
 
     const approvedAt = this.clock.now();
@@ -546,7 +646,10 @@ export class ApplicationTrackerService {
       },
     });
     if (!application) throw new NotFoundException('Application not found');
-    return application;
+    return {
+      ...application,
+      truthfulness: this.truthfulnessFor(application),
+    };
   }
 
   async delete(userId: string, id: string) {
@@ -637,6 +740,54 @@ export class ApplicationTrackerService {
     return application;
   }
 
+  private truthfulnessFor(application: {
+    sourceResume: { parsedJson: Prisma.JsonValue | null } | null;
+    resumeVersion: { documentJson: Prisma.JsonValue | null } | null;
+  }): TruthfulnessReport | null {
+    if (
+      !application.sourceResume?.parsedJson ||
+      !application.resumeVersion?.documentJson ||
+      !isGeneratedResumeDocument(application.resumeVersion.documentJson)
+    ) {
+      return null;
+    }
+    const verifiedText = verifiedResumeToText(
+      application.sourceResume.parsedJson,
+    );
+    const optimizedText = generatedResumeToText(
+      application.resumeVersion.documentJson,
+      false,
+    );
+    return analyzeResumeTruthfulness(
+      {
+        content: `${JSON.stringify(
+          application.sourceResume.parsedJson,
+        )}\n${verifiedText}`,
+      },
+      { content: optimizedText },
+      {
+        original: application.sourceResume.parsedJson,
+        optimized: application.resumeVersion.documentJson,
+      },
+    );
+  }
+
+  private safeGenerationError(error: unknown, fallback: string): string {
+    if (!(error instanceof HttpException)) return fallback;
+    const response = error.getResponse();
+    if (
+      typeof response === 'object' &&
+      response !== null &&
+      'code' in response &&
+      response.code === 'TRUTHFULNESS_VALIDATION_FAILED' &&
+      'message' in response &&
+      typeof response.message === 'string'
+    ) {
+      return response.message;
+    }
+    return fallback;
+  }
+
   private async setPreparationState(
     id: string,
     status: ApplicationPreparationStatus,
@@ -673,43 +824,79 @@ export class ApplicationTrackerService {
     ] as Prisma.InputJsonValue;
   }
 
-  private async reserveApplication(userId: string): Promise<Date> {
-    return this.prisma.$transaction(async (transaction) => {
-      const now = this.clock.now();
-      await transaction.usageLimit.updateMany({
-        where: { userId, resetAt: { lt: now } },
-        data: {
-          applicationsUsed: 0,
-          aiRequestsUsed: 0,
-          resumeOptimizationsUsed: 0,
-          jobDiscoveriesUsed: 0,
-          resetAt: this.getNextResetDate(now),
-        },
-      });
-      const usage = await transaction.usageLimit.findUnique({ where: { userId } });
-      if (!usage) throw new NotFoundException('Usage limit not found for user');
-      const reserved = await transaction.usageLimit.updateMany({
-        where: { userId, applicationsUsed: { lt: usage.applicationsMax } },
-        data: { applicationsUsed: { increment: 1 } },
-      });
-      if (reserved.count !== 1) {
-        throw new ForbiddenException('Application limit reached');
-      }
-      return usage.resetAt;
+  private async reserveApplication(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<void> {
+    const now = this.clock.now();
+    await transaction.usageLimit.updateMany({
+      where: { userId, resetAt: { lt: now } },
+      data: {
+        applicationsUsed: 0,
+        aiRequestsUsed: 0,
+        resumeOptimizationsUsed: 0,
+        jobDiscoveriesUsed: 0,
+        resetAt: this.getNextResetDate(now),
+      },
     });
+    const usage = await transaction.usageLimit.findUnique({
+      where: { userId },
+    });
+    if (!usage) throw new NotFoundException('Usage limit not found for user');
+    const reserved = await transaction.usageLimit.updateMany({
+      where: { userId, applicationsUsed: { lt: usage.applicationsMax } },
+      data: { applicationsUsed: { increment: 1 } },
+    });
+    if (reserved.count !== 1) {
+      throw new ForbiddenException('Application limit reached');
+    }
   }
 
-  private async releaseApplicationReservation(userId: string, resetAt: Date) {
-    await this.prisma.usageLimit.updateMany({
-      where: { userId, resetAt, applicationsUsed: { gt: 0 } },
-      data: { applicationsUsed: { decrement: 1 } },
+  private async findIdempotentApplication(
+    userId: string,
+    idempotencyKey: string | undefined,
+    fingerprint: string | undefined,
+  ) {
+    if (!idempotencyKey || !fingerprint) return null;
+    const existing = await this.prisma.application.findUnique({
+      where: {
+        userId_idempotencyKey: {
+          userId,
+          idempotencyKey,
+        },
+      },
+      select: {
+        id: true,
+        idempotencyFingerprint: true,
+      },
     });
+    if (!existing) return null;
+    if (existing.idempotencyFingerprint !== fingerprint) {
+      throw new ConflictException(
+        'This Idempotency-Key was already used for a different application request',
+      );
+    }
+    return this.get(userId, existing.id);
+  }
+
+  private idempotencyFingerprint(
+    operation: 'create' | 'prepare',
+    input: Record<string, unknown>,
+  ): string {
+    return createHash('sha256')
+      .update(JSON.stringify({ operation, ...input }))
+      .digest('hex');
+  }
+
+  private isIdempotencyConflict(error: unknown): boolean {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    );
   }
 
   private getNextResetDate(now: Date): Date {
-    return new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-    );
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   }
 
   private timelineEntries(

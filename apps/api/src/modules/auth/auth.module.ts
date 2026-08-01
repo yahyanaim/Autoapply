@@ -16,11 +16,13 @@ import {
   GoogleOAuthGuard,
 } from './interface/guards/oauth-configured.guard';
 import { BillingModule } from '../billing/billing.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
     PrismaModule,
     BillingModule,
+    NotificationModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

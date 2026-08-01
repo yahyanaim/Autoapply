@@ -15,6 +15,7 @@ import { PasswordService } from '../infrastructure/password.service';
 import * as crypto from 'crypto';
 import {
   ActivityType,
+  NotificationChannel,
   OAuthProvider,
   Prisma,
   SessionClientType,
@@ -24,10 +25,18 @@ import {
 } from '@prisma/client';
 import { MfaService } from '../infrastructure/mfa.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
+import { NotificationService } from '../../notification/application/notification.service';
 
 export interface SessionMetadata {
   userAgent?: string;
   ipAddress?: string;
+}
+
+class RefreshTokenReuseDetectedError extends Error {
+  constructor() {
+    super('Refresh token reuse detected');
+    this.name = 'RefreshTokenReuseDetectedError';
+  }
 }
 
 @Injectable()
@@ -40,6 +49,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mfaService: MfaService,
+    @Optional() private readonly notificationService?: NotificationService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
@@ -90,7 +100,10 @@ export class AuthService {
         return created;
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
         throw new ConflictException('User with this email already exists');
       }
       throw error;
@@ -130,14 +143,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isValid = await this.passwordService.verify(user.passwordHash, password);
+    const isValid = await this.passwordService.verify(
+      user.passwordHash,
+      password,
+    );
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const privileged =
-      user.role === UserRole.org_admin ||
-      user.role === UserRole.platform_admin;
+      user.role === UserRole.org_admin || user.role === UserRole.platform_admin;
     if (
       privileged &&
       (!user.mfaEnabledAt ||
@@ -182,7 +197,9 @@ export class AuthService {
   async createExtensionHandoff(userId: string) {
     const extensionId = this.configService.get<string>('EXTENSION_ID');
     if (!extensionId) {
-      throw new BadRequestException('Extension authentication is not configured');
+      throw new BadRequestException(
+        'Extension authentication is not configured',
+      );
     }
 
     const code = crypto.randomBytes(32).toString('base64url');
@@ -272,7 +289,9 @@ export class AuthService {
         select: { plan: true, status: true },
       });
       if (!this.isPaidExtensionSubscription(subscription)) {
-        throw new ForbiddenException('A Pro plan is required to use the extension');
+        throw new ForbiddenException(
+          'A Pro plan is required to use the extension',
+        );
       }
       const consumed = await transaction.extensionAuthHandoff.updateMany({
         where: {
@@ -395,6 +414,15 @@ export class AuthService {
 
   async refreshToken(token: string) {
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const now = this.clock.now();
+
+    // Refresh history is intentionally detached from sessions so a token can
+    // still be recognized after logout/revocation. Expired evidence is pruned
+    // opportunistically on refresh, while expiresAt remains the hard logical
+    // boundary even when a dormant database has not run cleanup recently.
+    await this.prisma.refreshTokenHistory.deleteMany({
+      where: { expiresAt: { lte: now } },
+    });
 
     const session = await this.prisma.session.findUnique({
       where: { token: tokenHash },
@@ -402,6 +430,24 @@ export class AuthService {
     });
 
     if (!session) {
+      const replayedToken = await this.prisma.refreshTokenHistory.findUnique({
+        where: { tokenHash },
+        select: {
+          sessionId: true,
+          userId: true,
+          expiresAt: true,
+        },
+      });
+      if (replayedToken && replayedToken.expiresAt > now) {
+        await this.handleRefreshTokenReuse(
+          replayedToken.sessionId,
+          replayedToken.userId,
+          tokenHash,
+        );
+        throw new UnauthorizedException(
+          'Session revoked because refresh token reuse was detected',
+        );
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -410,13 +456,12 @@ export class AuthService {
       !this.isPaidExtensionSubscription(session.user.subscription)
     ) {
       await this.prisma.session.deleteMany({ where: { id: session.id } });
-      throw new UnauthorizedException('A Pro plan is required to use the extension');
+      throw new UnauthorizedException(
+        'A Pro plan is required to use the extension',
+      );
     }
 
-    const now = this.clock.now();
-    const idleCutoff = new Date(
-      now.getTime() - this.getSessionIdleTimeoutMs(),
-    );
+    const idleCutoff = new Date(now.getTime() - this.getSessionIdleTimeoutMs());
     if (
       session.expiresAt <= now ||
       session.absoluteExpiresAt <= now ||
@@ -432,6 +477,7 @@ export class AuthService {
       session.id,
       session.userId,
       tokenHash,
+      session.absoluteExpiresAt,
     );
 
     return {
@@ -455,7 +501,11 @@ export class AuthService {
     await this.prisma.session.deleteMany({
       where: { id: sessionId, userId },
     });
-    await this.writeAuthActivity(userId, ActivityType.auth_logout, 'session_logout');
+    await this.writeAuthActivity(
+      userId,
+      ActivityType.auth_logout,
+      'session_logout',
+    );
 
     return { message: 'Logged out successfully' };
   }
@@ -520,7 +570,10 @@ export class AuthService {
     }
   }
 
-  async revokeOtherSessions(userId: string, currentSessionId: string): Promise<number> {
+  async revokeOtherSessions(
+    userId: string,
+    currentSessionId: string,
+  ): Promise<number> {
     const revoked = await this.prisma.session.deleteMany({
       where: { userId, id: { not: currentSessionId } },
     });
@@ -560,18 +613,20 @@ export class AuthService {
   ) {
     const sessionId = crypto.randomUUID();
     const rawRefreshToken = this.createRefreshToken(sessionId);
-    const refreshTokenHash = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
+    const refreshTokenHash = crypto
+      .createHash('sha256')
+      .update(rawRefreshToken)
+      .digest('hex');
 
     const now = this.clock.now();
     const expiresAt = new Date(now);
     expiresAt.setDate(
-      expiresAt.getDate() + Number(this.configService.get('REFRESH_TOKEN_TTL_DAYS', 7)),
+      expiresAt.getDate() +
+        Number(this.configService.get('REFRESH_TOKEN_TTL_DAYS', 7)),
     );
     const absoluteExpiresAt = new Date(
       now.getTime() +
-        Number(
-          this.configService.get('SESSION_ABSOLUTE_TIMEOUT_HOURS', 8),
-        ) *
+        Number(this.configService.get('SESSION_ABSOLUTE_TIMEOUT_HOURS', 8)) *
           60 *
           60_000,
     );
@@ -627,36 +682,138 @@ export class AuthService {
     sessionId: string,
     userId: string,
     previousTokenHash: string,
+    familyExpiresAt: Date,
   ) {
     const rawRefreshToken = this.createRefreshToken(sessionId);
-    const token = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
+    const token = crypto
+      .createHash('sha256')
+      .update(rawRefreshToken)
+      .digest('hex');
     const now = this.clock.now();
     const expiresAt = new Date(now);
     expiresAt.setDate(
-      expiresAt.getDate() + Number(this.configService.get('REFRESH_TOKEN_TTL_DAYS', 7)),
+      expiresAt.getDate() +
+        Number(this.configService.get('REFRESH_TOKEN_TTL_DAYS', 7)),
     );
 
-    const rotated = await this.prisma.session.updateMany({
-      where: {
-        id: sessionId,
-        userId,
-        token: previousTokenHash,
-        expiresAt: { gt: now },
-        absoluteExpiresAt: { gt: now },
-        lastUsedAt: {
-          gt: new Date(now.getTime() - this.getSessionIdleTimeoutMs()),
-        },
-      },
-      data: { token, expiresAt, lastUsedAt: now },
-    });
-    if (rotated.count !== 1) {
-      throw new UnauthorizedException('Refresh token has already been used');
-    }
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        const rotated = await transaction.session.updateMany({
+          where: {
+            id: sessionId,
+            userId,
+            token: previousTokenHash,
+            expiresAt: { gt: now },
+            absoluteExpiresAt: { gt: now },
+            lastUsedAt: {
+              gt: new Date(now.getTime() - this.getSessionIdleTimeoutMs()),
+            },
+          },
+          data: { token, expiresAt, lastUsedAt: now },
+        });
+        if (rotated.count !== 1) {
+          throw new RefreshTokenReuseDetectedError();
+        }
 
-    return {
-      accessToken: this.jwtService.sign({ sub: userId, sid: sessionId }),
-      refreshToken: rawRefreshToken,
-    };
+        await transaction.refreshTokenHistory.deleteMany({
+          where: {
+            sessionId,
+            expiresAt: { lte: now },
+          },
+        });
+        await transaction.refreshTokenHistory.create({
+          data: {
+            sessionId,
+            userId,
+            tokenHash: previousTokenHash,
+            expiresAt: familyExpiresAt,
+          },
+        });
+
+        return {
+          accessToken: this.jwtService.sign({ sub: userId, sid: sessionId }),
+          refreshToken: rawRefreshToken,
+        };
+      });
+    } catch (error) {
+      if (error instanceof RefreshTokenReuseDetectedError) {
+        await this.handleRefreshTokenReuse(
+          sessionId,
+          userId,
+          previousTokenHash,
+        );
+        throw new UnauthorizedException(
+          'Session revoked because refresh token reuse was detected',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async handleRefreshTokenReuse(
+    sessionId: string,
+    userId: string,
+    tokenHash: string,
+  ): Promise<void> {
+    const detectedAt = this.clock.now();
+    const detection = await this.prisma.$transaction(async (transaction) => {
+      const claimed = await transaction.refreshTokenHistory.updateMany({
+        where: {
+          tokenHash,
+          userId,
+          sessionId,
+          expiresAt: { gt: detectedAt },
+          detectedAt: null,
+        },
+        data: { detectedAt },
+      });
+      await transaction.session.deleteMany({
+        where: {
+          id: sessionId,
+          userId,
+        },
+      });
+      return claimed.count === 1;
+    });
+    if (!detection) return;
+
+    await this.writeAuthActivity(
+      userId,
+      ActivityType.auth_token_reuse,
+      'superseded_refresh_token_replay',
+    );
+    this.logger.warn('Revoked a session family after refresh-token reuse');
+
+    if (!this.notificationService) return;
+
+    const title = 'Your ApplyAI session was secured';
+    const body =
+      'ApplyAI detected reuse of an older sign-in token and revoked the affected session. Sign in again and review your active devices.';
+    try {
+      await this.notificationService.create(
+        userId,
+        title,
+        body,
+        NotificationChannel.in_app,
+      );
+      if (
+        this.configService.get<string>('SMTP_HOST') &&
+        this.configService.get<string>('SMTP_FROM')
+      ) {
+        await this.notificationService.create(
+          userId,
+          title,
+          body,
+          NotificationChannel.email,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Could not notify user ${userId} about refresh-token reuse: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private getNextResetDate(): Date {
@@ -666,9 +823,7 @@ export class AuthService {
 
   private isPaidExtensionSubscription(
     subscription:
-      | { plan: SubscriptionPlan; status: SubscriptionStatus }
-      | null
-      | undefined,
+      { plan: SubscriptionPlan; status: SubscriptionStatus } | null | undefined,
   ): boolean {
     if (!subscription) return false;
     const active =

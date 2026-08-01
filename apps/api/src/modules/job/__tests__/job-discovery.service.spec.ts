@@ -46,10 +46,7 @@ describe('JobDiscoveryService', () => {
           jobDescriptions: string[],
         ) =>
           jobDescriptions.map((jobDescription) => ({
-            ...calculateMatchScore(
-              { content: resumeContent },
-              jobDescription,
-            ),
+            ...calculateMatchScore({ content: resumeContent }, jobDescription),
             cached: false,
           })),
       ),
@@ -134,10 +131,7 @@ describe('JobDiscoveryService', () => {
         where: {
           AND: expect.arrayContaining([
             {
-              OR: [
-                { capturedByUserId: null },
-                { capturedByUserId: 'user-1' },
-              ],
+              OR: [{ capturedByUserId: null }, { capturedByUserId: 'user-1' }],
             },
           ]),
         },
@@ -191,6 +185,48 @@ describe('JobDiscoveryService', () => {
     expect(result.sourceRefresh).toEqual([
       expect.objectContaining({ status: 'refreshed', ingested: 12 }),
       expect.objectContaining({ status: 'refreshed', ingested: 8 }),
+    ]);
+  });
+
+  it('continues with healthy providers when one configured source fails', async () => {
+    config.get.mockImplementation((key: string, fallback: unknown) => {
+      if (key === 'JOB_DISCOVERY_SOURCES') {
+        return 'greenhouse:unavailable,lever:healthy';
+      }
+      return fallback;
+    });
+    ingestion.ingest
+      .mockRejectedValueOnce(new Error('upstream provider unavailable'))
+      .mockResolvedValueOnce({
+        source: 'lever',
+        identifier: 'healthy',
+        ingested: 6,
+      });
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume-1',
+      parseStatus: ResumeParseStatus.ready,
+      parsedJson: { skills: [], experience: [] },
+    });
+    prisma.job.findMany.mockResolvedValue([]);
+
+    const result = await service.discover('user-1', {
+      resumeId: 'resume-1',
+      limit: 20,
+    });
+
+    expect(ingestion.ingest).toHaveBeenCalledTimes(2);
+    expect(result.sourceRefresh).toEqual([
+      {
+        source: 'greenhouse',
+        identifier: 'unavailable',
+        status: 'failed',
+      },
+      {
+        source: 'lever',
+        identifier: 'healthy',
+        status: 'refreshed',
+        ingested: 6,
+      },
     ]);
   });
 

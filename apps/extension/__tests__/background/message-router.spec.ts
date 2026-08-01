@@ -5,6 +5,8 @@ import { DASHBOARD_BASE_URL } from '../../src/shared/config';
 
 describe('MessageRouter', () => {
   const storageGet = vi.fn();
+  const storageSet = vi.fn();
+  const storageRemove = vi.fn();
   const authManager = {
     apiFetch: vi.fn(),
     isAuthenticated: vi.fn(),
@@ -17,7 +19,11 @@ describe('MessageRouter', () => {
     vi.stubGlobal('chrome', {
       runtime: { id: 'applyai-extension' },
       storage: {
-        local: { get: storageGet },
+        local: {
+          get: storageGet,
+          set: storageSet,
+          remove: storageRemove,
+        },
       },
     });
   });
@@ -32,7 +38,9 @@ describe('MessageRouter', () => {
       sendResponse,
     );
 
-    expect(sendResponse).toHaveBeenCalledWith({ error: 'Untrusted message sender' });
+    expect(sendResponse).toHaveBeenCalledWith({
+      error: 'Untrusted message sender',
+    });
     expect(authManager.isAuthenticated).not.toHaveBeenCalled();
   });
 
@@ -41,7 +49,10 @@ describe('MessageRouter', () => {
     const router = new MessageRouter(authManager as unknown as AuthManager);
 
     await router.handleMessage(
-      { type: 'GET_MATCH_SCORE', payload: { jobDescription: 'Build reliable services' } },
+      {
+        type: 'GET_MATCH_SCORE',
+        payload: { jobDescription: 'Build reliable services' },
+      },
       { id: 'applyai-extension' } as chrome.runtime.MessageSender,
       sendResponse,
     );
@@ -71,14 +82,20 @@ describe('MessageRouter', () => {
     const router = new MessageRouter(authManager as unknown as AuthManager);
 
     await router.handleMessage(
-      { type: 'GET_MATCH_SCORE', payload: { jobDescription: 'Platform engineer' } },
+      {
+        type: 'GET_MATCH_SCORE',
+        payload: { jobDescription: 'Platform engineer' },
+      },
       { id: 'applyai-extension' } as chrome.runtime.MessageSender,
       sendResponse,
     );
 
     expect(authManager.apiFetch).toHaveBeenCalledWith('/ai/match-score-text', {
       method: 'POST',
-      body: JSON.stringify({ resumeId: 'resume-1', jobDescription: 'Platform engineer' }),
+      body: JSON.stringify({
+        resumeId: 'resume-1',
+        jobDescription: 'Platform engineer',
+      }),
     });
     expect(sendResponse).toHaveBeenCalledWith({
       result: {
@@ -139,12 +156,72 @@ describe('MessageRouter', () => {
       '/applications/prepare',
       {
         method: 'POST',
+        headers: {
+          'Idempotency-Key': expect.stringMatching(
+            /^extension-prepare:[0-9a-f-]{36}$/,
+          ),
+        },
         body: JSON.stringify({ jobId: 'job-1', resumeId: 'resume-1' }),
       },
+    );
+    expect(storageSet).toHaveBeenCalledWith({
+      'prepareIdempotency:resume-1:job-1':
+        expect.stringMatching(/^extension-prepare:/),
+    });
+    expect(storageRemove).toHaveBeenCalledWith(
+      'prepareIdempotency:resume-1:job-1',
     );
     expect(sendResponse).toHaveBeenCalledWith({
       applicationId: 'application-1',
       reviewUrl: `${DASHBOARD_BASE_URL}/applications/application-1`,
     });
+  });
+
+  it('reuses a retained preparation key after a lost response', async () => {
+    const retainedKey = 'extension-prepare:retained-retry-key';
+    storageGet
+      .mockResolvedValueOnce({ selectedResume: 'resume-1' })
+      .mockResolvedValueOnce({
+        'prepareIdempotency:resume-1:job-1': retainedKey,
+      });
+    authManager.apiFetch
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'job-1' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'application-1' }), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    const router = new MessageRouter(authManager as unknown as AuthManager);
+
+    await router.handleMessage(
+      {
+        type: 'PREPARE_APPLICATION',
+        payload: {
+          title: 'Platform Engineer',
+          description: 'Build reliable distributed services.',
+          url: 'https://www.rekrute.com/job/123',
+        },
+      },
+      { id: 'applyai-extension' } as chrome.runtime.MessageSender,
+      vi.fn(),
+    );
+
+    expect(authManager.apiFetch).toHaveBeenNthCalledWith(
+      2,
+      '/applications/prepare',
+      expect.objectContaining({
+        headers: { 'Idempotency-Key': retainedKey },
+      }),
+    );
+    expect(storageSet).not.toHaveBeenCalled();
+    expect(storageRemove).toHaveBeenCalledWith(
+      'prepareIdempotency:resume-1:job-1',
+    );
   });
 });
