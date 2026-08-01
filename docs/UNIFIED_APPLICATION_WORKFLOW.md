@@ -22,9 +22,9 @@ documents.
 8. The user edits and reviews both documents in one workspace.
 9. **Approve application package** hashes and freezes the reviewed versions.
 10. The extension may retrieve only an approved package, fill supported fields,
-   attach the approved PDF and insert the approved cover letter.
+    attach the approved PDF and insert the approved cover letter.
 11. The extension never clicks the final Submit button. The user submits and
-   confirms the tracker status.
+    confirms the tracker status.
 
 `generation_failed` is a recoverable state. The workflow keeps the draft and
 offers a retry without creating a disconnected application.
@@ -43,6 +43,14 @@ offers a retry without creating a disconnected application.
   handoff using the authenticated user session.
 
 Captured jobs are tenant-scoped. Approved partner-API jobs remain public.
+
+`POST /jobs/discover`, `POST /applications/prepare`,
+`POST /applications`, and `POST /applications/:id/regenerate` require an
+`Idempotency-Key` header. The key must contain 16–128 letters, numbers, dots,
+underscores, colons, or hyphens. Keep the same key and identical payload when
+retrying a logical operation after a timeout or lost response. Reusing the key
+with a different payload, or while the original is still pending, returns
+`409`; a completed response is replayed during its retention window.
 
 ## Job-source policy
 

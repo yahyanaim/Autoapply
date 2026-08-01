@@ -11,6 +11,7 @@ import {
   HttpCode,
   HttpStatus,
   StreamableFile,
+  Headers,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -20,6 +21,7 @@ import {
   ApiBearerAuth,
   ApiConsumes,
   ApiProduces,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
@@ -28,6 +30,8 @@ import { OptimizeResumeDto } from './dto/optimize-resume.dto';
 import { AIService } from '../../ai/application/ai.service';
 import { Throttle } from '@nestjs/throttler';
 import { GeneratedResumePdfService } from '../infrastructure/pdf/generated-resume-pdf.service';
+import { IdempotencyService } from '../../../shared/idempotency/idempotency.service';
+import { requireIdempotencyKey } from '../../../shared/idempotency/idempotency-key';
 
 const resumeUploadLimits = {
   fileSize: 5 * 1024 * 1024,
@@ -45,6 +49,7 @@ export class ResumeController {
     private readonly resumeService: ResumeService,
     private readonly aiService: AIService,
     private readonly generatedResumePdf: GeneratedResumePdfService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   @Post()
@@ -81,10 +86,7 @@ export class ResumeController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Resume not found' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
-  async getOne(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  async getOne(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.resumeService.getResume(userId, id);
   }
 
@@ -92,7 +94,10 @@ export class ResumeController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List generated versions of a resume' })
-  @ApiResponse({ status: 200, description: 'Resume versions retrieved successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'Resume versions retrieved successfully',
+  })
   async listVersions(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
@@ -136,10 +141,7 @@ export class ResumeController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 404, description: 'Resume not found' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
-  async delete(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  async delete(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.resumeService.deleteResume(userId, id);
   }
 
@@ -147,18 +149,29 @@ export class ResumeController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Optimize a resume for a job' })
   @ApiResponse({ status: 200, description: 'Resume optimized successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Monthly optimization limit reached' })
+  @ApiResponse({
+    status: 403,
+    description: 'Monthly optimization limit reached',
+  })
   @ApiResponse({ status: 404, description: 'Resume not found' })
   async optimize(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @Body() dto: OptimizeResumeDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ) {
-    return this.aiService.optimizeResume(userId, id, dto.jobId);
+    return this.idempotency.execute({
+      userId,
+      key: requireIdempotencyKey(idempotencyKey),
+      operation: 'resumes.optimize',
+      payload: { resumeId: id, jobId: dto.jobId },
+      handler: () => this.aiService.optimizeResume(userId, id, dto.jobId),
+    });
   }
 }
 

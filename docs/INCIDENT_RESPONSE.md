@@ -37,10 +37,27 @@
 ## Security or privacy event
 
 - Revoke affected sessions and rotate exposed credentials.
+- For an `auth_token_reuse` event, preserve the activity record, confirm the
+  affected session family was revoked, notify the account owner, and inspect
+  recent active-device metadata without collecting token values.
 - Preserve audit records and restrict access to the response team.
 - Identify affected people/data and engage the privacy/security owner.
 - The privacy owner determines notification obligations and deadlines with
   counsel; engineering must not guess jurisdictional requirements.
+
+## Database recovery
+
+- Follow `docs/DEPLOYMENT_OPERATIONS.md`; never restore directly over production
+  as the first test.
+- Keep the dump beside its `.sha256` companion. The restore script must
+  successfully verify that checksum before `pg_restore` inspects or applies the
+  dump.
+- Restore into an isolated database. Passing the checksum and format checks
+  proves file integrity, not that the recovery drill or application validation
+  succeeded.
+- Run migrations, readiness checks, authentication, a synthetic resume flow,
+  and tenant-isolation verification before considering promotion.
+- Record recovery-point age, recovery duration, operator, and validation result.
 
 ## Closeout
 

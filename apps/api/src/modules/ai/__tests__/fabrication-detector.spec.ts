@@ -1,4 +1,7 @@
-import { detectFabrications } from '../domain/fabrication-detector';
+import {
+  analyzeResumeTruthfulness,
+  detectFabrications,
+} from '../domain/fabrication-detector';
 
 describe('detectFabrications', () => {
   it('should return no fabrications when content is unchanged', () => {
@@ -81,7 +84,8 @@ describe('detectFabrications', () => {
 
   it('should detect added work experience', () => {
     const original = {
-      content: 'Experience: Worked at Google as a Software Engineer from 2020 to 2024.',
+      content:
+        'Experience: Worked at Google as a Software Engineer from 2020 to 2024.',
     };
     const optimized = {
       content:
@@ -124,7 +128,9 @@ describe('detectFabrications', () => {
     );
 
     expect(result).toEqual(
-      expect.arrayContaining([expect.objectContaining({ type: 'certification' })]),
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'certification' }),
+      ]),
     );
   });
 
@@ -134,14 +140,17 @@ describe('detectFabrications', () => {
       { content: 'Improved API performance by 45% for 2 million users.' },
     );
 
-    expect(result).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'metric' })]));
+    expect(result).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'metric' })]),
+    );
   });
 
   it('detects non-software skills added outside the verified profile', () => {
     const result = detectFabrications(
       { content: 'Marketing specialist with campaign experience.' },
       {
-        content: 'Marketing specialist skilled in Salesforce, Adobe Photoshop, and SEC compliance.',
+        content:
+          'Marketing specialist skilled in Salesforce, Adobe Photoshop, and SEC compliance.',
       },
       {
         original: {
@@ -183,7 +192,8 @@ describe('detectFabrications', () => {
     const result = detectFabrications(
       { content: 'Account Manager — Atlas Distribution' },
       {
-        content: 'Account Manager — Atlas Distribution. Regional Director — Northstar Group.',
+        content:
+          'Account Manager — Atlas Distribution. Regional Director — Northstar Group.',
       },
       {
         original: {
@@ -241,7 +251,8 @@ describe('detectFabrications', () => {
     const result = detectFabrications(
       { content: 'Bachelor of Commerce, Hassan II University' },
       {
-        content: 'Master of Finance, Hassan II University. Chartered Financial Analyst.',
+        content:
+          'Master of Finance, Hassan II University. Chartered Financial Analyst.',
       },
       {
         original: {
@@ -387,6 +398,43 @@ describe('detectFabrications', () => {
     );
   });
 
+  it('treats an empty current-role end date as Present', () => {
+    const original = {
+      skills: [],
+      experience: [
+        {
+          company: 'Atlas Bank',
+          title: 'Analyst',
+          startDate: '2023',
+          endDate: null,
+          description: 'Prepared reports.',
+          highlights: [],
+        },
+      ],
+      education: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+    };
+    const optimized = {
+      ...original,
+      experience: [
+        {
+          ...original.experience[0],
+          endDate: 'Present',
+        },
+      ],
+    };
+
+    const report = analyzeResumeTruthfulness(
+      { content: JSON.stringify(original) },
+      { content: JSON.stringify(optimized) },
+      { original, optimized },
+    );
+
+    expect(report.summary.unsupported_blocked).toBe(0);
+  });
+
   it('allows structured claims that remain grounded in the verified profile', () => {
     const structuredResume = {
       skills: ['Adobe Photoshop', 'Brand strategy'],
@@ -425,5 +473,457 @@ describe('detectFabrications', () => {
     );
 
     expect(result).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      profession: 'engineering',
+      original: {
+        skills: ['TypeScript', 'React'],
+        experience: [
+          {
+            company: 'Atlas Labs',
+            title: 'Software Engineer',
+            startDate: '2022',
+            endDate: 'Present',
+            description: 'Built React account features.',
+            highlights: ['Maintained TypeScript services'],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: ['English'],
+      },
+      optimized: {
+        skills: ['TypeScript', 'React', 'Rust'],
+        experience: [
+          {
+            company: 'Atlas Labs',
+            title: 'Software Engineer',
+            startDate: '2022',
+            endDate: 'Present',
+            description: 'Built React account features.',
+            highlights: ['Maintained TypeScript services'],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: ['English'],
+      },
+      blockedType: 'skill',
+      blockedText: 'Rust',
+    },
+    {
+      profession: 'marketing',
+      original: {
+        skills: ['Campaign planning', 'Google Analytics'],
+        experience: [
+          {
+            company: 'North Agency',
+            title: 'Marketing Specialist',
+            startDate: '2021',
+            endDate: '2024',
+            description: 'Planned digital campaigns.',
+            highlights: ['Reported campaign performance'],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: ['French'],
+      },
+      optimized: {
+        skills: ['Campaign planning', 'Google Analytics'],
+        experience: [
+          {
+            company: 'North Agency',
+            title: 'Marketing Specialist',
+            startDate: '2021',
+            endDate: '2024',
+            description: 'Planned digital campaigns.',
+            highlights: ['Reported campaign performance'],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: ['French', 'Spanish'],
+      },
+      blockedType: 'language',
+      blockedText: 'Spanish',
+    },
+    {
+      profession: 'finance',
+      original: {
+        skills: ['Financial modeling'],
+        experience: [
+          {
+            company: 'Atlas Bank',
+            title: 'Financial Analyst',
+            startDate: '2020',
+            endDate: '2024',
+            description: 'Prepared monthly portfolio reports.',
+            highlights: ['Reviewed investment performance'],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: ['Arabic', 'French'],
+      },
+      optimized: {
+        skills: ['Financial modeling'],
+        experience: [
+          {
+            company: 'Atlas Bank',
+            title: 'Financial Analyst',
+            startDate: '2020',
+            endDate: '2024',
+            description: 'Prepared monthly portfolio reports.',
+            highlights: ['Reviewed investment performance'],
+          },
+        ],
+        education: [],
+        projects: [
+          {
+            name: 'Risk forecasting platform',
+            description: 'Forecast portfolio exposure.',
+            technologies: ['Python'],
+          },
+        ],
+        certifications: [],
+        languages: ['Arabic', 'French'],
+      },
+      blockedType: 'project',
+      blockedText: 'Risk forecasting platform',
+    },
+    {
+      profession: 'design',
+      original: {
+        skills: ['Figma', 'Brand identity'],
+        experience: [
+          {
+            company: 'Studio Casa',
+            title: 'Brand Designer',
+            startDate: '2019',
+            endDate: '2024',
+            description: 'Designed brand identity systems in Figma.',
+            highlights: ['Created reusable brand assets'],
+          },
+        ],
+        education: [],
+        projects: [
+          {
+            name: 'Retail rebrand',
+            description: 'Created a retail identity system.',
+            technologies: ['Figma'],
+          },
+        ],
+        certifications: [],
+        languages: ['French'],
+      },
+      optimized: {
+        skills: ['Figma', 'Brand identity'],
+        experience: [
+          {
+            company: 'Studio Casa',
+            title: 'Brand Designer',
+            startDate: '2019',
+            endDate: '2024',
+            description: 'Designed brand identity systems in Figma.',
+            highlights: ['Created reusable brand assets'],
+          },
+        ],
+        education: [],
+        projects: [
+          {
+            name: 'Invented mobile app',
+            description: 'Designed a mobile product.',
+            technologies: ['Figma'],
+          },
+        ],
+        certifications: [],
+        languages: ['French'],
+      },
+      blockedType: 'project',
+      blockedText: 'Invented mobile app',
+    },
+  ])(
+    'blocks unsupported structured facts for a $profession CV',
+    ({ original, optimized, blockedType, blockedText }) => {
+      const report = analyzeResumeTruthfulness(
+        { content: JSON.stringify(original) },
+        { content: JSON.stringify(optimized) },
+        { original, optimized },
+      );
+
+      expect(report.status).toBe('blocked');
+      expect(report.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            classification: 'unsupported_blocked',
+            type: blockedType,
+            detail: expect.stringContaining(blockedText),
+          }),
+        ]),
+      );
+    },
+  );
+
+  it('classifies grounded narrative changes and wording that needs confirmation', () => {
+    const original = {
+      skills: ['Campaign planning', 'Google Analytics'],
+      experience: [
+        {
+          company: 'North Agency',
+          title: 'Marketing Specialist',
+          startDate: '2021',
+          endDate: '2024',
+          description: 'Planned digital campaigns using Google Analytics.',
+          highlights: ['Reported campaign performance'],
+        },
+      ],
+      education: [],
+      projects: [],
+      certifications: [],
+      languages: ['French'],
+    };
+    const optimized = {
+      ...original,
+      profile:
+        'Marketing Specialist with Campaign planning and Google Analytics experience.',
+      experience: [
+        {
+          ...original.experience[0],
+          description:
+            'Directed global acquisitions and negotiated television partnerships.',
+        },
+      ],
+    };
+
+    const report = analyzeResumeTruthfulness(
+      { content: JSON.stringify(original) },
+      { content: JSON.stringify(optimized) },
+      { original, optimized },
+    );
+
+    expect(report.status).toBe('review_required');
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: 'safe_rewording',
+          section: 'Profile summary',
+        }),
+        expect.objectContaining({
+          classification: 'needs_confirmation',
+          section: expect.stringContaining('description'),
+          proposed: expect.stringContaining('television partnerships'),
+        }),
+      ]),
+    );
+  });
+
+  it('blocks an invented numerical achievement while preserving detailed evidence', () => {
+    const original = {
+      skills: ['Figma'],
+      experience: [
+        {
+          company: 'Studio Casa',
+          title: 'Designer',
+          startDate: '2020',
+          endDate: '2024',
+          description: 'Improved the design system.',
+          highlights: [],
+        },
+      ],
+      education: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+    };
+    const optimized = {
+      ...original,
+      experience: [
+        {
+          ...original.experience[0],
+          description: 'Improved the design system by 45%.',
+        },
+      ],
+    };
+
+    const report = analyzeResumeTruthfulness(
+      { content: JSON.stringify(original) },
+      { content: JSON.stringify(optimized) },
+      { original, optimized },
+    );
+
+    expect(report.status).toBe('blocked');
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: 'unsupported_blocked',
+          type: 'metric',
+          detail: expect.stringContaining('45%'),
+          proposed: '45%',
+        }),
+      ]),
+    );
+  });
+
+  it('blocks moving a verified achievement from one role to another', () => {
+    const original = {
+      skills: ['Sales strategy', 'Figma'],
+      experience: [
+        {
+          company: 'Atlas',
+          title: 'Sales Lead',
+          startDate: '2020',
+          endDate: '2022',
+          description: 'Grew sales by 30%.',
+          highlights: [],
+        },
+        {
+          company: 'Beta',
+          title: 'Designer',
+          startDate: '2022',
+          endDate: '2024',
+          description: 'Designed brand assets in Figma.',
+          highlights: [],
+        },
+      ],
+      education: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+    };
+    const optimized = {
+      ...original,
+      experience: [
+        original.experience[0],
+        {
+          ...original.experience[1],
+          description: 'Designed brand assets in Figma and grew sales by 30%.',
+        },
+      ],
+    };
+
+    const report = analyzeResumeTruthfulness(
+      { content: JSON.stringify(original) },
+      { content: JSON.stringify(optimized) },
+      { original, optimized },
+    );
+
+    expect(report.status).toBe('blocked');
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: 'unsupported_blocked',
+          type: 'metric',
+          section: expect.stringContaining('Designer'),
+          detail: expect.stringContaining('different verified evidence'),
+          proposed: '30%',
+        }),
+      ]),
+    );
+  });
+
+  it('blocks recombining a verified title with a different verified employer in the profile', () => {
+    const original = {
+      skills: [],
+      experience: [
+        {
+          company: 'Alpha',
+          title: 'Chief Executive Officer',
+          startDate: '2020',
+          endDate: '2022',
+          description: 'Led company strategy.',
+          highlights: [],
+        },
+        {
+          company: 'Google',
+          title: 'Software Engineer',
+          startDate: '2022',
+          endDate: '2024',
+          description: 'Built software systems.',
+          highlights: [],
+        },
+      ],
+      education: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+    };
+
+    const report = analyzeResumeTruthfulness(
+      { content: JSON.stringify(original) },
+      { content: 'Chief Executive Officer at Google.' },
+      {
+        original,
+        optimized: {
+          ...original,
+          profile: 'Chief Executive Officer at Google.',
+        },
+      },
+    );
+
+    expect(report.status).toBe('blocked');
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: 'unsupported_blocked',
+          section: 'Profile summary',
+          detail: expect.stringContaining('different employer'),
+        }),
+      ]),
+    );
+  });
+
+  it('blocks attributing another role metric to the role named in the profile', () => {
+    const original = {
+      skills: ['Sales strategy', 'Figma'],
+      experience: [
+        {
+          company: 'Alpha',
+          title: 'Sales Lead',
+          startDate: '2020',
+          endDate: '2022',
+          description: 'Grew revenue by 30%.',
+          highlights: [],
+        },
+        {
+          company: 'Google',
+          title: 'Designer',
+          startDate: '2022',
+          endDate: '2024',
+          description: 'Designed brand assets.',
+          highlights: [],
+        },
+      ],
+      education: [],
+      projects: [],
+      certifications: [],
+      languages: [],
+    };
+    const profile = 'Designer at Google, grew revenue by 30%.';
+
+    const report = analyzeResumeTruthfulness(
+      { content: JSON.stringify(original) },
+      { content: profile },
+      { original, optimized: { ...original, profile } },
+    );
+
+    expect(report.status).toBe('blocked');
+    expect(report.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          classification: 'unsupported_blocked',
+          type: 'metric',
+          section: 'Profile summary',
+          proposed: '30%',
+        }),
+      ]),
+    );
   });
 });

@@ -50,7 +50,9 @@ export class MessageRouter {
           await this.handleGetAutofillProfile(sendResponse);
           return;
         case 'GET_AUTH_STATE':
-          sendResponse({ authenticated: await this.authManager.isAuthenticated() });
+          sendResponse({
+            authenticated: await this.authManager.isAuthenticated(),
+          });
           return;
         case 'LOGOUT':
           await this.authManager.logout();
@@ -63,7 +65,9 @@ export class MessageRouter {
           sendResponse({ error: 'Unknown message type' });
       }
     } catch (error) {
-      sendResponse({ error: error instanceof Error ? error.message : 'Internal error' });
+      sendResponse({
+        error: error instanceof Error ? error.message : 'Internal error',
+      });
     }
   }
 
@@ -84,7 +88,9 @@ export class MessageRouter {
     }
     const settings = await chrome.storage.local.get('selectedResume');
     const resumeId =
-      typeof settings.selectedResume === 'string' ? settings.selectedResume : '';
+      typeof settings.selectedResume === 'string'
+        ? settings.selectedResume
+        : '';
     if (!resumeId) {
       sendResponse({
         error: 'Choose a resume in extension settings',
@@ -105,13 +111,31 @@ export class MessageRouter {
       }),
     });
     if (!captureResponse.ok) {
-      throw new Error(await this.readError(captureResponse, 'Failed to capture job'));
+      throw new Error(
+        await this.readError(captureResponse, 'Failed to capture job'),
+      );
     }
     const captured = (await captureResponse.json()) as { id: string };
+    const idempotencyStorageKey = `prepareIdempotency:${resumeId}:${captured.id}`;
+    const storedIdempotency = await chrome.storage.local.get(
+      idempotencyStorageKey,
+    );
+    const idempotencyKey =
+      typeof storedIdempotency[idempotencyStorageKey] === 'string'
+        ? storedIdempotency[idempotencyStorageKey]
+        : `extension-prepare:${crypto.randomUUID()}`;
+    if (storedIdempotency[idempotencyStorageKey] !== idempotencyKey) {
+      await chrome.storage.local.set({
+        [idempotencyStorageKey]: idempotencyKey,
+      });
+    }
     const preparationResponse = await this.authManager.apiFetch(
       '/applications/prepare',
       {
         method: 'POST',
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+        },
         body: JSON.stringify({ jobId: captured.id, resumeId }),
       },
     );
@@ -124,6 +148,7 @@ export class MessageRouter {
       );
     }
     const application = (await preparationResponse.json()) as { id: string };
+    await chrome.storage.local.remove(idempotencyStorageKey);
     sendResponse({
       applicationId: application.id,
       reviewUrl: `${DASHBOARD_BASE_URL}/applications/${application.id}`,
@@ -159,7 +184,9 @@ export class MessageRouter {
       applicationPackage.resumeDownloadPath,
     );
     if (!resumeResponse.ok) {
-      throw new Error(await this.readError(resumeResponse, 'Failed to load approved CV'));
+      throw new Error(
+        await this.readError(resumeResponse, 'Failed to load approved CV'),
+      );
     }
     const resumeBase64 = bytesToBase64(
       new Uint8Array(await resumeResponse.arrayBuffer()),
@@ -177,15 +204,23 @@ export class MessageRouter {
     message: Message,
     sendResponse: (response: unknown) => void,
   ): Promise<void> {
-    const { jobDescription } = (message.payload ?? {}) as { jobDescription?: string };
+    const { jobDescription } = (message.payload ?? {}) as {
+      jobDescription?: string;
+    };
     if (!jobDescription?.trim()) {
       throw new Error('Missing job description');
     }
 
     const settings = await chrome.storage.local.get('selectedResume');
-    const resumeId = typeof settings.selectedResume === 'string' ? settings.selectedResume : '';
+    const resumeId =
+      typeof settings.selectedResume === 'string'
+        ? settings.selectedResume
+        : '';
     if (!resumeId) {
-      sendResponse({ error: 'Choose a resume in extension settings', requiresResume: true });
+      sendResponse({
+        error: 'Choose a resume in extension settings',
+        requiresResume: true,
+      });
       return;
     }
 
@@ -194,7 +229,9 @@ export class MessageRouter {
       body: JSON.stringify({ resumeId, jobDescription }),
     });
     if (!response.ok) {
-      throw new Error(await this.readError(response, 'Failed to calculate match score'));
+      throw new Error(
+        await this.readError(response, 'Failed to calculate match score'),
+      );
     }
 
     const data = (await response.json()) as {
@@ -258,12 +295,16 @@ export class MessageRouter {
     if (!response.ok) {
       throw new Error(await this.readError(response, 'Failed to load resumes'));
     }
-    const payload = (await response.json()) as ResumeSummary[] | { resumes: ResumeSummary[] };
+    const payload = (await response.json()) as
+      ResumeSummary[] | { resumes: ResumeSummary[] };
     const resumes = Array.isArray(payload) ? payload : payload.resumes;
     return resumes.filter((resume) => resume.parseStatus === 'ready');
   }
 
-  private async readError(response: Response, fallback: string): Promise<string> {
+  private async readError(
+    response: Response,
+    fallback: string,
+  ): Promise<string> {
     try {
       const data = (await response.json()) as { message?: string | string[] };
       if (Array.isArray(data.message)) return data.message.join(', ');

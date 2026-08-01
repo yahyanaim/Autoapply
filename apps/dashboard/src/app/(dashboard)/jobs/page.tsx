@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { MatchScore } from '@/components/ui/MatchScore';
+import { JobMatchExplanation } from '@/components/jobs/JobMatchExplanation';
 import {
   JobRecommendation,
   JobSearchParams,
@@ -17,7 +18,10 @@ import {
 } from '@/lib/api/hooks/use-jobs';
 import { useApplications } from '@/lib/api/hooks/use-applications';
 import { useResumes } from '@/lib/api/hooks/use-resumes';
-import { hasMinimumPlan, useSubscription } from '@/lib/api/hooks/use-subscription';
+import {
+  hasMinimumPlan,
+  useSubscription,
+} from '@/lib/api/hooks/use-subscription';
 import { apiClient } from '@/lib/api/api-client';
 
 const remoteTypes: Array<{ label: string; value?: RemoteType }> = [
@@ -104,10 +108,7 @@ export default function JobsPage() {
   }, [readyResumes]);
 
   useEffect(() => {
-    if (
-      discoveredResumeId &&
-      discoveredResumeId !== selectedResumeId
-    ) {
+    if (discoveredResumeId && discoveredResumeId !== selectedResumeId) {
       resetDiscovery();
       setSelectedJobId('');
     }
@@ -117,7 +118,12 @@ export default function JobsPage() {
     event.preventDefault();
     discovery.reset();
     setSelectedJobId('');
-    setFilters({ query: query.trim() || undefined, location: location.trim() || undefined, remoteType, limit: 20 });
+    setFilters({
+      query: query.trim() || undefined,
+      location: location.trim() || undefined,
+      remoteType,
+      limit: 20,
+    });
   };
 
   const prepareApplication = async (jobId: string) => {
@@ -135,7 +141,9 @@ export default function JobsPage() {
       router.push(`/applications/${application.id}`);
     } catch (caught) {
       setMessage(
-        caught instanceof Error ? caught.message : 'Could not prepare the application',
+        caught instanceof Error
+          ? caught.message
+          : 'Could not prepare the application',
       );
     } finally {
       setPreparingJobId('');
@@ -227,7 +235,9 @@ export default function JobsPage() {
         router.push(`/resumes/${selectedResumeId}`);
       }
     } catch (caught) {
-      setMessage(caught instanceof Error ? caught.message : 'Could not capture the job');
+      setMessage(
+        caught instanceof Error ? caught.message : 'Could not capture the job',
+      );
     } finally {
       setIsCapturing(false);
     }
@@ -235,22 +245,50 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold text-gray-900">Find jobs</h1><p className="mt-1 text-sm text-gray-500">Discover up to 20 explainable matches from approved job sources, then select one to prepare.</p></div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Find jobs</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Discover up to 20 explainable matches from approved job sources, then
+          select one to prepare.
+        </p>
+      </div>
 
       <Card>
         <form onSubmit={search} className="grid gap-4 md:grid-cols-4">
-          <div className="md:col-span-2"><Input aria-label="Job search" placeholder="Title or keywords" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-          <Input aria-label="Location" placeholder="Location" value={location} onChange={(event) => setLocation(event.target.value)} />
+          <div className="md:col-span-2">
+            <Input
+              aria-label="Job search"
+              placeholder="Title or keywords"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <Input
+            aria-label="Location"
+            placeholder="Location"
+            value={location}
+            onChange={(event) => setLocation(event.target.value)}
+          />
           <Button type="submit">Search jobs</Button>
         </form>
         <div className="mt-4 flex flex-wrap gap-2">
           {remoteTypes.map((type) => (
-            <button key={type.label} type="button" onClick={() => setRemoteType(type.value)} className={`rounded-full px-4 py-1.5 text-sm font-medium ${remoteType === type.value ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>{type.label}</button>
+            <button
+              key={type.label}
+              type="button"
+              onClick={() => setRemoteType(type.value)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium ${remoteType === type.value ? 'bg-primary-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+            >
+              {type.label}
+            </button>
           ))}
         </div>
         <div className="mt-5 flex flex-col gap-3 border-t border-gray-100 pt-5 md:flex-row md:items-end md:justify-between">
           <div className="max-w-md flex-1">
-            <label htmlFor="cover-letter-resume" className="block text-sm font-medium text-gray-700">
+            <label
+              htmlFor="cover-letter-resume"
+              className="block text-sm font-medium text-gray-700"
+            >
               Resume used for discovery and the application package
             </label>
             <select
@@ -284,10 +322,15 @@ export default function JobsPage() {
         </div>
         {isPlanReady && !hasPro && (
           <p className="mt-4 text-sm text-gray-500">
-            Free includes 3 discovery runs, 5 AI requests, and 1 CV
-            optimization per month. Pro includes 50 discovery runs plus
-            unlimited CV optimization and unified cover-letter preparation.{' '}
-            <a href="/billing" className="font-semibold text-primary-600 hover:text-primary-700">View plans</a>
+            Free includes 3 discovery runs, 5 AI requests, and 1 CV optimization
+            per month. Pro includes 50 discovery runs plus unlimited CV
+            optimization and unified cover-letter preparation.{' '}
+            <a
+              href="/billing"
+              className="font-semibold text-primary-600 hover:text-primary-700"
+            >
+              View plans
+            </a>
           </p>
         )}
       </Card>
@@ -423,12 +466,35 @@ export default function JobsPage() {
         </form>
       </details>
 
-      {message && <div role="status" className="rounded-lg border border-info-200 bg-info-50 p-3 text-sm text-info-700">{message}</div>}
-      {!discovery.data && jobs.isLoading && <div className="flex justify-center py-16"><Spinner size="lg" /></div>}
-      {!discovery.data && jobs.isError && <div className="rounded-lg border border-danger-200 bg-danger-50 p-4 text-danger-700">{jobs.error.message}</div>}
-      {!discovery.data && !jobs.isLoading && !jobs.data?.jobs.length && <Card className="py-14 text-center text-sm text-gray-500">No jobs match these filters.</Card>}
+      {message && (
+        <div
+          role="status"
+          className="rounded-lg border border-info-200 bg-info-50 p-3 text-sm text-info-700"
+        >
+          {message}
+        </div>
+      )}
+      {!discovery.data && jobs.isLoading && (
+        <div className="flex justify-center py-16">
+          <Spinner size="lg" />
+        </div>
+      )}
+      {!discovery.data && jobs.isError && (
+        <div className="rounded-lg border border-danger-200 bg-danger-50 p-4 text-danger-700">
+          {jobs.error.message}
+        </div>
+      )}
+      {!discovery.data && !jobs.isLoading && !jobs.data?.jobs.length && (
+        <Card className="py-14 text-center text-sm text-gray-500">
+          No jobs match these filters.
+        </Card>
+      )}
 
-      {!discovery.data && jobs.data && <p className="text-sm text-gray-500">{jobs.data.total} job{jobs.data.total === 1 ? '' : 's'} found</p>}
+      {!discovery.data && jobs.data && (
+        <p className="text-sm text-gray-500">
+          {jobs.data.total} job{jobs.data.total === 1 ? '' : 's'} found
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         {(discovery.data?.jobs ?? jobs.data?.jobs ?? []).map((job) => {
           const recommendation =
@@ -442,9 +508,13 @@ export default function JobsPage() {
             isRecommendation: Boolean(recommendation),
             isSelected,
           });
-          const salary = job.salaryMin || job.salaryMax
-            ? [job.salaryMin, job.salaryMax].filter(Boolean).map((value) => `$${Number(value).toLocaleString()}`).join(' – ')
-            : 'Salary not listed';
+          const salary =
+            job.salaryMin || job.salaryMax
+              ? [job.salaryMin, job.salaryMax]
+                  .filter(Boolean)
+                  .map((value) => `$${Number(value).toLocaleString()}`)
+                  .join(' – ')
+              : 'Salary not listed';
           return (
             <Card
               key={job.id}
@@ -455,7 +525,12 @@ export default function JobsPage() {
               }
             >
               <div className="flex items-start justify-between gap-4">
-                <div><h2 className="font-semibold text-gray-900">{job.title}</h2><p className="mt-1 text-sm text-gray-600">{job.company?.name || 'Company not listed'}</p></div>
+                <div>
+                  <h2 className="font-semibold text-gray-900">{job.title}</h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {job.company?.name || 'Company not listed'}
+                  </p>
+                </div>
                 {recommendation ? (
                   <div className="text-center">
                     <MatchScore score={recommendation.matchScore} size="lg" />
@@ -467,45 +542,65 @@ export default function JobsPage() {
                     </p>
                   </div>
                 ) : job.remoteType ? (
-                  <Badge variant={job.remoteType === 'remote' ? 'success' : job.remoteType === 'hybrid' ? 'info' : 'warning'}>{job.remoteType === 'onsite' ? 'on-site' : job.remoteType}</Badge>
+                  <Badge
+                    variant={
+                      job.remoteType === 'remote'
+                        ? 'success'
+                        : job.remoteType === 'hybrid'
+                          ? 'info'
+                          : 'warning'
+                    }
+                  >
+                    {job.remoteType === 'onsite' ? 'on-site' : job.remoteType}
+                  </Badge>
                 ) : null}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-500">
-                <span>{job.location || 'Location not listed'} · {salary}</span>
+                <span>
+                  {job.location || 'Location not listed'} · {salary}
+                </span>
                 {job.remoteType && (
-                  <Badge variant={job.remoteType === 'remote' ? 'success' : job.remoteType === 'hybrid' ? 'info' : 'warning'}>{job.remoteType === 'onsite' ? 'on-site' : job.remoteType}</Badge>
+                  <Badge
+                    variant={
+                      job.remoteType === 'remote'
+                        ? 'success'
+                        : job.remoteType === 'hybrid'
+                          ? 'info'
+                          : 'warning'
+                    }
+                  >
+                    {job.remoteType === 'onsite' ? 'on-site' : job.remoteType}
+                  </Badge>
                 )}
               </div>
-              {job.skills.length > 0 && <div className="mt-3 flex flex-wrap gap-1">{job.skills.slice(0, 6).map((skill) => <span key={skill.id} className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">{skill.name}</span>)}</div>}
-              <p className="mt-3 line-clamp-3 text-sm text-gray-600">{job.description || 'No description available.'}</p>
+              {job.skills.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1">
+                  {job.skills.slice(0, 6).map((skill) => (
+                    <span
+                      key={skill.id}
+                      className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600"
+                    >
+                      {skill.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <p className="mt-3 line-clamp-3 text-sm text-gray-600">
+                {job.description || 'No description available.'}
+              </p>
               {recommendation && (
-                <details className="mt-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
-                  <summary className="cursor-pointer font-semibold text-gray-800">
-                    Why this score?
-                  </summary>
-                  <ul className="mt-2 space-y-1">
-                    {recommendation.explanation.slice(0, 8).map((line) => (
-                      <li key={line}>• {line}</li>
-                    ))}
-                  </ul>
-                  {recommendation.matchedResumeSkills.length > 0 && (
-                    <p className="mt-2">
-                      <span className="font-semibold">Matched CV skills:</span>{' '}
-                      {recommendation.matchedResumeSkills.join(', ')}
-                    </p>
-                  )}
-                  {recommendation.missingKeywords.length > 0 && (
-                    <p className="mt-2">
-                      <span className="font-semibold">Missing keywords:</span>{' '}
-                      {recommendation.missingKeywords.join(', ')}
-                    </p>
-                  )}
-                </details>
+                <JobMatchExplanation
+                  explanation={recommendation.explanation}
+                  matchedResumeSkills={recommendation.matchedResumeSkills}
+                  missingKeywords={recommendation.missingKeywords}
+                />
               )}
               <div className="mt-5 flex gap-2">
                 <Button
                   size="sm"
-                  variant={recommendation && !isSelected ? 'outline' : 'default'}
+                  variant={
+                    recommendation && !isSelected ? 'outline' : 'default'
+                  }
                   onClick={() => {
                     if (recommendation && !isSelected) {
                       setSelectedJobId(job.id);
@@ -526,7 +621,16 @@ export default function JobsPage() {
                 >
                   {actionLabel}
                 </Button>
-                {job.sourceUrl && <a className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50" href={job.sourceUrl} target="_blank" rel="noreferrer">View source</a>}
+                {job.sourceUrl && (
+                  <a
+                    className="inline-flex h-8 items-center justify-center rounded-lg border border-gray-300 px-3 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    href={job.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View source
+                  </a>
+                )}
               </div>
             </Card>
           );

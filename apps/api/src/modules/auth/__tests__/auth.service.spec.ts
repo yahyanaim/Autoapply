@@ -11,12 +11,14 @@ import {
 } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { MfaService } from '../infrastructure/mfa.service';
+import { NotificationService } from '../../notification/application/notification.service';
 
 describe('AuthService', () => {
   let service: AuthService;
   let prismaMock: any;
   let passwordServiceMock: any;
   let jwtServiceMock: any;
+  let notificationServiceMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -41,7 +43,13 @@ describe('AuthService', () => {
         findFirst: jest.fn(),
         findMany: jest.fn(),
         updateMany: jest.fn(),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      refreshTokenHistory: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
         deleteMany: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       extensionAuthHandoff: {
         create: jest.fn(),
@@ -52,10 +60,11 @@ describe('AuthService', () => {
       activityLog: {
         create: jest.fn().mockResolvedValue({ id: 'activity_1' }),
       },
-      $transaction: jest.fn((operation: ((client: any) => unknown) | Promise<unknown>[]) =>
-        typeof operation === 'function'
-          ? operation(prismaMock)
-          : Promise.all(operation),
+      $transaction: jest.fn(
+        (operation: ((client: any) => unknown) | Promise<unknown>[]) =>
+          typeof operation === 'function'
+            ? operation(prismaMock)
+            : Promise.all(operation),
       ),
     };
 
@@ -66,6 +75,9 @@ describe('AuthService', () => {
 
     jwtServiceMock = {
       sign: jest.fn(),
+    };
+    notificationServiceMock = {
+      create: jest.fn().mockResolvedValue({ id: 'security_notice' }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -94,6 +106,10 @@ describe('AuthService', () => {
             getOrThrow: jest.fn(() => 'test-jwt-secret-that-is-long-enough'),
           },
         },
+        {
+          provide: NotificationService,
+          useValue: notificationServiceMock,
+        },
       ],
     }).compile();
 
@@ -109,7 +125,11 @@ describe('AuthService', () => {
 
       prismaMock.user.findUnique.mockResolvedValue(null);
       passwordServiceMock.hash.mockResolvedValue(hashedPassword);
-      prismaMock.user.create.mockResolvedValue({ id: userId, email, role: 'user' });
+      prismaMock.user.create.mockResolvedValue({
+        id: userId,
+        email,
+        role: 'user',
+      });
       prismaMock.subscription.create.mockResolvedValue({});
       prismaMock.usageLimit.create.mockResolvedValue({});
       prismaMock.session.create.mockResolvedValue({ id: 'session_1' });
@@ -132,17 +152,23 @@ describe('AuthService', () => {
       const email = 'existing@example.com';
       const password = 'SecurePass123!@';
 
-      prismaMock.user.findUnique.mockResolvedValue({ id: 'existing_user', email });
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: 'existing_user',
+        email,
+      });
 
       await expect(
         service.register(email, password, undefined, true),
       ).rejects.toThrow(ConflictException);
-      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email } });
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
+        where: { email },
+      });
     });
 
     it('requires explicit data-processing consent', async () => {
-      await expect(service.register('test@example.com', 'SecurePass123!@'))
-        .rejects.toThrow(BadRequestException);
+      await expect(
+        service.register('test@example.com', 'SecurePass123!@'),
+      ).rejects.toThrow(BadRequestException);
       expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
     });
   });
@@ -169,7 +195,10 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('refreshToken');
       expect(result).toHaveProperty('user');
       expect(result.user).toHaveProperty('id', userId);
-      expect(passwordServiceMock.verify).toHaveBeenCalledWith(hashedPassword, password);
+      expect(passwordServiceMock.verify).toHaveBeenCalledWith(
+        hashedPassword,
+        password,
+      );
     });
 
     it('should throw UnauthorizedException if password is wrong', async () => {
@@ -184,8 +213,13 @@ describe('AuthService', () => {
       });
       passwordServiceMock.verify.mockResolvedValue(false);
 
-      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
-      expect(passwordServiceMock.verify).toHaveBeenCalledWith(hashedPassword, password);
+      await expect(service.login(email, password)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(passwordServiceMock.verify).toHaveBeenCalledWith(
+        hashedPassword,
+        password,
+      );
     });
 
     it('should throw UnauthorizedException if user does not exist', async () => {
@@ -194,8 +228,12 @@ describe('AuthService', () => {
 
       prismaMock.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
-      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email } });
+      await expect(service.login(email, password)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
+        where: { email },
+      });
     });
 
     it('should throw UnauthorizedException if user has no password hash', async () => {
@@ -208,7 +246,9 @@ describe('AuthService', () => {
         passwordHash: null,
       });
 
-      await expect(service.login(email, password)).rejects.toThrow(UnauthorizedException);
+      await expect(service.login(email, password)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('requires MFA for privileged accounts', async () => {
@@ -265,8 +305,12 @@ describe('AuthService', () => {
 
   describe('extension handoff', () => {
     it('creates a short-lived handoff without exposing session tokens', async () => {
-      prismaMock.extensionAuthHandoff.deleteMany.mockResolvedValue({ count: 0 });
-      prismaMock.extensionAuthHandoff.create.mockResolvedValue({ id: 'handoff_1' });
+      prismaMock.extensionAuthHandoff.deleteMany.mockResolvedValue({
+        count: 0,
+      });
+      prismaMock.extensionAuthHandoff.create.mockResolvedValue({
+        id: 'handoff_1',
+      });
 
       const handoff = await service.createExtensionHandoff('user_123');
 
@@ -301,7 +345,9 @@ describe('AuthService', () => {
           privacyPolicyVersion: '2026-07-25',
         },
       });
-      prismaMock.extensionAuthHandoff.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.extensionAuthHandoff.updateMany.mockResolvedValue({
+        count: 1,
+      });
       prismaMock.session.create.mockResolvedValue({ id: 'session_1' });
       jwtServiceMock.sign.mockReturnValue('access_token');
 
@@ -341,7 +387,9 @@ describe('AuthService', () => {
         lastUsedAt: new Date(),
         user: { id: 'user_123' },
       });
-      prismaMock.extensionAuthHandoff.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.extensionAuthHandoff.updateMany.mockResolvedValue({
+        count: 0,
+      });
 
       await expect(
         service.exchangeExtensionHandoff('a'.repeat(43)),
@@ -356,9 +404,14 @@ describe('AuthService', () => {
         id: 'session_1',
         userId: 'user_123',
         expiresAt: new Date(Date.now() + 60_000),
+        absoluteExpiresAt: new Date(Date.now() + 60_000),
+        lastUsedAt: new Date(),
         user: { id: 'user_123', email: 'test@example.com', role: 'user' },
       });
       prismaMock.session.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.refreshTokenHistory.create.mockResolvedValue({
+        id: 'history_1',
+      });
       jwtServiceMock.sign.mockReturnValue('new_access_token');
 
       const result = await service.refreshToken('refresh_token');
@@ -374,21 +427,137 @@ describe('AuthService', () => {
           }),
         }),
       );
+      expect(prismaMock.refreshTokenHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          sessionId: 'session_1',
+          userId: 'user_123',
+          tokenHash: expect.any(String),
+          expiresAt: expect.any(Date),
+        }),
+      });
     });
 
-    it('rejects a refresh token that loses the rotation race', async () => {
+    it('revokes and reports a session that loses the rotation race', async () => {
       prismaMock.session.findUnique.mockResolvedValue({
         id: 'session_1',
         userId: 'user_123',
         expiresAt: new Date(Date.now() + 60_000),
+        absoluteExpiresAt: new Date(Date.now() + 60_000),
+        lastUsedAt: new Date(),
         user: { id: 'user_123', email: 'test@example.com', role: 'user' },
       });
       prismaMock.session.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.session.deleteMany.mockResolvedValue({ count: 1 });
+      prismaMock.refreshTokenHistory.updateMany.mockResolvedValue({ count: 1 });
 
       await expect(service.refreshToken('replayed_token')).rejects.toThrow(
-        UnauthorizedException,
+        'Session revoked because refresh token reuse was detected',
       );
       expect(jwtServiceMock.sign).not.toHaveBeenCalled();
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'session_1', userId: 'user_123' },
+      });
+      expect(prismaMock.refreshTokenHistory.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          tokenHash: expect.any(String),
+          sessionId: 'session_1',
+          userId: 'user_123',
+          detectedAt: null,
+        }),
+        data: { detectedAt: expect.any(Date) },
+      });
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user_123',
+          type: 'auth_token_reuse',
+          metadata: { method: 'superseded_refresh_token_replay' },
+        }),
+      });
+      expect(notificationServiceMock.create).toHaveBeenCalledWith(
+        'user_123',
+        expect.any(String),
+        expect.stringContaining('older sign-in token'),
+        'in_app',
+      );
+    });
+
+    it('detects a superseded token and revokes its active family', async () => {
+      prismaMock.session.findUnique.mockResolvedValue(null);
+      prismaMock.refreshTokenHistory.findUnique.mockResolvedValue({
+        sessionId: 'session_1',
+        userId: 'user_123',
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      prismaMock.session.deleteMany.mockResolvedValue({ count: 1 });
+      prismaMock.refreshTokenHistory.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(service.refreshToken('stolen_old_token')).rejects.toThrow(
+        'Session revoked because refresh token reuse was detected',
+      );
+
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'session_1', userId: 'user_123' },
+      });
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user_123',
+          type: 'auth_token_reuse',
+        }),
+      });
+    });
+
+    it('detects a retained superseded token after its session was logged out', async () => {
+      prismaMock.session.findUnique.mockResolvedValue(null);
+      prismaMock.refreshTokenHistory.findUnique.mockResolvedValue({
+        sessionId: 'deleted_session',
+        userId: 'user_123',
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      prismaMock.refreshTokenHistory.updateMany.mockResolvedValue({ count: 1 });
+      prismaMock.session.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.refreshToken('old_after_logout')).rejects.toThrow(
+        'Session revoked because refresh token reuse was detected',
+      );
+
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'user_123',
+          type: 'auth_token_reuse',
+        }),
+      });
+      expect(notificationServiceMock.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not repeat audit or notifications for an already detected token', async () => {
+      prismaMock.session.findUnique.mockResolvedValue(null);
+      prismaMock.refreshTokenHistory.findUnique.mockResolvedValue({
+        sessionId: 'deleted_session',
+        userId: 'user_123',
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      prismaMock.refreshTokenHistory.updateMany.mockResolvedValue({ count: 0 });
+      prismaMock.session.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.refreshToken('old_after_logout')).rejects.toThrow(
+        'Session revoked because refresh token reuse was detected',
+      );
+
+      expect(prismaMock.activityLog.create).not.toHaveBeenCalled();
+      expect(notificationServiceMock.create).not.toHaveBeenCalled();
+    });
+
+    it('prunes expired history before evaluating a refresh token', async () => {
+      prismaMock.session.findUnique.mockResolvedValue(null);
+      prismaMock.refreshTokenHistory.findUnique.mockResolvedValue(null);
+
+      await expect(service.refreshToken('expired_history')).rejects.toThrow(
+        'Invalid refresh token',
+      );
+
+      expect(prismaMock.refreshTokenHistory.deleteMany).toHaveBeenCalledWith({
+        where: { expiresAt: { lte: expect.any(Date) } },
+      });
     });
 
     it('rejects and deletes an idle session before rotating it', async () => {
@@ -425,10 +594,7 @@ describe('AuthService', () => {
 
       expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
         where: {
-          OR: [
-            { token: expect.any(String) },
-            { id: sessionId },
-          ],
+          OR: [{ token: expect.any(String) }, { id: sessionId }],
         },
       });
     });
@@ -455,7 +621,10 @@ describe('AuthService', () => {
         },
       ]);
 
-      const sessions = await service.listSessions('user_123', 'current-session');
+      const sessions = await service.listSessions(
+        'user_123',
+        'current-session',
+      );
 
       expect(sessions).toEqual([
         expect.objectContaining({ id: 'current-session', current: true }),

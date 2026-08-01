@@ -10,6 +10,9 @@ There is no server-side LinkedIn or Indeed crawler.
 `POST /jobs/discover` accepts a ready resume, refreshes operator-configured
 approved ATS boards subject to a refresh TTL, scores at most 500 complete
 candidate records, and returns no more than 20 explainable recommendations.
+It requires a 16–128 character `Idempotency-Key`. A retry after a timeout must
+reuse the same key and resume payload; a conflicting or still-pending reuse
+returns `409`.
 Scoring uses the versioned explainable engine documented in
 `../ai/domain/MATCH_SCORE.md`. It is deterministic and consumes no
 language-model tokens. Results are

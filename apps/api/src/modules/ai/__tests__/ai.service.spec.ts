@@ -22,7 +22,11 @@ describe('AIService resume ownership and readiness', () => {
   };
   const matchScoreCache = {
     score: jest.fn(
-      async (_resumeId: string, resumeContent: string, jobDescription: string) => ({
+      async (
+        _resumeId: string,
+        resumeContent: string,
+        jobDescription: string,
+      ) => ({
         ...calculateMatchScore({ content: resumeContent }, jobDescription),
         cached: false,
       }),
@@ -107,7 +111,10 @@ describe('AIService resume ownership and readiness', () => {
         certifications: [],
       },
     });
-    prisma.job.findFirst.mockResolvedValue({ id: 'job_1', description: 'Rust' });
+    prisma.job.findFirst.mockResolvedValue({
+      id: 'job_1',
+      description: 'Rust',
+    });
     jest.spyOn(service, 'complete').mockResolvedValue({
       content: JSON.stringify({
         profileSummary: 'TypeScript developer.',
@@ -167,7 +174,10 @@ describe('AIService resume ownership and readiness', () => {
         certifications: [],
       },
     });
-    prisma.job.findFirst.mockResolvedValue({ id: 'job_1', description: 'TypeScript' });
+    prisma.job.findFirst.mockResolvedValue({
+      id: 'job_1',
+      description: 'TypeScript',
+    });
     jest.spyOn(service, 'complete').mockResolvedValue({
       content: '{"wrongField":true}',
       model: 'test-model',
@@ -209,7 +219,8 @@ describe('AIService resume ownership and readiness', () => {
     prisma.resumeVersion.create.mockResolvedValue({ id: 'version_1' });
     jest.spyOn(service, 'complete').mockResolvedValue({
       content: JSON.stringify({
-        profileSummary: 'Software Engineer experienced in TypeScript and React.',
+        profileSummary:
+          'Software Engineer experienced in TypeScript and React.',
         experience: [
           {
             index: 0,
@@ -228,6 +239,12 @@ describe('AIService resume ownership and readiness', () => {
     expect(result).toEqual(
       expect.objectContaining({
         versionId: 'version_1',
+        truthfulness: expect.objectContaining({
+          status: expect.stringMatching(/passed|review_required/),
+          summary: expect.objectContaining({
+            unsupported_blocked: 0,
+          }),
+        }),
         document: expect.objectContaining({
           template: 'classic-ats-v1',
           contact: expect.objectContaining({ fullName: 'Candidate Name' }),
@@ -291,12 +308,18 @@ describe('AIService request budgets', () => {
         $transaction: jest.fn(),
       } as never,
       providerFactory as never,
-      { loadTemplate: jest.fn().mockReturnValue('System\n## Resume\n{{resume}}') } as never,
+      {
+        loadTemplate: jest
+          .fn()
+          .mockReturnValue('System\n## Resume\n{{resume}}'),
+      } as never,
       {} as never,
     );
 
     await expect(
-      service.complete(AIRequestFeature.resume_optimize, 'user_1', { resume: 'short' }),
+      service.complete(AIRequestFeature.resume_optimize, 'user_1', {
+        resume: 'short',
+      }),
     ).rejects.toThrow(BadRequestException);
   });
 });

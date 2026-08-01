@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { apiClient } from '@/lib/api/api-client';
+import { createMutationIdempotencyStore } from '@/lib/api/mutation-idempotency';
 
 export type RemoteType = 'remote' | 'hybrid' | 'onsite';
 
@@ -115,11 +117,30 @@ export function useJob(id: string) {
 }
 
 export function useJobDiscovery() {
+  const idempotency = useRef(
+    createMutationIdempotencyStore('discover'),
+  ).current;
+
   return useMutation({
     mutationFn: (input: JobDiscoveryInput) =>
-      apiClient.post<JobDiscoveryResult>('/jobs/discover', {
-        ...input,
-        limit: Math.min(20, input.limit ?? 20),
-      }),
+      apiClient.post<JobDiscoveryResult>(
+        '/jobs/discover',
+        {
+          ...input,
+          limit: Math.min(20, input.limit ?? 20),
+        },
+        {
+          'Idempotency-Key': idempotency.keyFor(normalizeDiscoveryInput(input)),
+        },
+      ),
+    onSuccess: (_result, input) =>
+      idempotency.clear(normalizeDiscoveryInput(input)),
   });
+}
+
+function normalizeDiscoveryInput(input: JobDiscoveryInput): JobDiscoveryInput {
+  return {
+    ...input,
+    limit: Math.min(20, input.limit ?? 20),
+  };
 }

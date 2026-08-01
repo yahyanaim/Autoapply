@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { apiClient } from '@/lib/api/api-client';
+import { createMutationIdempotencyStore } from '@/lib/api/mutation-idempotency';
 import type { Job } from './use-jobs';
-import type { GeneratedResumeDocument } from './use-resumes';
+import type {
+  GeneratedResumeDocument,
+  TruthfulnessReport,
+} from './use-resumes';
 
-export type ApplicationStatus = 'draft' | 'submitted' | 'viewed' | 'interview' | 'offer' | 'rejected';
+export type ApplicationStatus =
+  'draft' | 'submitted' | 'viewed' | 'interview' | 'offer' | 'rejected';
 export type ApplicationPreparationStatus =
   | 'job_captured'
   | 'analyzing'
@@ -36,9 +42,15 @@ export interface Application {
   generationError: string | null;
   approvedAt: string | null;
   appliedAt: string | null;
-  timeline: Array<{ status?: ApplicationStatus; type?: string; timestamp: string; note?: string }> | null;
+  timeline: Array<{
+    status?: ApplicationStatus;
+    type?: string;
+    timestamp: string;
+    note?: string;
+  }> | null;
   createdAt: string;
   updatedAt: string;
+  truthfulness?: TruthfulnessReport | null;
   job: Job;
   resumeVersion?: {
     id: string;
@@ -66,23 +78,45 @@ interface ApplicationsResponse {
   limit: number;
 }
 
-export function useApplications(filters?: { status?: ApplicationStatus; page?: number; limit?: number }) {
+export function useApplications(filters?: {
+  status?: ApplicationStatus;
+  page?: number;
+  limit?: number;
+}) {
   const queryClient = useQueryClient();
+  const createIdempotency = useRef(
+    createMutationIdempotencyStore('create'),
+  ).current;
+  const prepareIdempotency = useRef(
+    createMutationIdempotencyStore('prepare'),
+  ).current;
   const applications = useQuery<ApplicationsResponse>({
     queryKey: ['applications', filters],
     queryFn: () => apiClient.get('/applications', filters),
   });
 
   const create = useMutation({
-    mutationFn: (input: { jobId: string; resumeVersionId?: string; coverLetterId?: string }) =>
-      apiClient.post<Application>('/applications', input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['applications'] }),
+    mutationFn: (input: {
+      jobId: string;
+      resumeVersionId?: string;
+      coverLetterId?: string;
+    }) =>
+      apiClient.post<Application>('/applications', input, {
+        'Idempotency-Key': createIdempotency.keyFor(input),
+      }),
+    onSuccess: (_result, input) => {
+      createIdempotency.clear(input);
+      return queryClient.invalidateQueries({ queryKey: ['applications'] });
+    },
   });
 
   const prepare = useMutation({
     mutationFn: (input: { jobId: string; resumeId: string }) =>
-      apiClient.post<Application>('/applications/prepare', input),
-    onSuccess: () => {
+      apiClient.post<Application>('/applications/prepare', input, {
+        'Idempotency-Key': prepareIdempotency.keyFor(input),
+      }),
+    onSuccess: (_result, input) => {
+      prepareIdempotency.clear(input);
       void queryClient.invalidateQueries({ queryKey: ['applications'] });
       void queryClient.invalidateQueries({ queryKey: ['resumes'] });
     },
@@ -91,12 +125,15 @@ export function useApplications(filters?: { status?: ApplicationStatus; page?: n
   const update = useMutation({
     mutationFn: ({ id, status }: { id: string; status: ApplicationStatus }) =>
       apiClient.patch<Application>(`/applications/${id}`, { status }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['applications'] }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['applications'] }),
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => apiClient.delete<{ message: string }>(`/applications/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['applications'] }),
+    mutationFn: (id: string) =>
+      apiClient.delete<{ message: string }>(`/applications/${id}`),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['applications'] }),
   });
 
   return { applications, create, prepare, update, remove };
@@ -104,6 +141,9 @@ export function useApplications(filters?: { status?: ApplicationStatus; page?: n
 
 export function useApplication(id: string) {
   const queryClient = useQueryClient();
+  const regenerateIdempotency = useRef(
+    createMutationIdempotencyStore('regenerate'),
+  ).current;
   const application = useQuery<Application>({
     queryKey: ['applications', id],
     queryFn: () => apiClient.get(`/applications/${id}`),
@@ -126,8 +166,10 @@ export function useApplication(id: string) {
     },
   });
   const remove = useMutation({
-    mutationFn: () => apiClient.delete<{ message: string }>(`/applications/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['applications'] }),
+    mutationFn: () =>
+      apiClient.delete<{ message: string }>(`/applications/${id}`),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['applications'] }),
   });
   const updateMaterials = useMutation({
     mutationFn: (input: {
@@ -144,12 +186,26 @@ export function useApplication(id: string) {
   });
   const regenerate = useMutation({
     mutationFn: (target: 'resume' | 'cover_letter' | 'all') =>
-      apiClient.post<Application>(`/applications/${id}/regenerate`, { target }),
-    onSuccess: () => invalidateApplication(queryClient, id),
+      apiClient.post<Application>(
+        `/applications/${id}/regenerate`,
+        { target },
+        {
+          'Idempotency-Key': regenerateIdempotency.keyFor({
+            applicationId: id,
+            target,
+          }),
+        },
+      ),
+    onSuccess: (_result, target) => {
+      regenerateIdempotency.clear({ applicationId: id, target });
+      invalidateApplication(queryClient, id);
+    },
   });
   const approve = useMutation({
-    mutationFn: () =>
-      apiClient.post<Application>(`/applications/${id}/approve`),
+    mutationFn: (confirmQuestionableClaims: boolean) =>
+      apiClient.post<Application>(`/applications/${id}/approve`, {
+        confirmQuestionableClaims,
+      }),
     onSuccess: () => invalidateApplication(queryClient, id),
   });
   const downloadPdf = useMutation({

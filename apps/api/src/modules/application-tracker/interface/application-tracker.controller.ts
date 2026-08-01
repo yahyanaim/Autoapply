@@ -1,6 +1,7 @@
 import {
   Controller,
   Delete,
+  Headers,
   Post,
   Get,
   Patch,
@@ -16,6 +17,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
@@ -25,32 +27,45 @@ import { UpdateApplicationDto } from './dto/update-application.dto';
 import { ListApplicationsDto } from './dto/list-applications.dto';
 import { AddApplicationNoteDto } from './dto/add-application-note.dto';
 import { PrepareApplicationDto } from './dto/prepare-application.dto';
-import {
-  RegenerateApplicationDto,
-} from './dto/regenerate-application.dto';
+import { RegenerateApplicationDto } from './dto/regenerate-application.dto';
 import { UpdateApplicationMaterialsDto } from './dto/update-materials.dto';
+import { ApproveApplicationDto } from './dto/approve-application.dto';
 import { PlanEntitlementGuard } from '../../billing/interface/guards/plan-entitlement.guard';
 import { RequiresPlan } from '../../billing/interface/plan-entitlement.decorator';
 import { SubscriptionPlan } from '@prisma/client';
 import { Throttle } from '@nestjs/throttler';
+import { IdempotencyService } from '../../../shared/idempotency/idempotency.service';
+import { requireIdempotencyKey } from '../../../shared/idempotency/idempotency-key';
 
 @ApiTags('applications')
 @Controller('applications')
 export class ApplicationTrackerController {
-  constructor(private readonly trackerService: ApplicationTrackerService) {}
+  constructor(
+    private readonly trackerService: ApplicationTrackerService,
+    private readonly idempotency: IdempotencyService,
+  ) {}
 
   @Post('prepare')
   @Throttle({ default: { limit: 10, ttl: 60 * 60_000 } })
   @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
   @RequiresPlan(SubscriptionPlan.pro, 'Unified application preparation')
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Analyze a job and prepare one reviewable application package' })
+  @ApiOperation({
+    summary: 'Analyze a job and prepare one reviewable application package',
+  })
   async prepare(
     @CurrentUser('id') userId: string,
     @Body() dto: PrepareApplicationDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ) {
-    return this.trackerService.prepare(userId, dto.jobId, dto.resumeId);
+    return this.trackerService.prepare(
+      userId,
+      dto.jobId,
+      dto.resumeId,
+      requireIdempotencyKey(idempotencyKey),
+    );
   }
 
   @Get('approved-package')
@@ -67,6 +82,7 @@ export class ApplicationTrackerController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new application' })
   @ApiResponse({ status: 201, description: 'Application created' })
@@ -74,12 +90,14 @@ export class ApplicationTrackerController {
   async create(
     @CurrentUser('id') userId: string,
     @Body() dto: CreateApplicationDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ) {
     return this.trackerService.create(
       userId,
       dto.jobId,
       dto.resumeVersionId,
       dto.coverLetterId,
+      requireIdempotencyKey(idempotencyKey),
     );
   }
 
@@ -114,10 +132,7 @@ export class ApplicationTrackerController {
   @ApiOperation({ summary: 'Get an application' })
   @ApiResponse({ status: 200, description: 'Application retrieved' })
   @ApiResponse({ status: 404, description: 'Application not found' })
-  async get(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  async get(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.trackerService.get(userId, id);
   }
 
@@ -126,14 +141,22 @@ export class ApplicationTrackerController {
   @UseGuards(JwtAuthGuard, PlanEntitlementGuard)
   @RequiresPlan(SubscriptionPlan.pro, 'Application-material regeneration')
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Regenerate part or all of an application package' })
   async regenerate(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
     @Body() dto: RegenerateApplicationDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ) {
-    return this.trackerService.regenerate(userId, id, dto.target);
+    return this.idempotency.execute({
+      userId,
+      key: requireIdempotencyKey(idempotencyKey),
+      operation: 'applications.regenerate',
+      payload: { applicationId: id, target: dto.target },
+      handler: () => this.trackerService.regenerate(userId, id, dto.target),
+    });
   }
 
   @Patch(':id/materials')
@@ -157,8 +180,13 @@ export class ApplicationTrackerController {
   async approve(
     @CurrentUser('id') userId: string,
     @Param('id') id: string,
+    @Body() dto: ApproveApplicationDto = new ApproveApplicationDto(),
   ) {
-    return this.trackerService.approve(userId, id);
+    return this.trackerService.approve(
+      userId,
+      id,
+      dto.confirmQuestionableClaims ?? false,
+    );
   }
 
   @Patch(':id')
@@ -212,10 +240,7 @@ export class ApplicationTrackerController {
   @ApiOperation({ summary: 'Delete a tracked application' })
   @ApiResponse({ status: 200, description: 'Application deleted' })
   @ApiResponse({ status: 404, description: 'Application not found' })
-  async delete(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  async delete(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.trackerService.delete(userId, id);
   }
 }

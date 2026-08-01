@@ -30,21 +30,35 @@ the candidate.
 See [Project use cases](docs/USE_CASES.md) for detailed actors, flows, plan
 branches, failure cases, and product boundaries.
 
-## What is implemented
+## Feature status
 
-| Capability              | Current behavior                                                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Resume ingestion        | Secure PDF/DOCX upload, parsing, structured candidate data, version history, and classic ATS PDF generation                         |
-| Job discovery           | Approved public JSON APIs for Greenhouse, Lever, and Ashby; up to 20 ranked results per discovery run                               |
-| Match score v2          | Deterministic, explainable comparison of the original verified CV with the job; no LLM tokens are used                              |
-| Application preparation | Connected job analysis, truthful CV optimization, cover letter, review, regeneration, and approval                                  |
-| Chrome extension        | Captures a user-opened job, displays score evidence, and fills an approved package without final submission                         |
-| Moroccan job pages      | User-opened job capture for Indeed Morocco, Rekrute, Anapec, and MarocAnnonces using page data/DOM—not screenshots or bulk crawling |
-| Application tracker     | List, Kanban, notes, timeline, review, and application status management                                                            |
-| Accounts and security   | Email/password, Google/GitHub OAuth, MFA, rotating sessions, extension handoff, consent, export, and deletion                       |
-| Billing and limits      | Stripe Free/Pro/Premium subscriptions with atomic server-side quota enforcement                                                     |
-| Administration          | User/usage metrics and controlled ingestion of approved public job boards                                                           |
-| Morocco career chatbot  | Original scroll-following Nori mascot with a stateless, source-bounded Dahl assistant that is isolated from CV/application AI       |
+Status values are intentionally conservative:
+
+- **Implemented** — source behavior and repository-level automated coverage exist.
+- **Partially implemented** — the core behavior exists, but live-provider or
+  release validation is still required.
+- **Planned** — designed but not implemented.
+- **Requires infrastructure** — source support exists, but completion depends on
+  deployed services or an operator-controlled production action.
+
+| Capability                       | Status                  | Current behavior / remaining gate                                                                                                                |
+| -------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Resume ingestion                 | Implemented             | Secure PDF/DOCX upload, parsing, structured candidate data, version history, and classic ATS PDF generation                                      |
+| Job discovery                    | Implemented             | Approved public JSON APIs for Greenhouse, Lever, and Ashby; up to 20 ranked results per discovery run                                            |
+| Match score v2                   | Implemented             | Deterministic, explainable comparison of the original verified CV with the job; no LLM tokens are used                                           |
+| Application preparation          | Implemented             | Connected job analysis, truthful CV optimization, cover letter, review, regeneration, and approval                                               |
+| Chrome extension                 | Partially implemented   | Capture and approved-package filling are implemented; live-site regression checks and Chrome Web Store approval remain release work              |
+| Moroccan job pages               | Partially implemented   | User-opened pages use page data/DOM—not screenshots or bulk crawling; live markup compatibility needs ongoing validation                         |
+| Application tracker              | Implemented             | List, Kanban, notes, timeline, review, and application status management                                                                         |
+| Accounts and security            | Implemented             | Email/password, Google/GitHub OAuth, MFA, rotating sessions with replay-family protection, consent, export, and deletion                         |
+| Billing and limits               | Partially implemented   | Stripe flows and atomic quotas are implemented; production products, prices, webhook secret, and live-mode validation require Stripe             |
+| Administration                   | Implemented             | User/usage metrics and controlled ingestion of approved public job boards                                                                        |
+| Public Career Assistant (Nori)   | Implemented             | The isolated, bounded assistant, public-data boundary, failure handling, and scroll-following mascot are implemented                             |
+| Nori production activation       | Requires infrastructure | A rotated Dahl key, managed Redis, trusted proxy/CORS configuration, live-provider validation, and alert routing are deployment responsibilities |
+| Personalized dashboard assistant | Planned                 | No private CV, profile, or application retrieval is exposed to Nori                                                                              |
+| Additional ATS adapters          | Planned                 | Workday, SmartRecruiters, and BambooHR support is not implemented                                                                                |
+| Live staging verification        | Requires infrastructure | The paid workflow test exists but requires an isolated staging account, indexed jobs, and working providers                                      |
+| Alerts, backups, restore drill   | Requires infrastructure | Health signals and scripts exist; live alert routes, scheduling, retention, external storage, and a recorded restore drill remain external       |
 
 ## Job-source policy
 
@@ -127,26 +141,36 @@ Premium resume storage is enforced at 2,147,483,647 bytes (approximately 2 GB),
 matching the public pricing copy. The same numeric constant acts as a practical
 unlimited sentinel for count-based quotas, but storage remains bounded.
 
-The Morocco career chatbot has a separate 20-request/hour user-or-IP throttle.
+The public Career Assistant has a separate 20-request/hour user-or-IP throttle.
 It does not consume the AI requests shown in this table and does not use the
 existing CV/application AI provider.
+
+## AI assistant boundaries
+
+ApplyAI deliberately separates three product concepts:
+
+| Assistant                        | Status      | Data boundary                                                                                                                                |
+| -------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public Career Assistant (Nori)   | Implemented | Receives only the conversation and approved public career context; it cannot read an account, CV, profile, or application                    |
+| Application-generation AI        | Implemented | Processes a user-authorized CV and selected job for parsing, analysis, truthful optimization, and cover-letter generation                    |
+| Personalized dashboard assistant | Planned     | Would require explicit consent, scoped retrieval, audit controls, and a separate security review before it can access private dashboard data |
 
 ## Architecture
 
 ApplyAI is a pnpm/Turborepo monorepo built as a modular monolith.
 
-| Layer            | Technology                                                     |
-| ---------------- | -------------------------------------------------------------- |
-| Backend API      | NestJS 11, Prisma 5, PostgreSQL 16, Redis 7, BullMQ            |
-| Dashboard        | Next.js 15, React 19, Tailwind CSS, Zustand, React Query       |
-| Chrome extension | Manifest V3, Vite 6, React 18, Tailwind CSS                    |
-| AI providers     | Configurable OpenAI, Anthropic Claude, or Google Gemini        |
-| Career chatbot   | Independent Dahl OpenAI-compatible provider and Nori UI        |
-| Authentication   | JWT/session rotation, OAuth 2.0, Argon2id, authenticator MFA   |
-| Billing          | Stripe subscriptions, portal, and idempotent webhooks          |
-| Resume storage   | Local development adapter or AWS S3                            |
-| Delivery         | Docker, Kubernetes manifests, GitHub Actions, Vercel dashboard |
-| Monorepo         | pnpm 10, Turborepo                                             |
+| Layer            | Technology                                                      |
+| ---------------- | --------------------------------------------------------------- |
+| Backend API      | NestJS 11, Prisma 5, PostgreSQL 16, Redis 7, BullMQ             |
+| Dashboard        | Next.js 15, React 19, Tailwind CSS, Zustand, React Query        |
+| Chrome extension | Manifest V3, Vite 6, React 18, Tailwind CSS                     |
+| AI providers     | Configurable OpenAI, Anthropic Claude, or Google Gemini         |
+| Career Assistant | Dedicated Dahl-compatible adapter, isolated module, and Nori UI |
+| Authentication   | JWT/session rotation, OAuth 2.0, Argon2id, authenticator MFA    |
+| Billing          | Stripe subscriptions, portal, and idempotent webhooks           |
+| Resume storage   | Local development adapter or AWS S3                             |
+| Delivery         | Docker, Kubernetes manifests, GitHub Actions, Vercel dashboard  |
+| Monorepo         | pnpm 10, Turborepo                                              |
 
 Important architectural rules:
 
@@ -179,9 +203,10 @@ applyai/
 └── docs/                       # Architecture, operations, use cases, ADRs
 ```
 
-The database contains 20 domain models, including users/sessions, profiles,
+The database contains 22 domain models, including users/sessions, profiles,
 resumes and versions, jobs/companies, applications and cover letters,
-subscriptions/payments, usage/audit records, and the hashed match-score cache.
+subscriptions/payments, usage/audit records, the hashed match-score cache, and
+durable mutation-idempotency records.
 
 ## Local development
 
@@ -204,7 +229,7 @@ cp .env.example .env
 Set the required database, Redis, AI-provider, authentication, storage, and
 Stripe values in `.env`.
 
-To enable the independent Morocco career chatbot, add a newly rotated Dahl key
+To enable the independent Career Assistant, add a newly rotated provider key
 to the **API environment only**:
 
 ```env
@@ -274,6 +299,15 @@ All private endpoints require an authenticated, authorized user.
 
 Swagger is the canonical request/response reference when the API is running.
 
+Costly mutation endpoints require an `Idempotency-Key` header containing 16–128
+letters, numbers, dots, underscores, colons, or hyphens. A client must keep the
+same key and request body until a logical operation succeeds, including after a
+timeout or lost response.
+Reusing a key with a different body, or while the original request is still in
+progress, returns `409`. Completed responses are replayed without repeating the
+provider call, write, or quota charge. This is bounded replay protection, not a
+general exactly-once guarantee across third-party systems.
+
 ## Chrome extension
 
 ### Supported page adapters
@@ -316,7 +350,18 @@ pnpm --filter @applyai/api test:integration
 pnpm --filter @applyai/api test:e2e
 ```
 
-The E2E suite requires its documented environment and dependencies.
+Integration tests require isolated PostgreSQL and Redis services. The mocked
+dashboard Playwright flow runs in CI. The live staging journey additionally
+requires an isolated paid test account:
+
+```env
+E2E_API_URL=https://staging-api.example.com
+E2E_PAID_EMAIL=e2e-paid@example.com
+E2E_PAID_PASSWORD=replace-with-staging-only-password
+```
+
+These live credentials are external release configuration and must never point
+at a real user's account.
 
 ## Deployment
 
@@ -350,7 +395,7 @@ configuration and verification checklist.
   encryption;
 - consent, data export, and account erasure are implemented;
 - AI inputs, outputs, time, cost, and plan quotas are bounded;
-- Nori uses a separate server-only key and rate limit, stores no conversation,
+- the public Career Assistant uses a separate server-only key and rate limit, stores no conversation,
   and receives no private resume/profile/application data;
 - the extension never answers unknown screening questions or clicks final
   Submit;
@@ -368,6 +413,9 @@ the current product boundary.
 - [Specification completion matrix](docs/SPEC_COMPLETION.md)
 - [Data dictionary](docs/DATA_DICTIONARY.md)
 - [Incident response](docs/INCIDENT_RESPONSE.md)
+- [Deployment and operations](docs/DEPLOYMENT_OPERATIONS.md)
+- [MFA key operations](docs/MFA_KEY_OPERATIONS.md)
+- [Canonical product specification](docs/PRODUCT_SPEC.md)
 - [Architecture decisions](docs/ADRS)
 
 ## License

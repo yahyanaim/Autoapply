@@ -6,7 +6,9 @@ fabrication-detection validation, and ATS-friendly CV generation.
 ## Generated CV flow
 
 1. `POST /resumes/:id/optimize` sends the verified structured resume and target
-   job to `resume-optimize.v2`.
+   job to `resume-optimize.v2`. It requires a 16–128 character
+   `Idempotency-Key`; retry the same logical request with the same key and
+   payload.
 2. The AI may rewrite the profile, experience descriptions, bullets, and project
    descriptions. It can only reorder the original skills.
 3. `buildGeneratedResumeDocument` merges the rewritten copy with immutable

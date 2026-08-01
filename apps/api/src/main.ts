@@ -7,6 +7,10 @@ import cookieParser from 'cookie-parser';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NextFunction, Request, Response } from 'express';
 import { loadRootModule } from './root-module.loader';
+import {
+  buildAllowedCorsOrigins,
+  isCorsOriginAllowed,
+} from './shared/security/cors-policy';
 
 async function bootstrap() {
   const rootModule = await loadRootModule();
@@ -49,21 +53,10 @@ async function bootstrap() {
   });
   app.use(cookieParser());
 
-  const allowedOrigins = new Set(
-    [
-      config.get<string>('DASHBOARD_URL', 'http://localhost:3000'),
-      ...(config.get<string>('CORS_ALLOWED_ORIGINS', '') || '')
-        .split(',')
-        .map((origin) => origin.trim())
-        .filter(Boolean),
-      config.get<string>('EXTENSION_ID')
-        ? `chrome-extension://${config.get<string>('EXTENSION_ID')}`
-        : '',
-    ].filter(Boolean),
-  );
+  const allowedOrigins = buildAllowedCorsOrigins(config);
   app.enableCors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) callback(null, true);
+      if (isCorsOriginAllowed(origin, allowedOrigins)) callback(null, true);
       else callback(new Error('Origin is not allowed by CORS'), false);
     },
     credentials: true,

@@ -84,19 +84,35 @@ CAREER_CHAT_ENABLED=true
 DAHL_CAREER_CHAT_API_KEY=<newly rotated Dahl key>
 DAHL_CAREER_CHAT_BASE_URL=https://inference.dahl.global/v1
 DAHL_CAREER_CHAT_MODEL=MiniMaxAI/MiniMax-M2.7
+REDIS_URL=rediss://<managed-redis-connection>
+TRUST_PROXY_HOPS=1
 ```
 
 Never prefix the Dahl key with `NEXT_PUBLIC_` or `VITE_`. Redeploy the API after
 changing it. The dashboard needs no chatbot secret.
 
 `CAREER_CHAT_STANDALONE=true` is intended for a Nori-only Vercel API project.
-It deliberately bypasses the full ApplyAI module graph, so PostgreSQL, Redis,
-JWT, storage, billing, and the primary AI provider are not required. Only the
-health and career-chat routes are available in this mode. Remove the flag when
-deploying the complete backend on its production infrastructure.
+It deliberately bypasses the full ApplyAI module graph, so PostgreSQL, BullMQ,
+JWT, storage, billing, and the primary AI provider are not loaded.
+Production standalone deployments still require managed Redis for shared
+request/token limits across serverless instances. `TRUST_PROXY_HOPS=1` tells
+Express to use the visitor address forwarded by Vercel; use another explicit
+value only when the real proxy topology is different. Only the health and
+career-chat routes are available in this mode. Remove the flag when deploying
+the complete backend on its production infrastructure.
 
 Update OAuth callback URLs to the public API domain. Never commit `.env`; add
 secrets through the hosting providers.
+
+## 3.1 External operational controls
+
+A Vercel dashboard deployment does not configure the separate API's database
+snapshots, logical-backup schedule, encrypted backup storage, object
+versioning, alert routes, cloud budget alarms, or on-call destinations.
+Configure and test those controls in the providers that host the full API and
+its dependencies, following `docs/DEPLOYMENT_OPERATIONS.md`. A standalone Nori
+deployment has no PostgreSQL workload to back up, but still needs provider,
+Redis, error-rate, latency, and spend alerts.
 
 ## 4. Verify a deployment
 

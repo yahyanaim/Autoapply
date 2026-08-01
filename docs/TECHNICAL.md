@@ -42,13 +42,13 @@
 
 ### 1.2 Architectural Decisions
 
-| Decision | Rationale | Reference |
-|---|---|---|
-| Monolith-first | Small team, MVP, unclear domain boundaries → low complexity, fast development | Section 6.1 of Prompt.md |
-| Hexagonal architecture | Domain logic isolated from framework/DB/AI specifics | Section 2.3 of Prompt.md |
-| AI provider abstraction | Every AI call through `AIProvider.complete()` for swappability | Section 7.1 of Prompt.md |
-| BullMQ queue | Durable resume parsing with bounded retries and retained failures | Section 6.3 of Prompt.md |
-| Multi-tenant from day one | Avoid painful later migration | Section 2.2 of Prompt.md |
+| Decision                  | Rationale                                                                     | Reference                             |
+| ------------------------- | ----------------------------------------------------------------------------- | ------------------------------------- |
+| Monolith-first            | Small team, MVP, unclear domain boundaries → low complexity, fast development | Section 6.1 of `docs/PRODUCT_SPEC.md` |
+| Hexagonal architecture    | Domain logic isolated from framework/DB/AI specifics                          | Section 2.3 of `docs/PRODUCT_SPEC.md` |
+| AI provider abstraction   | Every AI call through `AIProvider.complete()` for swappability                | Section 7.1 of `docs/PRODUCT_SPEC.md` |
+| BullMQ queue              | Durable resume parsing with bounded retries and retained failures             | Section 6.3 of `docs/PRODUCT_SPEC.md` |
+| Multi-tenant from day one | Avoid painful later migration                                                 | Section 2.2 of `docs/PRODUCT_SPEC.md` |
 
 ### 1.3 Module Boundaries
 
@@ -83,56 +83,72 @@ User (1) ── (N) ActivityLog
 User (1) ── (N) Session
 User (1) ── (1) UsageLimit
 User (1) ── (N) OAuthAccount
+User (1) ── (N) IdempotencyRecord
 Job (N) ── (N) Skill
 Resume (N) ── (N) Skill
+Resume (1) ── (N) MatchScoreCache
 ```
 
 ### 2.2 Core Models
 
 #### User
-| Field | Type | Description |
-|---|---|---|
-| id | String (cuid) | Primary key |
-| email | String | Unique, indexed |
-| passwordHash | String? | Null for OAuth-only users |
-| role | UserRole | user, org_admin, platform_admin |
-| isEmailVerified | Boolean | Default false |
+
+| Field           | Type          | Description                     |
+| --------------- | ------------- | ------------------------------- |
+| id              | String (cuid) | Primary key                     |
+| email           | String        | Unique, indexed                 |
+| passwordHash    | String?       | Null for OAuth-only users       |
+| role            | UserRole      | user, org_admin, platform_admin |
+| isEmailVerified | Boolean       | Default false                   |
 
 #### Resume
-| Field | Type | Description |
-|---|---|---|
-| id | String (cuid) | Primary key |
-| userId | String | FK → User |
-| originalFileUrl | String | Local `/uploads/...` path or `s3://...` object reference |
-| parsedJson | Json? | Structured extraction (skills, experience, etc.) |
-| isPrimary | Boolean | User's default resume |
+
+| Field           | Type          | Description                                              |
+| --------------- | ------------- | -------------------------------------------------------- |
+| id              | String (cuid) | Primary key                                              |
+| userId          | String        | FK → User                                                |
+| originalFileUrl | String        | Local `/uploads/...` path or `s3://...` object reference |
+| parsedJson      | Json?         | Structured extraction (skills, experience, etc.)         |
+| isPrimary       | Boolean       | User's default resume                                    |
 
 #### AIRequest
-| Field | Type | Description |
-|---|---|---|
-| id | String (cuid) | Primary key |
-| userId | String | FK → User |
-| feature | AIRequestFeature | resume_optimize, match_score, cover_letter, etc. |
-| provider | String | openai, claude, gemini |
-| tokensUsed | Int? | Token count |
-| cost | Float? | USD cost |
-| inputHash | String? | Request fingerprint for observability and future deduplication |
-| cached | Boolean | Reserved cache marker; currently always false |
+
+| Field      | Type             | Description                                                    |
+| ---------- | ---------------- | -------------------------------------------------------------- |
+| id         | String (cuid)    | Primary key                                                    |
+| userId     | String           | FK → User                                                      |
+| feature    | AIRequestFeature | resume_optimize, match_score, cover_letter, etc.               |
+| provider   | String           | openai, claude, gemini                                         |
+| tokensUsed | Int?             | Token count                                                    |
+| cost       | Float?           | USD cost                                                       |
+| inputHash  | String?          | Request fingerprint for observability and future deduplication |
+| cached     | Boolean          | Reserved cache marker; currently always false                  |
 
 #### UsageLimit
-| Field | Type | Description |
-|---|---|---|
-| userId | String | Unique, FK → User |
-| applicationsUsed | Int | Current period count |
-| applicationsMax | Int | Free: 10, Pro/Premium: unlimited |
-| aiRequestsUsed | Int | Current period count |
-| aiRequestsMax | Int | Free: 5, Pro: 500, Premium: unlimited |
-| resumeOptimizationsUsed / resumeOptimizationsMax | Int | Monthly CV-optimization count and plan cap (Free: 1, Pro/Premium: unlimited) |
-| jobDiscoveriesUsed | Int | Current monthly discovery-run count |
-| jobDiscoveriesMax | Int | Free: 3, Pro: 50, Premium: unlimited; each run returns up to 20 ranked jobs |
-| resumesUsed / resumesMax | Int | Stored résumé count and plan cap (Free: 1, Pro: 5, Premium: unlimited) |
-| storageBytesUsed / storageBytesMax | Int | Stored résumé bytes and plan cap (Free: 5 MB, Pro: 25 MB, Premium: 2 GB) |
-| resetAt | DateTime | Period reset timestamp |
+
+| Field                                            | Type     | Description                                                                  |
+| ------------------------------------------------ | -------- | ---------------------------------------------------------------------------- |
+| userId                                           | String   | Unique, FK → User                                                            |
+| applicationsUsed                                 | Int      | Current period count                                                         |
+| applicationsMax                                  | Int      | Free: 10, Pro/Premium: unlimited                                             |
+| aiRequestsUsed                                   | Int      | Current period count                                                         |
+| aiRequestsMax                                    | Int      | Free: 5, Pro: 500, Premium: unlimited                                        |
+| resumeOptimizationsUsed / resumeOptimizationsMax | Int      | Monthly CV-optimization count and plan cap (Free: 1, Pro/Premium: unlimited) |
+| jobDiscoveriesUsed                               | Int      | Current monthly discovery-run count                                          |
+| jobDiscoveriesMax                                | Int      | Free: 3, Pro: 50, Premium: unlimited; each run returns up to 20 ranked jobs  |
+| resumesUsed / resumesMax                         | Int      | Stored résumé count and plan cap (Free: 1, Pro: 5, Premium: unlimited)       |
+| storageBytesUsed / storageBytesMax               | Int      | Stored résumé bytes and plan cap (Free: 5 MB, Pro: 25 MB, Premium: 2 GB)     |
+| resetAt                                          | DateTime | Period reset timestamp                                                       |
+
+#### IdempotencyRecord
+
+| Field                    | Type     | Description                                                      |
+| ------------------------ | -------- | ---------------------------------------------------------------- |
+| userId / operation / key | String   | Unique logical mutation identity                                 |
+| fingerprint              | String   | Hash used to reject key reuse with another payload               |
+| status                   | Enum     | `pending` while owned, `completed` after response persistence    |
+| response                 | Json?    | Successful response replayed during the bounded retention window |
+| expiresAt                | DateTime | 15-minute abandoned-pending or 24-hour completed boundary        |
 
 ### 2.3 Key Indexes
 
@@ -141,7 +157,10 @@ Resume (N) ── (N) Skill
 - `jobs`: companyId, sourceUrl, sourceKey (unique per public catalog or capturing user)
 - `applications`: userId, jobId, status
 - `ai_requests`: userId, feature, createdAt, inputHash
-- `sessions`: userId, token (unique)
+- `sessions`: userId, current token hash (unique)
+- `refresh_token_history`: sessionId, userId, superseded token hash (unique), expiry
+- `match_score_cache`: resumeId, hashed resume/job inputs, scorer version
+- `idempotency_records`: userId + operation + key (unique), status, expiry
 - `activity_logs`: userId, type, createdAt
 
 ---
@@ -153,17 +172,18 @@ Resume (N) ── (N) Skill
 ```
 Register → Hash password (Argon2id) → Create User + Subscription + UsageLimit + Session → Issue token pair
 Login → Verify password (Argon2.verify) → Verify TOTP for privileged role → Create Session → Issue JWT pair
-Refresh → Enforce idle/absolute limits → SHA-256 hash comparison → Atomic single-use rotation
+Refresh → Enforce idle/absolute limits → SHA-256 hash comparison → Atomic single-use rotation → Retain superseded hash
+Replay → Identify superseded hash → Revoke session family → Audit and notify
 Logout → Revoke Session
 Extension → Dashboard creates 2-minute one-time code → Trusted extension exchanges once → Create Session
 ```
 
 ### 3.2 Token Strategy
 
-| Token | Lifetime | Storage | Rotation |
-|---|---|---|---|
-| Access token (JWT) | 15 minutes | Memory / Authorization header | No (short-lived) |
-| Refresh token | Up to configured token TTL, bounded by 15-minute idle and 8-hour absolute session limits | HTTP-only cookie (dashboard) or trusted extension storage | Yes (single-use rotation) |
+| Token              | Lifetime                                                                                 | Storage                                                   | Rotation                                                |
+| ------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------- |
+| Access token (JWT) | 15 minutes                                                                               | Memory / Authorization header                             | No (short-lived)                                        |
+| Refresh token      | Up to configured token TTL, bounded by 15-minute idle and 8-hour absolute session limits | HTTP-only cookie (dashboard) or trusted extension storage | Yes; superseded-token replay revokes the session family |
 
 ### 3.3 Password Policy
 
@@ -174,10 +194,10 @@ Extension → Dashboard creates 2-minute one-time code → Trusted extension exc
 
 ### 3.4 OAuth Integration
 
-| Provider | Strategy | Callback |
-|---|---|---|
-| Google | passport-google-oauth20 | `/auth/google/callback` |
-| GitHub | passport-github2 | `/auth/github/callback` |
+| Provider | Strategy                | Callback                |
+| -------- | ----------------------- | ----------------------- |
+| Google   | passport-google-oauth20 | `/auth/google/callback` |
+| GitHub   | passport-github2        | `/auth/github/callback` |
 
 OAuth users get auto-created accounts with `isEmailVerified: true`. Callback
 requests are bound to a short-lived, HTTP-only state cookie to prevent login
@@ -185,13 +205,13 @@ CSRF. An existing password account is never silently linked by email alone.
 
 ### 3.5 Rate Limiting
 
-| Route class | Limit | Scope |
-|---|---|---|
-| Public | 100 requests / 15 minutes | Health and public webhooks |
-| Authenticated | 1,000 requests / 15 minutes | Default signed-in API tier |
-| Administrator | 50 requests / 15 minutes | `/admin/*` |
-| Registration/login | 10 requests / 15 minutes | Credential endpoints |
-| Resume upload | 10 requests / hour | Expensive storage/parser path |
+| Route class        | Limit                       | Scope                         |
+| ------------------ | --------------------------- | ----------------------------- |
+| Public             | 100 requests / 15 minutes   | Health and public webhooks    |
+| Authenticated      | 1,000 requests / 15 minutes | Default signed-in API tier    |
+| Administrator      | 50 requests / 15 minutes    | `/admin/*`                    |
+| Registration/login | 10 requests / 15 minutes    | Credential endpoints          |
+| Resume upload      | 10 requests / hour          | Expensive storage/parser path |
 
 ### 3.6 Security Headers
 
@@ -201,18 +221,18 @@ permissions policy. Development disables only CSP for local Swagger.
 
 ### 3.7 OWASP Top 10 Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Broken Access Control | JWT and role guards on protected controllers, explicit public routes, server-side ownership checks |
-| Cryptographic Failures | Argon2id, HTTPS-only production ingress, hashed refresh tokens, `crypto.randomBytes` |
-| Injection | Prisma parameterized queries, class-validator DTOs |
-| Insecure Design | Threat-model AI features, sanitize inputs |
-| Security Misconfiguration | Helmet middleware, no default admin accounts |
-| Vulnerable Components | Frozen lockfile, automated tests, and zero-known-vulnerability audit at release review |
-| Authentication Failures | Redis-backed cross-replica throttling keyed by verified user ID for authenticated traffic and trusted-proxy IP otherwise, 12+ character passwords, verified OAuth emails and state validation, rotating sessions |
-| Data Integrity Failures | Idempotent Stripe webhook ledger and migration-before-rollout deployment |
-| Logging Failures | Request-ID developer traces are separate from persisted auth, access-denial, and queue audit events |
-| SSRF | URL allow-list validation on job ingestion |
+| Risk                      | Mitigation                                                                                                                                                                                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Broken Access Control     | JWT and role guards on protected controllers, explicit public routes, server-side ownership checks                                                                                                                                             |
+| Cryptographic Failures    | Argon2id, HTTPS-only production ingress, hashed refresh tokens, `crypto.randomBytes`                                                                                                                                                           |
+| Injection                 | Prisma parameterized queries, class-validator DTOs                                                                                                                                                                                             |
+| Insecure Design           | Threat-model AI features, sanitize inputs                                                                                                                                                                                                      |
+| Security Misconfiguration | Helmet middleware, no default admin accounts                                                                                                                                                                                                   |
+| Vulnerable Components     | Frozen lockfile, automated tests, and zero-known-vulnerability audit at release review                                                                                                                                                         |
+| Authentication Failures   | Redis-backed cross-replica throttling keyed by verified user ID for authenticated traffic and trusted-proxy IP otherwise, 12+ character passwords, verified OAuth emails and state validation, rotating sessions with replay-family revocation |
+| Data Integrity Failures   | Idempotent Stripe webhook ledger and migration-before-rollout deployment                                                                                                                                                                       |
+| Logging Failures          | Request-ID developer traces are separate from persisted auth, access-denial, and queue audit events                                                                                                                                            |
+| SSRF                      | URL allow-list validation on job ingestion                                                                                                                                                                                                     |
 
 ---
 
@@ -224,7 +244,7 @@ permissions policy. Development disables only CSP for local Swagger.
 interface AIProvider {
   complete(
     prompt: PromptTemplate,
-    context: Record<string, unknown>
+    context: Record<string, unknown>,
   ): Promise<AIResponse>;
 }
 
@@ -237,11 +257,11 @@ interface AIResponse {
 
 ### 4.2 Provider Implementations
 
-| Provider | Package | Model | Use Case |
-|---|---|---|---|
-| OpenAI | `openai` | `OPENAI_MODEL` (`gpt-4o-mini` by default) | Primary or fallback |
-| Claude | `@anthropic-ai/sdk` | `ANTHROPIC_MODEL` | Primary or fallback |
-| Gemini | `@google/generative-ai` | `GOOGLE_AI_MODEL` | Primary or fallback |
+| Provider | Package                 | Model                                     | Use Case            |
+| -------- | ----------------------- | ----------------------------------------- | ------------------- |
+| OpenAI   | `openai`                | `OPENAI_MODEL` (`gpt-4o-mini` by default) | Primary or fallback |
+| Claude   | `@anthropic-ai/sdk`     | `ANTHROPIC_MODEL`                         | Primary or fallback |
+| Gemini   | `@google/generative-ai` | `GOOGLE_AI_MODEL`                         | Primary or fallback |
 
 Provider calls use configurable ordered fallback and per-provider circuit
 breakers. The provider actually used is recorded on `AIRequest`.
@@ -251,44 +271,54 @@ Every provider request shares the same guardrails: `AI_MAX_INPUT_BYTES`,
 `AI_MAX_REQUEST_COST_USD`. Production also requires non-zero per-token pricing so
 the cost ceiling cannot silently be bypassed.
 
-Exactly one configured provider is selected for a request. The implementation
-does not silently fall back to a different provider when that provider fails.
-
 ### 4.3 Prompt Template System
 
 Prompts are versioned markdown files in `src/modules/ai/prompts/`:
 
-| File | Feature | Variables |
-|---|---|---|
-| `match-score.v2.md` | ATS scoring | `{{resume}}`, `{{jobDescription}}` |
-| `resume-optimize.v2.md` | Resume optimization | `{{resume}}`, `{{jobDescription}}` |
-| `cover-letter.v2.md` | Cover letter generation | `{{resume}}`, `{{jobDescription}}`, `{{tone}}` |
+| File                    | Feature                                                            | Variables                                      |
+| ----------------------- | ------------------------------------------------------------------ | ---------------------------------------------- |
+| `match-score.v2.md`     | Legacy/reference scoring prompt; the active score is deterministic | `{{resume}}`, `{{jobDescription}}`             |
+| `resume-optimize.v2.md` | Resume optimization                                                | `{{resume}}`, `{{jobDescription}}`             |
+| `cover-letter.v2.md`    | Cover letter generation                                            | `{{resume}}`, `{{jobDescription}}`, `{{tone}}` |
 
 **Versioning rules**:
+
 - Bump version suffix on any meaningful change
 - `AIRequest.promptVersion` logs which version produced which output
 - Keep previous version for 30 days for regression comparison
 
 ### 4.4 Match Scoring Algorithm
 
-Weighted 4-dimension scoring (0–100):
+Deterministic six-category scoring (0–100):
 
-| Dimension | Weight | Evaluation |
-|---|---|---|
-| Skills & Keywords | 40% | Hard skills, tools, technologies from JD |
-| Experience Relevance | 30% | Years, seniority, industry context |
-| Education & Credentials | 15% | Degree, certifications, licenses |
-| Keyword Coverage | 15% | Literal coverage of significant job-description terms |
+| Category         | Base weight | Evaluation                                              |
+| ---------------- | ----------: | ------------------------------------------------------- |
+| Skills           |         40% | Verified hard skills, tools, and terminology aliases    |
+| Experience       |         25% | Relevant roles, seniority, and non-overlapping duration |
+| Responsibilities |         15% | Evidence for the job's expected work                    |
+| Education        |         10% | Required degree and field evidence                      |
+| Languages        |          7% | Requested language evidence                             |
+| Certifications   |          3% | Requested certification evidence                        |
+
+Categories not requested by the job are omitted and the remaining weights are
+normalized. Hard requirements receive extra importance.
 
 **Score bands**: 80–100 strong, 60–79 moderate, 40–59 weak, 0–39 poor.
 
 ### 4.5 Fabrication Detection
 
-Post-generation validation that checks:
-- No added experience, titles, or roles
-- No modified dates or durations
-- No fabricated skills or certifications
-- Original facts preserved exactly
+Post-generation validation compares generated narrative and structured fields
+with the original parsed profile. Employers, titles, dates, education,
+certifications, skills, languages, projects, and numerical achievements are
+classified as:
+
+- supported by the original CV;
+- safe rewording;
+- needs user confirmation;
+- unsupported and blocked.
+
+Questionable and rejected claims are returned to the dashboard review surface;
+unsupported claims cannot be silently approved.
 
 ### 4.6 Generated CV Documents
 
@@ -330,6 +360,7 @@ Stripe-signature-verified `/billing/webhook` endpoint.
 
 Successful endpoints return their documented payload directly. Validation errors
 use NestJS's standard shape:
+
 ```json
 {
   "statusCode": 400,
@@ -342,6 +373,27 @@ use NestJS's standard shape:
 
 Outside production, see `GET /api/docs` (Swagger) for the generated OpenAPI
 specification. Swagger is intentionally not mounted in production.
+
+### 5.4 Costly-mutation replay protection
+
+The following REST operations require `Idempotency-Key`:
+
+- job discovery;
+- direct AI resume optimization and cover-letter generation;
+- stored-resume optimization;
+- application creation and unified preparation;
+- application material regeneration.
+
+The key must contain 16–128 letters, numbers, dots, underscores, colons, or
+hyphens. A client creates one key for a logical operation and reuses that key
+with the identical payload after timeouts or lost responses. A different
+payload or operation under the same key, and a concurrent request while the
+original is pending, returns `409`. Successful JSON responses are retained for
+24 hours; an abandoned pending claim can be replaced after 15 minutes.
+
+This protects repository writes and quota charges within the retention window.
+It is bounded replay protection, not a universal exactly-once guarantee for a
+third-party side effect that completes without returning a response.
 
 ---
 
@@ -420,20 +472,22 @@ Content Script (injects MatchScoreOverlay via Shadow DOM)
 
 ### 7.1 Environments
 
-| Environment | Trigger | Stack |
-|---|---|---|
-| Local dependencies | `docker compose up -d` | PostgreSQL + Redis, followed by `pnpm dev` |
-| Local full stack | `docker compose -f infra/docker/docker-compose.yml up --build` | API + dashboard + PostgreSQL + Redis |
-| Staging | Push to `main` | ECR + Kubernetes |
-| Production | Manual workflow dispatch | ECR + Kubernetes |
+| Environment        | Trigger                                                        | Stack                                                                         |
+| ------------------ | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Local dependencies | `docker compose up -d`                                         | PostgreSQL + Redis, followed by `pnpm dev`                                    |
+| Local full stack   | `docker compose -f infra/docker/docker-compose.yml up --build` | API + dashboard + PostgreSQL + Redis                                          |
+| Staging            | Manual workflow dispatch                                       | ECR + Kubernetes                                                              |
+| Production         | Manual workflow dispatch from `main`                           | ECR + Kubernetes; GitHub Environment approval rules are configured externally |
 
 ### 7.2 Docker
 
 **API** (multi-stage):
+
 1. Builder: `node:24-alpine`, pnpm install, Prisma generation, filtered API build and production deploy bundle
 2. Runner: `node:24-alpine`, copy dist, expose 3001
 
 **Dashboard** (multi-stage):
+
 1. Builder: `node:24-alpine`, pnpm install, next build (standalone)
 2. Runner: `node:24-alpine`, copy .next/standalone, expose 3000
 
@@ -446,13 +500,18 @@ Content Script (injects MatchScoreOverlay via Shadow DOM)
 ### 7.4 CI/CD (GitHub Actions)
 
 **CI** (on PR):
+
 1. Frozen install → dependency audit → Prisma generation → lint → typecheck → test → build
 
-**Deploy Staging** (on push to main):
+**Deploy Staging** (manual workflow dispatch):
+
 1. Docker build → Push to ECR → kubectl apply
 
 **Deploy Production** (manual):
-1. Same as staging, with environment approval gates
+
+1. Run from `main`; build and deploy as for staging
+2. The workflow uses the production GitHub Environment; required reviewers and
+   protection rules must be configured in GitHub
 
 ---
 
@@ -473,14 +532,18 @@ Content Script (injects MatchScoreOverlay via Shadow DOM)
 
 ### 8.2 Metrics to Monitor
 
-| Metric | Alert Threshold |
-|---|---|
-| API error rate | > 1% of requests |
-| Queue depth (BullMQ) | > 100 pending jobs |
-| AI provider latency | > 5s p95 |
-| AI cost per day | > $50/day |
-| Stripe webhook failures | Any failure |
-| Authentication failures | > 50/hour per IP |
+The repository exposes signals but does not provision an alert vendor or paging
+route. The values below are recommended external thresholds; the canonical
+operations checklist is `docs/DEPLOYMENT_OPERATIONS.md`.
+
+| Metric                  | Recommended external alert threshold |
+| ----------------------- | ------------------------------------ |
+| API error rate          | > 1% of requests                     |
+| Queue depth (BullMQ)    | > 100 pending jobs                   |
+| AI provider latency     | > 5s p95                             |
+| AI cost per day         | > $50/day                            |
+| Stripe webhook failures | Any failure                          |
+| Authentication failures | > 50/hour per IP                     |
 
 ### 8.3 Health Checks
 
@@ -511,6 +574,7 @@ readinessProbe:
 ### 9.1 Prompt Structure (v2)
 
 Each prompt follows a consistent structure:
+
 1. **Role definition** — Expert persona
 2. **Task** — Specific objective
 3. **Methodology** — Weighted scoring, rules, formatting
@@ -540,18 +604,19 @@ Each prompt follows a consistent structure:
 ### 10.1 Current Architecture
 
 Single NestJS monolith with PostgreSQL. Designed for horizontal scaling via:
+
 - Stateless API servers behind load balancer
 - PostgreSQL-backed session records and Redis-backed queue and rate-limit management
 - S3 object storage in Kubernetes; private local storage for development
 
 ### 10.2 Scaling Path
 
-| Stage | Trigger | Action |
-|---|---|---|
-| Single process | MVP | Current architecture |
-| Multi-process | > 1000 concurrent users | PM2 cluster mode or Kubernetes replicas |
+| Stage              | Trigger                    | Action                                                 |
+| ------------------ | -------------------------- | ------------------------------------------------------ |
+| Single process     | MVP                        | Current architecture                                   |
+| Multi-process      | > 1000 concurrent users    | PM2 cluster mode or Kubernetes replicas                |
 | Service extraction | Independent scaling needed | Split ResumeModule or AIModule into standalone service |
-| Database scaling | > 10k users | Read replicas, connection pooling |
+| Database scaling   | > 10k users                | Read replicas, connection pooling                      |
 
 ### 10.3 Caching Strategy
 
@@ -561,8 +626,8 @@ session state and explicit expiries remain in PostgreSQL.
 
 ### 10.4 Queue Design
 
-| Queue | Purpose | Retry Strategy |
-|---|---|---|
+| Queue          | Purpose                    | Retry Strategy                                                                                       |
+| -------------- | -------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `resume-parse` | PDF/DOCX → structured JSON | Stable job ID, idempotent completion, exponential backoff, max 3 attempts, ActivityLog, terminal DLQ |
 
 Resume optimization, job ingestion, assistive autofill, and notifications are

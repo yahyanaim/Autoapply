@@ -85,3 +85,40 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  dashboard-e2e:
+    name: Dashboard critical-flow browser test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: 'true'
+      NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm --filter @applyai/api exec playwright install --with-deps chromium
+
+      - name: Run dashboard critical flow
+        run: pnpm --filter @applyai/api test:dashboard-e2e
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-playwright-report
+          path: apps/api/playwright-report
+          retention-days: 7

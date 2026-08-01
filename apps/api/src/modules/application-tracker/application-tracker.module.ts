@@ -4,9 +4,10 @@ import { ApplicationTrackerController } from './interface/application-tracker.co
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import { AIModule } from '../ai/ai.module';
 import { BillingModule } from '../billing/billing.module';
+import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
 
 @Module({
-  imports: [PrismaModule, AIModule, BillingModule],
+  imports: [PrismaModule, AIModule, BillingModule, IdempotencyModule],
   providers: [ApplicationTrackerService],
   controllers: [ApplicationTrackerController],
   exports: [ApplicationTrackerService],

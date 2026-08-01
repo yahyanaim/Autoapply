@@ -12,10 +12,10 @@ export class CareerChatController {
 
   @Post('messages')
   @ApiOperation({
-    summary: 'Ask the independent Dahl-powered assistant about careers in Morocco',
+    summary: 'Ask the Career Assistant about careers in Morocco',
   })
   @ApiResponse({ status: 201, description: 'Career answer generated' })
-  @ApiResponse({ status: 429, description: 'Independent chat limit reached' })
+  @ApiResponse({ status: 429, description: 'Career Assistant limit reached' })
   async answer(@Body() dto: SendCareerChatMessageDto) {
     return this.careerChat.answer(dto.messages);
   }

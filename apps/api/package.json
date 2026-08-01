@@ -13,6 +13,7 @@
     "test:coverage": "jest --coverage --runInBand --watchman=false",
     "test:integration": "tsc -p tsconfig.integration.json --noEmit && jest --config jest.integration.json --runInBand --watchman=false",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:dashboard-e2e": "playwright test --config e2e/dashboard.playwright.config.ts",
     "prisma:generate": "prisma generate --schema src/database/prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema src/database/prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema src/database/prisma/schema.prisma"

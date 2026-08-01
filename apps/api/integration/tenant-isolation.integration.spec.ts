@@ -73,6 +73,7 @@ describe('API integration: authentication and tenant isolation', () => {
     const created = await request(app.getHttpServer())
       .post('/applications')
       .set('Authorization', `Bearer ${ownerToken}`)
+      .set('Idempotency-Key', `${marker}:tenant-create`)
       .send({ jobId })
       .expect(201);
 

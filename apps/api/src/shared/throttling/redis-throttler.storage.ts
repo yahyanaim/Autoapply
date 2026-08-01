@@ -37,7 +37,9 @@ end
 return { hits, math.ceil(countTtl / 1000), 0, 0 }
 `;
 
-export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy {
+export class RedisThrottlerStorage
+  implements ThrottlerStorage, OnModuleDestroy
+{
   private readonly logger = new Logger(RedisThrottlerStorage.name);
   private readonly redis: RedisClient;
 
@@ -48,8 +50,9 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy 
         lazyConnect: true,
         maxRetriesPerRequest: 1,
       });
-    this.redis.on('error', (error: Error) => {
-      this.logger.error(`Rate-limit Redis error: ${error.message}`);
+    this.redis.on('error', () => {
+      // Connection messages can contain hostnames or credential-bearing URLs.
+      this.logger.error('Rate-limit Redis is unavailable');
     });
   }
 

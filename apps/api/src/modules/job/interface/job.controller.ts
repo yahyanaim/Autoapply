@@ -5,6 +5,7 @@ import {
   Param,
   Query,
   Body,
+  Headers,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -13,6 +14,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiQuery,
+  ApiHeader,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { JobService } from '../application/job.service';
@@ -23,6 +25,8 @@ import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
 import { DiscoverJobsDto } from './dto/discover-jobs.dto';
 import { JobDiscoveryService } from '../application/job-discovery.service';
+import { IdempotencyService } from '../../../shared/idempotency/idempotency.service';
+import { requireIdempotencyKey } from '../../../shared/idempotency/idempotency-key';
 
 @ApiTags('jobs')
 @Controller('jobs')
@@ -30,6 +34,7 @@ export class JobController {
   constructor(
     private readonly jobService: JobService,
     private readonly jobDiscoveryService: JobDiscoveryService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   @Get('search')
@@ -66,10 +71,7 @@ export class JobController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Capture a job opened by the authenticated user' })
   @ApiResponse({ status: 201, description: 'Job captured and normalized' })
-  async capture(
-    @CurrentUser('id') userId: string,
-    @Body() dto: CaptureJobDto,
-  ) {
+  async capture(@CurrentUser('id') userId: string, @Body() dto: CaptureJobDto) {
     const hostname = new URL(dto.sourceUrl).hostname.replace(/^www\./, '');
     return this.jobService.ingestJob({
       title: dto.title,
@@ -86,6 +88,7 @@ export class JobController {
   @Throttle({ default: { limit: 12, ttl: 60 * 60_000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
   @ApiOperation({
     summary: 'Refresh approved sources and rank up to 20 jobs against a resume',
   })
@@ -96,8 +99,15 @@ export class JobController {
   async discover(
     @CurrentUser('id') userId: string,
     @Body() dto: DiscoverJobsDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ) {
-    return this.jobDiscoveryService.discover(userId, dto);
+    return this.idempotency.execute({
+      userId,
+      key: requireIdempotencyKey(idempotencyKey),
+      operation: 'jobs.discover',
+      payload: dto,
+      handler: () => this.jobDiscoveryService.discover(userId, dto),
+    });
   }
 
   @Get(':id')
@@ -106,10 +116,7 @@ export class JobController {
   @ApiOperation({ summary: 'Get job by ID' })
   @ApiResponse({ status: 200, description: 'Job retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Job not found' })
-  async getJob(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  async getJob(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.jobService.getJob(id, userId);
   }
 }

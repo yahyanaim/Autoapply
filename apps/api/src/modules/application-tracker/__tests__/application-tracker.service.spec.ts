@@ -28,14 +28,22 @@ describe('ApplicationTrackerService', () => {
         findFirst: jest.fn(),
       },
       resume: { findFirst: jest.fn() },
-      resumeVersion: { findFirst: jest.fn() },
-      coverLetter: { findFirst: jest.fn() },
+      resumeVersion: { findFirst: jest.fn(), update: jest.fn() },
+      coverLetter: { findFirst: jest.fn(), update: jest.fn() },
       usageLimit: {
-        findUnique: jest.fn().mockResolvedValue({ applicationsUsed: 0, applicationsMax: 10, resetAt: new Date(Date.now() + 86_400_000) }),
+        findUnique: jest.fn().mockResolvedValue({
+          applicationsUsed: 0,
+          applicationsMax: 10,
+          resetAt: new Date(Date.now() + 86_400_000),
+        }),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
-      $transaction: jest.fn((callback: (client: any) => unknown) => callback(prismaMock)),
+      $transaction: jest.fn((operation: any) =>
+        typeof operation === 'function'
+          ? operation(prismaMock)
+          : Promise.all(operation),
+      ),
     };
     aiServiceMock = {
       analyzeJob: jest.fn(),
@@ -51,9 +59,7 @@ describe('ApplicationTrackerService', () => {
       ],
     }).compile();
 
-    service = module.get<ApplicationTrackerService>(
-      ApplicationTrackerService,
-    );
+    service = module.get<ApplicationTrackerService>(ApplicationTrackerService);
   });
 
   describe('prepare', () => {
@@ -213,6 +219,124 @@ describe('ApplicationTrackerService', () => {
         ),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('requires explicit confirmation for substantially changed wording', async () => {
+      const parsedJson = {
+        skills: ['Campaign planning'],
+        experience: [
+          {
+            company: 'North Agency',
+            title: 'Marketing Specialist',
+            startDate: '2021',
+            endDate: '2024',
+            description: 'Planned local digital campaigns.',
+            highlights: ['Reported campaign performance'],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: ['French'],
+      };
+      const changedDocument = {
+        ...documentJson,
+        profile: 'Marketing Specialist with campaign planning experience.',
+        experience: [
+          {
+            ...parsedJson.experience[0],
+            description:
+              'Directed global acquisitions and negotiated television partnerships.',
+          },
+        ],
+        skills: parsedJson.skills,
+        languages: parsedJson.languages,
+      };
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        preparationStatus: ApplicationPreparationStatus.ready_for_review,
+        jobAnalysis: { summary: 'Lead campaigns' },
+        sourceResume: { parsedJson },
+        resumeVersion: { documentJson: changedDocument },
+        coverLetter: { content: 'Dear hiring team' },
+        timeline: [],
+      });
+      prismaMock.application.update.mockResolvedValue({ id: 'a1' });
+
+      await expect(service.approve('u1', 'a1')).rejects.toThrow(
+        'Confirm the highlighted wording',
+      );
+      await expect(service.approve('u1', 'a1', true)).resolves.toEqual(
+        expect.anything(),
+      );
+      expect(prismaMock.application.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            preparationStatus: ApplicationPreparationStatus.ready_to_submit,
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('manual material edits', () => {
+    it('rejects a numerical achievement that is absent from the uploaded CV', async () => {
+      const parsedJson = {
+        skills: ['Figma'],
+        experience: [
+          {
+            company: 'Studio Casa',
+            title: 'Designer',
+            startDate: '2020',
+            endDate: '2024',
+            description: 'Improved the design system.',
+            highlights: [],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: [],
+      };
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        preparationStatus: ApplicationPreparationStatus.ready_for_review,
+        sourceResume: { parsedJson },
+        resumeVersion: {
+          id: 'rv1',
+          documentJson: {
+            template: 'classic-ats-v1',
+            contact: {
+              fullName: 'Design Candidate',
+              email: 'designer@example.com',
+            },
+            profile: 'Designer with Figma experience.',
+            experience: parsedJson.experience,
+            education: [],
+            skills: ['Figma'],
+            projects: [],
+            certifications: [],
+            languages: [],
+          },
+        },
+        coverLetter: { id: 'cl1', content: 'Dear hiring team' },
+        timeline: [],
+      });
+
+      await expect(
+        service.updateMaterials('u1', 'a1', {
+          experience: [
+            {
+              index: 0,
+              description: 'Improved the design system by 45%.',
+              highlights: [],
+            },
+          ],
+        }),
+      ).rejects.toThrow('45%');
+      expect(prismaMock.resumeVersion.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('updateStatus', () => {
@@ -326,7 +450,10 @@ describe('ApplicationTrackerService', () => {
 
   describe('get and delete', () => {
     it('returns only an application owned by the user', async () => {
-      prismaMock.application.findFirst.mockResolvedValue({ id: 'a1', userId: 'u1' });
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+      });
 
       await expect(service.get('u1', 'a1')).resolves.toEqual(
         expect.objectContaining({ id: 'a1' }),
@@ -350,7 +477,9 @@ describe('ApplicationTrackerService', () => {
     it('does not reveal or delete another user application', async () => {
       prismaMock.application.deleteMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.delete('u1', 'other')).rejects.toThrow(NotFoundException);
+      await expect(service.delete('u1', 'other')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

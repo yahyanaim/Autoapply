@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+  HeadBucketCommand,
+} from '@aws-sdk/client-s3';
 import { StoragePort } from '../../../../shared/ports/storage.port';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -14,14 +20,20 @@ export class S3StorageAdapter implements StoragePort {
     this.s3 = new S3Client({
       region: this.configService.get('AWS_REGION', 'us-east-1'),
     });
-    this.bucket = this.configService.get('S3_BUCKET_RESUMES', 'applyai-resumes');
+    this.bucket = this.configService.get(
+      'S3_BUCKET_RESUMES',
+      'applyai-resumes',
+    );
   }
 
   async uploadFile(
     file: { buffer: Buffer; originalname: string; mimetype: string },
     folder: string,
   ): Promise<string> {
-    const safeName = basename(file.originalname).replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const safeName = basename(file.originalname).replace(
+      /[^a-zA-Z0-9._-]+/g,
+      '-',
+    );
     const key = `${folder}/${randomUUID()}-${safeName || 'upload'}`;
     await this.s3.send(
       new PutObjectCommand({
@@ -55,6 +67,10 @@ export class S3StorageAdapter implements StoragePort {
     );
     if (!response.Body) return Buffer.alloc(0);
     return Buffer.from(await response.Body.transformToByteArray());
+  }
+
+  async checkHealth(): Promise<void> {
+    await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
   }
 
   private extractKey(fileUrl: string): string {

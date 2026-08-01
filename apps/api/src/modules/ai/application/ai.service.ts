@@ -12,7 +12,11 @@ import { PrismaService } from '../../../database/prisma/prisma.service';
 import { AIProviderFactory } from '../infrastructure/providers/provider.factory';
 import { PromptService } from './prompt.service';
 import { calculateMatchScore } from '../domain/match-score';
-import { detectFabrications } from '../domain/fabrication-detector';
+import {
+  analyzeResumeTruthfulness,
+  blockedTruthfulnessFindings,
+  formatTruthfulnessFailure,
+} from '../domain/fabrication-detector';
 import { scoreGenericness } from '../domain/genericness-detector';
 import { AIRequestFeature, Prisma, ResumeParseStatus } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -70,7 +74,12 @@ export class AIService {
     try {
       const startTime = this.clock.nowMs();
       const completion = await this.providerFactory.completeWithFallback(
-        { id: promptId, version: promptId.split('.').pop() ?? 'unknown', systemPrompt, userPrompt },
+        {
+          id: promptId,
+          version: promptId.split('.').pop() ?? 'unknown',
+          systemPrompt,
+          userPrompt,
+        },
         params,
       );
       const response = completion.response;
@@ -81,8 +90,12 @@ export class AIService {
         .update(JSON.stringify(params))
         .digest('hex');
 
-      const totalTokens = response.tokensUsed.input + response.tokensUsed.output;
-      const cost = this.calculateCost(response.tokensUsed.input, response.tokensUsed.output);
+      const totalTokens =
+        response.tokensUsed.input + response.tokensUsed.output;
+      const cost = this.calculateCost(
+        response.tokensUsed.input,
+        response.tokensUsed.output,
+      );
 
       await this.prisma.aIRequest.create({
         data: {
@@ -121,7 +134,9 @@ export class AIService {
           resetAt: this.getNextResetDate(),
         },
       });
-      const usage = await transaction.usageLimit.findUnique({ where: { userId } });
+      const usage = await transaction.usageLimit.findUnique({
+        where: { userId },
+      });
       if (!usage) throw new NotFoundException('Usage limit not found for user');
       const reserved = await transaction.usageLimit.updateMany({
         where: { userId, aiRequestsUsed: { lt: usage.aiRequestsMax } },
@@ -168,7 +183,11 @@ export class AIService {
     };
   }
 
-  async matchScoreText(userId: string, resumeId: string, jobDescription: string) {
+  async matchScoreText(
+    userId: string,
+    resumeId: string,
+    jobDescription: string,
+  ) {
     const resume = await this.getOwnedResume(userId, resumeId);
     const result = await this.matchScoreCache.score(
       resume.id,
@@ -195,7 +214,9 @@ export class AIService {
     });
     if (!job) throw new NotFoundException('Job not found');
     if (!job.description?.trim()) {
-      throw new BadRequestException('The job does not contain a description to analyze');
+      throw new BadRequestException(
+        'The job does not contain a description to analyze',
+      );
     }
 
     const { content } = await this.complete(
@@ -234,8 +255,7 @@ export class AIService {
       throw new NotFoundException('Job not found');
     }
 
-    const optimizationResetAt =
-      await this.reserveResumeOptimization(userId);
+    const optimizationResetAt = await this.reserveResumeOptimization(userId);
     try {
       return await this.performResumeOptimization(
         userId,
@@ -324,7 +344,7 @@ export class AIService {
     const optimizedText = generatedResumeToText(generatedDocument, false);
     const verifiedResumeText = verifiedResumeToText(resume.parsedJson);
 
-    const fabrications = detectFabrications(
+    const truthfulness = analyzeResumeTruthfulness(
       { content: `${resumeContent}\n${verifiedResumeText}` },
       { content: optimizedText },
       {
@@ -332,8 +352,19 @@ export class AIService {
         optimized: generatedDocument,
       },
     );
+    const fabrications = blockedTruthfulnessFindings(truthfulness).map(
+      ({ type, detail }) => ({ type, detail }),
+    );
     if (fabrications.length > 0) {
-      throw new BadGatewayException('AI output failed fabrication safety validation');
+      throw new BadGatewayException({
+        statusCode: 502,
+        code: 'TRUTHFULNESS_VALIDATION_FAILED',
+        message: formatTruthfulnessFailure(
+          truthfulness,
+          'The generated CV was rejected because it contained unsupported claims.',
+        ),
+        truthfulness,
+      });
     }
 
     const matchResult = calculateMatchScore(
@@ -360,6 +391,7 @@ export class AIService {
       missingKeywords: matchResult.missingKeywords,
       weakSections: matchResult.weakSections,
       fabrications,
+      truthfulness,
       document: generatedDocument,
     };
   }
@@ -467,8 +499,13 @@ export class AIService {
 
     const coverLetterPayload = this.parseObjectResponse(aiContent);
     const coverLetterContent = coverLetterPayload.coverLetter;
-    if (typeof coverLetterContent !== 'string' || coverLetterContent.trim() === '') {
-      throw new BadGatewayException('AI provider returned an invalid cover letter');
+    if (
+      typeof coverLetterContent !== 'string' ||
+      coverLetterContent.trim() === ''
+    ) {
+      throw new BadGatewayException(
+        'AI provider returned an invalid cover letter',
+      );
     }
     const genericness = scoreGenericness(coverLetterContent);
     if (genericness.score >= 50) {
@@ -519,7 +556,10 @@ export class AIService {
       0,
     );
 
-    const byFeature: Record<string, { count: number; cost: number; tokens: number }> = {};
+    const byFeature: Record<
+      string,
+      { count: number; cost: number; tokens: number }
+    > = {};
     for (const req of requests) {
       const feature = req.feature;
       if (!byFeature[feature]) {
@@ -540,11 +580,11 @@ export class AIService {
       endDate,
       quota: usage
         ? {
-            aiRequestsUsed:
-              quotaActive ? usage.aiRequestsUsed : 0,
+            aiRequestsUsed: quotaActive ? usage.aiRequestsUsed : 0,
             aiRequestsMax: usage.aiRequestsMax,
-            resumeOptimizationsUsed:
-              quotaActive ? usage.resumeOptimizationsUsed : 0,
+            resumeOptimizationsUsed: quotaActive
+              ? usage.resumeOptimizationsUsed
+              : 0,
             resumeOptimizationsMax: usage.resumeOptimizationsMax,
             resetAt: usage.resetAt,
           }
@@ -573,7 +613,11 @@ export class AIService {
       : trimmed;
     try {
       const parsed: unknown = JSON.parse(json);
-      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      if (
+        typeof parsed === 'object' &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
         return parsed as Record<string, unknown>;
       }
     } catch {
@@ -599,14 +643,19 @@ export class AIService {
       '\n## Resume',
       '\nResume text:',
     ];
-    const indexes = markers.map((marker) => template.indexOf(marker)).filter((index) => index >= 0);
+    const indexes = markers
+      .map((marker) => template.indexOf(marker))
+      .filter((index) => index >= 0);
     return indexes.length ? Math.min(...indexes) : -1;
   }
 
   private calculateCost(inputTokens: number, outputTokens: number): number {
     const inputPerMillion = this.providerFactory.getInputCostPerMillion();
     const outputPerMillion = this.providerFactory.getOutputCostPerMillion();
-    return (inputTokens * inputPerMillion + outputTokens * outputPerMillion) / 1_000_000;
+    return (
+      (inputTokens * inputPerMillion + outputTokens * outputPerMillion) /
+      1_000_000
+    );
   }
 
   private assertRequestBudget(
@@ -614,12 +663,17 @@ export class AIService {
     userPrompt: string,
     params: Record<string, unknown>,
   ): void {
-    const renderedUserPrompt = userPrompt.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) =>
-      params[key] !== undefined ? String(params[key]) : `{{${key}}}`,
+    const renderedUserPrompt = userPrompt.replace(
+      /\{\{\s*(\w+)\s*\}\}/g,
+      (_, key) =>
+        params[key] !== undefined ? String(params[key]) : `{{${key}}}`,
     );
-    const inputBytes = Buffer.byteLength(systemPrompt) + Buffer.byteLength(renderedUserPrompt);
+    const inputBytes =
+      Buffer.byteLength(systemPrompt) + Buffer.byteLength(renderedUserPrompt);
     if (inputBytes > this.providerFactory.getMaxInputBytes()) {
-      throw new PayloadTooLargeException('AI request input exceeds the configured limit');
+      throw new PayloadTooLargeException(
+        'AI request input exceeds the configured limit',
+      );
     }
 
     // Byte count is a deliberately conservative upper bound for tokenizer output.
@@ -628,7 +682,9 @@ export class AIService {
       this.providerFactory.getMaxOutputTokens(),
     );
     if (projectedCost > this.providerFactory.getMaxRequestCost()) {
-      throw new BadRequestException('AI request exceeds the configured cost ceiling');
+      throw new BadRequestException(
+        'AI request exceeds the configured cost ceiling',
+      );
     }
   }
 
