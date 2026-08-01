@@ -52,6 +52,11 @@
       "calt" 1;
   }
 
+  [lang="ar"] {
+    font-family:
+      var(--font-ibm-plex-arabic), "IBM Plex Sans Arabic", Arial, sans-serif;
+  }
+
   ::selection {
     @apply bg-primary-200 text-gray-950;
   }
