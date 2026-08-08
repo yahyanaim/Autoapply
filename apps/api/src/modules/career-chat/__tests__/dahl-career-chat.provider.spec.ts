@@ -234,6 +234,58 @@ describe('DahlCareerChatProvider', () => {
     },
   );
 
+  it('classifies a Cloudflare HTML rejection without logging its body', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response('PRIVATE_PROVIDER_BODY_MARKER', {
+        status: 403,
+        headers: {
+          'Content-Type': 'text/html; charset=UTF-8',
+          Server: 'cloudflare',
+          'CF-Ray': 'diagnostic-id-not-logged',
+        },
+      }),
+    ) as typeof fetch;
+    const provider = new DahlCareerChatProvider(config, usageLimiter);
+
+    await expect(
+      provider.complete([{ role: 'user', content: 'PRIVATE_QUESTION_MARKER' }]),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+
+    const logged = warn.mock.calls.flat().join(' ');
+    expect(logged).toContain('error_class=html_response');
+    expect(logged).toContain('content_type=html');
+    expect(logged).toContain('edge=cloudflare');
+    expect(logged).not.toContain('PRIVATE_PROVIDER_BODY_MARKER');
+    expect(logged).not.toContain('PRIVATE_QUESTION_MARKER');
+    expect(logged).not.toContain('diagnostic-id-not-logged');
+    warn.mockRestore();
+  });
+
+  it('classifies documented Dahl authentication errors without logging them verbatim', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { message: 'invalid API token: PRIVATE_DETAIL' } }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    ) as typeof fetch;
+    const provider = new DahlCareerChatProvider(config, usageLimiter);
+
+    await expect(
+      provider.complete([{ role: 'user', content: 'Hello' }]),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+
+    const logged = warn.mock.calls.flat().join(' ');
+    expect(logged).toContain('error_class=auth_invalid');
+    expect(logged).toContain('content_type=json');
+    expect(logged).not.toContain('PRIVATE_DETAIL');
+    warn.mockRestore();
+  });
+
   it('times out within the configured total request deadline', async () => {
     jest.useFakeTimers();
     values.DAHL_CAREER_CHAT_TIMEOUT_MS = 1_000;
