@@ -6,6 +6,9 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import OpenAI, { APIError } from 'openai';
+import type { Fetch } from 'openai/core';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import {
   CareerChatCompletion,
   CareerChatMessage,
@@ -84,6 +87,18 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       2,
     );
     const preparedMessages = this.toDahlCompatibleMessages(messages);
+    const dahlFetch = ((input: unknown, init?: unknown) =>
+      globalThis.fetch(
+        input as string | URL | Request,
+        init as RequestInit,
+      )) as unknown as Fetch;
+    const client = new OpenAI({
+      apiKey,
+      baseURL: baseUrl,
+      fetch: dahlFetch,
+      maxRetries: 0,
+      timeout: timeoutMs,
+    });
     const startedAt = Date.now();
     let attempts = 0;
 
@@ -101,21 +116,35 @@ export class DahlCareerChatProvider implements CareerChatProvider {
     try {
       for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         attempts = attempt + 1;
-        let response: Response;
+        let payload: DahlChatResponse;
         try {
-          response = await this.requestCompletion(
-            baseUrl,
-            apiKey,
+          payload = await this.requestCompletion(
+            client,
             model,
             preparedMessages,
             maxOutputTokens,
             controller.signal,
           );
-        } catch {
+        } catch (error) {
           if (controller.signal.aborted) {
             throw new GatewayTimeoutException(
               'The Morocco career assistant took too long to answer',
             );
+          }
+          if (error instanceof OpenAI.APIError && error.status) {
+            const retryable = error.status === 429 || error.status >= 500;
+            this.logger.warn(
+              [
+                `Dahl request returned HTTP ${error.status}`,
+                `on attempt ${attempt + 1}`,
+                this.classifyFailure(error),
+              ].join(' '),
+            );
+            if (retryable && attempt < maxRetries) {
+              await this.waitBeforeRetry(attempt, controller.signal);
+              continue;
+            }
+            throw new DahlRequestFailure(retryable, retryable, error.status);
           }
           if (attempt < maxRetries) {
             this.logger.warn(
@@ -125,30 +154,6 @@ export class DahlCareerChatProvider implements CareerChatProvider {
             continue;
           }
           throw new DahlRequestFailure(true, true);
-        }
-
-        if (!response.ok) {
-          const retryable = response.status === 429 || response.status >= 500;
-          const failureClassification = await this.classifyFailure(response);
-          this.logger.warn(
-            [
-              `Dahl request returned HTTP ${response.status}`,
-              `on attempt ${attempt + 1}`,
-              failureClassification,
-            ].join(' '),
-          );
-          if (retryable && attempt < maxRetries) {
-            await this.waitBeforeRetry(attempt, controller.signal);
-            continue;
-          }
-          throw new DahlRequestFailure(retryable, retryable, response.status);
-        }
-
-        let payload: DahlChatResponse;
-        try {
-          payload = (await response.json()) as DahlChatResponse;
-        } catch {
-          throw new DahlRequestFailure(false, true);
         }
         const rawAnswer = payload.choices?.[0]?.message?.content;
         if (typeof rawAnswer !== 'string') {
@@ -232,29 +237,20 @@ export class DahlCareerChatProvider implements CareerChatProvider {
   }
 
   private requestCompletion(
-    baseUrl: string,
-    apiKey: string,
+    client: OpenAI,
     model: string,
     messages: CareerChatMessage[],
     maxOutputTokens: number,
     signal: AbortSignal,
-  ): Promise<Response> {
-    return fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'User-Agent':
-          'ApplyAI-Career-Assistant/1.0 (+https://autoapply-phi.vercel.app)',
-      },
-      body: JSON.stringify({
+  ): Promise<DahlChatResponse> {
+    return client.chat.completions.create(
+      {
         model,
-        messages,
+        messages: messages as ChatCompletionMessageParam[],
         max_tokens: maxOutputTokens,
-      }),
-      signal,
-    });
+      },
+      { signal },
+    ) as Promise<DahlChatResponse>;
   }
 
   /**
@@ -262,46 +258,41 @@ export class DahlCareerChatProvider implements CareerChatProvider {
    * answers, API keys, request identifiers, or other potentially sensitive
    * values. Only a small allow-list of documented Dahl errors is classified.
    */
-  private async classifyFailure(response: Response): Promise<string> {
-    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-    const server = response.headers.get('server')?.toLowerCase() ?? '';
-    const edge = server.includes('cloudflare') || response.headers.has('cf-ray')
-      ? 'cloudflare'
-      : 'other';
+  private classifyFailure(error: APIError): string {
+    const contentType = error.headers?.['content-type']?.toLowerCase() ?? '';
+    const server = error.headers?.server?.toLowerCase() ?? '';
+    const edge =
+      server.includes('cloudflare') || error.headers?.['cf-ray']
+        ? 'cloudflare'
+        : 'other';
     let errorClass = contentType.includes('text/html')
       ? 'html_response'
       : 'unknown_response';
 
     if (contentType.includes('application/json')) {
-      try {
-        const payload = (await response.json()) as {
-          error?: { message?: unknown };
-        };
-        const message =
-          typeof payload.error?.message === 'string'
-            ? payload.error.message.toLowerCase()
-            : '';
-        if (message.includes('missing api token')) {
-          errorClass = 'auth_missing';
-        } else if (message.includes('invalid api token')) {
-          errorClass = 'auth_invalid';
-        } else if (message.includes('expired api token')) {
-          errorClass = 'auth_expired';
-        } else if (message.includes('available tokens exhausted')) {
-          errorClass = 'token_exhausted';
-        } else if (message.includes('model')) {
-          errorClass = 'model_rejected';
-        } else if (
-          message.includes('forbidden') ||
-          message.includes('blocked') ||
-          message.includes('denied')
-        ) {
-          errorClass = 'request_blocked';
-        } else {
-          errorClass = 'json_error';
-        }
-      } catch {
-        errorClass = 'invalid_json_error';
+      const payload = error.error as { message?: unknown } | undefined;
+      const message =
+        typeof payload?.message === 'string'
+          ? payload.message.toLowerCase()
+          : '';
+      if (message.includes('missing api token')) {
+        errorClass = 'auth_missing';
+      } else if (message.includes('invalid api token')) {
+        errorClass = 'auth_invalid';
+      } else if (message.includes('expired api token')) {
+        errorClass = 'auth_expired';
+      } else if (message.includes('available tokens exhausted')) {
+        errorClass = 'token_exhausted';
+      } else if (message.includes('model')) {
+        errorClass = 'model_rejected';
+      } else if (
+        message.includes('forbidden') ||
+        message.includes('blocked') ||
+        message.includes('denied')
+      ) {
+        errorClass = 'request_blocked';
+      } else {
+        errorClass = 'json_error';
       }
     }
 
