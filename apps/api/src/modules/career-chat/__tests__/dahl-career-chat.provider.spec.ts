@@ -83,7 +83,8 @@ describe('DahlCareerChatProvider', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          Authorization: 'Bearer test-key-not-a-secret',
+          authorization: 'Bearer test-key-not-a-secret',
+          'user-agent': expect.stringMatching(/^OpenAI\/JS /),
         }),
       }),
     );
@@ -266,7 +267,9 @@ describe('DahlCareerChatProvider', () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     global.fetch = jest.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({ error: { message: 'invalid API token: PRIVATE_DETAIL' } }),
+        JSON.stringify({
+          error: { message: 'invalid API token: PRIVATE_DETAIL' },
+        }),
         {
           status: 401,
           headers: { 'Content-Type': 'application/json' },
