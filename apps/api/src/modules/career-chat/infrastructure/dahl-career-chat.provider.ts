@@ -129,8 +129,13 @@ export class DahlCareerChatProvider implements CareerChatProvider {
 
         if (!response.ok) {
           const retryable = response.status === 429 || response.status >= 500;
+          const failureClassification = await this.classifyFailure(response);
           this.logger.warn(
-            `Dahl request returned HTTP ${response.status} on attempt ${attempt + 1}`,
+            [
+              `Dahl request returned HTTP ${response.status}`,
+              `on attempt ${attempt + 1}`,
+              failureClassification,
+            ].join(' '),
           );
           if (retryable && attempt < maxRetries) {
             await this.waitBeforeRetry(attempt, controller.signal);
@@ -250,6 +255,64 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       }),
       signal,
     });
+  }
+
+  /**
+   * Keep upstream diagnostics useful without logging provider bodies, prompts,
+   * answers, API keys, request identifiers, or other potentially sensitive
+   * values. Only a small allow-list of documented Dahl errors is classified.
+   */
+  private async classifyFailure(response: Response): Promise<string> {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    const server = response.headers.get('server')?.toLowerCase() ?? '';
+    const edge = server.includes('cloudflare') || response.headers.has('cf-ray')
+      ? 'cloudflare'
+      : 'other';
+    let errorClass = contentType.includes('text/html')
+      ? 'html_response'
+      : 'unknown_response';
+
+    if (contentType.includes('application/json')) {
+      try {
+        const payload = (await response.json()) as {
+          error?: { message?: unknown };
+        };
+        const message =
+          typeof payload.error?.message === 'string'
+            ? payload.error.message.toLowerCase()
+            : '';
+        if (message.includes('missing api token')) {
+          errorClass = 'auth_missing';
+        } else if (message.includes('invalid api token')) {
+          errorClass = 'auth_invalid';
+        } else if (message.includes('expired api token')) {
+          errorClass = 'auth_expired';
+        } else if (message.includes('available tokens exhausted')) {
+          errorClass = 'token_exhausted';
+        } else if (message.includes('model')) {
+          errorClass = 'model_rejected';
+        } else if (
+          message.includes('forbidden') ||
+          message.includes('blocked') ||
+          message.includes('denied')
+        ) {
+          errorClass = 'request_blocked';
+        } else {
+          errorClass = 'json_error';
+        }
+      } catch {
+        errorClass = 'invalid_json_error';
+      }
+    }
+
+    const safeContentType = contentType.includes('application/json')
+      ? 'json'
+      : contentType.includes('text/html')
+        ? 'html'
+        : contentType
+          ? 'other'
+          : 'missing';
+    return `error_class=${errorClass} content_type=${safeContentType} edge=${edge}`;
   }
 
   /**
