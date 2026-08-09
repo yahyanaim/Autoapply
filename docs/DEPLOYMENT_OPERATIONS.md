@@ -47,8 +47,6 @@ Before changing workloads, `infra/scripts/deploy.sh` verifies:
 - positive input/output token prices;
 - credential-free HTTPS dashboard and Stripe return URLs;
 - every configured CORS value is a credential-free HTTPS origin;
-- Dahl credentials and an HTTPS provider URL when the Career Assistant is
-  enabled;
 - the environment’s TLS secret;
 - successful database migration before rollout.
 
@@ -57,9 +55,10 @@ schema and cross-field validation when the new API starts.
 
 ## Health and monitoring
 
-`GET /health` checks process liveness. `GET /health/ready` checks PostgreSQL,
-Redis, and object storage. When the Career Assistant is enabled, its provider
-health is reported separately without sending user content.
+`GET /health` checks process liveness. `GET /health/ready` on the full product
+API checks PostgreSQL, Redis, and object storage. The separate Nori deployment
+has its own `/health/ready` probe for its public career provider and Redis
+limits without loading the product API.
 
 The repository defines the health signals and initial thresholds below. It does
 not provision an alerting vendor, paging route, cloud budget alarm, or on-call

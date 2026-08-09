@@ -13,7 +13,6 @@ import {
 } from './modules/resume/application/resume.service';
 import { Throttle } from '@nestjs/throttler';
 import { StoragePort } from './shared/ports/storage.port';
-import { CareerChatHealthService } from './modules/career-chat/infrastructure/career-chat-health.service';
 
 @ApiExcludeController()
 @Controller('health')
@@ -23,7 +22,6 @@ export class HealthController {
     private readonly prisma: PrismaService,
     @Inject(ResumeParseQueueToken) private readonly resumeQueue: Queue,
     @Inject(StorageToken) private readonly storage: StoragePort,
-    private readonly careerChatHealth: CareerChatHealthService,
   ) {}
 
   @Get()
@@ -40,21 +38,12 @@ export class HealthController {
         redis.get('applyai:health:readiness'),
         this.storage.checkHealth(),
       ]);
-      let careerAssistant = 'ready-or-disabled';
-      try {
-        await this.careerChatHealth.check();
-      } catch {
-        // Nori is optional in the full API. Report its degraded state without
-        // removing otherwise healthy API replicas from service.
-        careerAssistant = 'unavailable';
-      }
       return {
         status: 'ready',
         dependencies: {
           database: 'ready',
           redis: 'ready',
           storage: 'ready',
-          careerAssistant,
         },
       };
     } catch {

@@ -18,7 +18,6 @@ import { HealthController } from './health.controller';
 import { RedisThrottlerStorage } from './shared/throttling/redis-throttler.storage';
 import { ObservabilityModule } from './shared/observability/observability.module';
 import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttler.guard';
-import { CareerChatModule } from './modules/career-chat/career-chat.module';
 
 @Module({
   imports: [
@@ -132,64 +131,6 @@ import { CareerChatModule } from './modules/career-chat/career-chat.module';
         OPENAI_API_KEY: Joi.string().allow('').default(''),
         ANTHROPIC_API_KEY: Joi.string().allow('').default(''),
         GOOGLE_AI_API_KEY: Joi.string().allow('').default(''),
-        CAREER_CHAT_ENABLED: Joi.boolean().default(false),
-        DAHL_CAREER_CHAT_API_KEY: Joi.string().allow('').default(''),
-        DAHL_CAREER_CHAT_BASE_URL: Joi.string()
-          .uri()
-          .default('https://inference.dahl.global/v1'),
-        DAHL_CAREER_CHAT_MODEL: Joi.string()
-          .max(200)
-          .default('MiniMaxAI/MiniMax-M2.7'),
-        DAHL_CAREER_CHAT_TIMEOUT_MS: Joi.number()
-          .integer()
-          .min(1_000)
-          .max(120_000)
-          .default(30_000),
-        DAHL_CAREER_CHAT_MAX_OUTPUT_TOKENS: Joi.number()
-          .integer()
-          .min(128)
-          .max(2_048)
-          .default(700),
-        DAHL_CAREER_CHAT_MAX_REQUEST_TOKENS: Joi.number()
-          .integer()
-          .min(512)
-          .max(16_384)
-          .default(3_500),
-        DAHL_CAREER_CHAT_DAILY_TOKEN_BUDGET: Joi.number()
-          .integer()
-          .min(3_500)
-          .max(1_000_000_000)
-          .default(250_000),
-        DAHL_CAREER_CHAT_MONTHLY_TOKEN_BUDGET: Joi.number()
-          .integer()
-          .min(3_500)
-          .max(10_000_000_000)
-          .default(5_000_000),
-        DAHL_CAREER_CHAT_MAX_RETRIES: Joi.number()
-          .integer()
-          .min(0)
-          .max(3)
-          .default(2),
-        DAHL_CAREER_CHAT_RETRY_BASE_DELAY_MS: Joi.number()
-          .integer()
-          .min(0)
-          .max(5_000)
-          .default(200),
-        DAHL_CAREER_CHAT_CIRCUIT_BREAKER_FAILURE_THRESHOLD: Joi.number()
-          .integer()
-          .min(1)
-          .max(20)
-          .default(3),
-        DAHL_CAREER_CHAT_CIRCUIT_BREAKER_RESET_MS: Joi.number()
-          .integer()
-          .min(1_000)
-          .max(600_000)
-          .default(30_000),
-        DAHL_CAREER_CHAT_HEALTH_TIMEOUT_MS: Joi.number()
-          .integer()
-          .min(500)
-          .max(30_000)
-          .default(3_000),
         STRIPE_SECRET_KEY: Joi.string().allow('').default(''),
         STRIPE_WEBHOOK_SECRET: Joi.string().allow('').default(''),
         STRIPE_PRO_PRICE_ID: Joi.string().allow('').default(''),
@@ -294,24 +235,6 @@ import { CareerChatModule } from './modules/career-chat/career-chat.module';
                 custom: 'MFA_ENCRYPTION_KEY is required in production',
               });
             }
-            if (
-              configured.CAREER_CHAT_ENABLED &&
-              !configured.DAHL_CAREER_CHAT_API_KEY
-            ) {
-              return helpers.message({
-                custom:
-                  'DAHL_CAREER_CHAT_API_KEY is required when CAREER_CHAT_ENABLED=true',
-              });
-            }
-            if (
-              configured.CAREER_CHAT_ENABLED &&
-              !usesHttps(configured.DAHL_CAREER_CHAT_BASE_URL)
-            ) {
-              return helpers.message({
-                custom:
-                  'DAHL_CAREER_CHAT_BASE_URL must use HTTPS in production',
-              });
-            }
             for (const key of [
               'DASHBOARD_URL',
               'STRIPE_SUCCESS_URL',
@@ -363,7 +286,6 @@ import { CareerChatModule } from './modules/career-chat/career-chat.module';
     JobModule,
     ApplicationModule,
     AIModule,
-    CareerChatModule,
     BillingModule,
     NotificationModule,
     AdminModule,

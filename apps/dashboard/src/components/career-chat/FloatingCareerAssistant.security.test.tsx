@@ -1,16 +1,16 @@
 import { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient } from '@/lib/api/api-client';
+import { careerChatClient } from '@/lib/api/career-chat-client';
 import { FloatingCareerAssistant } from './FloatingCareerAssistant';
 
-vi.mock('@/lib/api/api-client', () => ({
-  apiClient: {
-    post: vi.fn(),
+vi.mock('@/lib/api/career-chat-client', () => ({
+  careerChatClient: {
+    ask: vi.fn(),
   },
 }));
 
-const post = vi.mocked(apiClient.post);
+const ask = vi.mocked(careerChatClient.ask);
 let container: HTMLDivElement;
 let root: Root;
 
@@ -29,7 +29,7 @@ afterEach(() => {
 describe('FloatingCareerAssistant output safety', () => {
   it('renders provider markup only as text and links only safe HTTPS sources', async () => {
     vi.useFakeTimers();
-    post.mockResolvedValue({
+    ask.mockResolvedValue({
       answer:
         '<img src=x onerror="alert(1)"><script>alert(2)</script>Use ANAPEC.',
       model: 'test-model',
@@ -79,7 +79,6 @@ function requiredElement<T extends Element>(selector: string): T {
   if (!element) throw new Error(`Expected test element: ${selector}`);
   return element;
 }
-
 function click(selector: string) {
   act(() => requiredElement<HTMLElement>(selector).click());
 }

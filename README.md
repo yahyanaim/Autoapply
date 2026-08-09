@@ -229,18 +229,23 @@ cp .env.example .env
 Set the required database, Redis, AI-provider, authentication, storage, and
 Stripe values in `.env`.
 
-To enable the independent Career Assistant, add a newly rotated provider key
-to the **API environment only**:
+To enable the independent Career Assistant, deploy the API package in
+standalone Nori mode and add a newly rotated provider key to that **separate
+server environment only**:
 
 ```env
+CAREER_CHAT_STANDALONE=true
 CAREER_CHAT_ENABLED=true
 DAHL_CAREER_CHAT_API_KEY=replace-with-a-rotated-server-side-key
 DAHL_CAREER_CHAT_BASE_URL=https://inference.dahl.global/v1
 DAHL_CAREER_CHAT_MODEL=MiniMaxAI/MiniMax-M2.7
 ```
 
-The key must never use a `NEXT_PUBLIC_*` or `VITE_*` name. Nori sends no resume
-or profile data and does not share the existing AI request allowance.
+Set `NEXT_PUBLIC_CAREER_CHAT_API_URL` on the dashboard to the public origin of
+that standalone deployment. The key must never use a `NEXT_PUBLIC_*` or
+`VITE_*` name. Nori sends no resume or profile data and does not share the
+existing AI request allowance. It is not mounted in authenticated dashboard
+routes.
 
 For extension authentication, set `EXTENSION_ID` to the unpacked or published
 Chrome extension ID. Extension production builds also need:
@@ -368,14 +373,17 @@ at a real user's account.
 ### Dashboard on Vercel
 
 Use `apps/dashboard` as the Vercel Root Directory and set
-`NEXT_PUBLIC_API_URL` to the public HTTPS API origin. The dashboard does not
-contain the backend.
+`NEXT_PUBLIC_API_URL` to the full product API and
+`NEXT_PUBLIC_CAREER_CHAT_API_URL` to the separate Nori-only API. The public
+Nori widget appears only on the marketing homepage and never uses the
+authenticated dashboard client.
 
 ### Backend
 
 Deploy the NestJS API and workers on container infrastructure with PostgreSQL,
 Redis/BullMQ, S3-compatible storage, AI-provider credentials, and Stripe
-configuration. Apply production Prisma migrations before serving traffic.
+configuration. Apply production Prisma migrations before serving traffic. The
+full API does not load Nori, Dahl, or the public career-chat route.
 
 ### Extension
 
@@ -395,8 +403,9 @@ configuration and verification checklist.
   encryption;
 - consent, data export, and account erasure are implemented;
 - AI inputs, outputs, time, cost, and plan quotas are bounded;
-- the public Career Assistant uses a separate server-only key and rate limit, stores no conversation,
-  and receives no private resume/profile/application data;
+- the public Career Assistant runs on a separate origin with a server-only key
+  and rate limit, stores no conversation, is absent from authenticated
+  dashboard routes, and receives no private resume/profile/application data;
 - the extension never answers unknown screening questions or clicks final
   Submit;
 - use of any job source must follow its current terms, robots policy, privacy

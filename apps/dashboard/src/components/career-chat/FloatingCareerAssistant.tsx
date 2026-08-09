@@ -16,7 +16,10 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { apiClient } from '@/lib/api/api-client';
+import {
+  careerChatClient,
+  type PublicCareerChatResponse,
+} from '@/lib/api/career-chat-client';
 
 type ChatRole = 'user' | 'assistant';
 
@@ -26,14 +29,6 @@ interface ChatMessage {
   content: string;
   sources?: string[];
 }
-
-interface CareerChatResponse {
-  answer: string;
-  model: string;
-  sources: string[];
-  privacy: 'not-stored';
-}
-
 interface FlightPosition {
   x: number;
   y: number;
@@ -140,7 +135,7 @@ export function FloatingCareerAssistant() {
     [],
   );
 
-  const revealAnswer = (response: CareerChatResponse) => {
+  const revealAnswer = (response: PublicCareerChatResponse) => {
     const id = nextMessageId.current++;
     const chunkSize = Math.max(1, Math.ceil(response.answer.length / 120));
     const safeSources = response.sources
@@ -193,13 +188,10 @@ export function FloatingCareerAssistant() {
     setAnswering(true);
 
     try {
-      const response = await apiClient.post<CareerChatResponse>(
-        '/career-chat/messages',
-        {
-          messages: nextMessages
-            .slice(-10)
-            .map(({ role, content }) => ({ role, content })),
-        },
+      const response = await careerChatClient.ask(
+        nextMessages
+          .slice(-10)
+          .map(({ role, content }) => ({ role, content })),
       );
       revealAnswer(response);
     } catch (caught) {
