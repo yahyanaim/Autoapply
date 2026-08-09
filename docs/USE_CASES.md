@@ -382,14 +382,14 @@ An admin endpoint is not permission to add arbitrary scraper targets.
 
 ## UC-11 — Ask Nori about careers in Morocco
 
-**Primary actor:** Visitor or authenticated candidate
+**Primary actor:** Public website visitor
 
 **Goal:** Get practical, source-bounded guidance about jobs, CVs, interviews,
 skills, and job-search processes in Morocco.
 
 ### Main flow
 
-1. Nori appears as an original robot mascot in the website corner.
+1. Nori appears as an original robot mascot on the public marketing homepage.
 2. While the visitor scrolls, the mascot follows a curved, viewport-safe path
    and returns to its resting corner after scrolling stops.
 3. The visitor opens the chat and asks a Morocco career question.
@@ -405,6 +405,8 @@ skills, and job-search processes in Morocco.
 ### Isolation and safety
 
 - Nori does not call the CV/application `AIService`.
+- Nori is not mounted in authenticated dashboard, login, or registration
+  routes and calls a separate public API origin.
 - Chat questions do not consume the Free/Pro/Premium CV AI allowance.
 - Nori does not automatically read resumes, profiles, or applications.
 - Nori does not invent active listings or provide guaranteed legal,

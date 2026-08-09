@@ -1,16 +1,16 @@
 import { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiClient } from '@/lib/api/api-client';
+import { careerChatClient } from '@/lib/api/career-chat-client';
 import { FloatingCareerAssistant } from './FloatingCareerAssistant';
 
-vi.mock('@/lib/api/api-client', () => ({
-  apiClient: {
-    post: vi.fn(),
+vi.mock('@/lib/api/career-chat-client', () => ({
+  careerChatClient: {
+    ask: vi.fn(),
   },
 }));
 
-const post = vi.mocked(apiClient.post);
+const ask = vi.mocked(careerChatClient.ask);
 let container: HTMLDivElement;
 let root: Root;
 
@@ -58,7 +58,6 @@ beforeEach(() => {
   document.body.append(container);
   root = createRoot(container);
 });
-
 afterEach(() => {
   act(() => {
     root.unmount();
@@ -93,7 +92,7 @@ describe('FloatingCareerAssistant', () => {
 
   it('sends the user question to the career-chat API and renders the answer and source', async () => {
     vi.useFakeTimers();
-    post.mockResolvedValue({
+    ask.mockResolvedValue({
       answer: 'Use the official ANAPEC portal.',
       model: 'career-model',
       sources: ['https://www.anapec.org/'],
@@ -105,15 +104,15 @@ describe('FloatingCareerAssistant', () => {
     click('button[aria-label="Send question"]');
 
     await flushAsyncUpdates();
-    expect(post).toHaveBeenCalledTimes(1);
-    expect(post).toHaveBeenCalledWith('/career-chat/messages', {
-      messages: expect.arrayContaining([
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(ask).toHaveBeenCalledWith(
+      expect.arrayContaining([
         expect.objectContaining({
           role: 'user',
           content: 'Where should I search?',
         }),
       ]),
-    });
+    );
 
     act(() => {
       vi.runAllTimers();
@@ -127,7 +126,7 @@ describe('FloatingCareerAssistant', () => {
   });
 
   it('shows a provider failure without losing the user question', async () => {
-    post.mockRejectedValue(
+    ask.mockRejectedValue(
       new Error('Career Assistant is temporarily unavailable'),
     );
     openAssistant();

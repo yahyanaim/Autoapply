@@ -25,19 +25,22 @@ or starting backend package lifecycle scripts.
 
 ## 2. Configure the dashboard environment
 
-Add this variable to Production, Preview, and Development as appropriate:
+Add these variables to Production, Preview, and Development as appropriate:
 
 ```text
 NEXT_PUBLIC_API_URL=https://api.example.com
+NEXT_PUBLIC_CAREER_CHAT_API_URL=https://nori-api.example.com
 ```
 
-The value must be the public HTTPS origin of the deployed NestJS API, without a
-trailing path. It is embedded in the browser bundle at build time, so redeploy
-the dashboard after changing it.
+`NEXT_PUBLIC_API_URL` is the full authenticated NestJS product API.
+`NEXT_PUBLIC_CAREER_CHAT_API_URL` is a different origin serving only the
+standalone Nori routes. Both are embedded in the browser bundle at build time,
+so redeploy the dashboard after changing either value.
 
-The marketing homepage builds without the API, but registration, login,
-dashboard data, billing, resume processing, and extension handoff require this
-variable to point to a running API.
+The marketing homepage builds without either API. Registration, login,
+dashboard data, billing, resume processing, and extension handoff use only
+`NEXT_PUBLIC_API_URL`. Nori appears only on the homepage and uses only
+`NEXT_PUBLIC_CAREER_CHAT_API_URL`, without authentication cookies or tokens.
 
 ## 2.1 Configure the Chrome extension
 
@@ -75,8 +78,8 @@ STRIPE_SUCCESS_URL=https://your-dashboard.vercel.app/billing?checkout=success
 STRIPE_CANCEL_URL=https://your-dashboard.vercel.app/billing?checkout=cancelled
 ```
 
-To enable Nori, configure these values on the **API deployment**, not the
-dashboard project:
+Deploy a second, Nori-only API project and configure these values there, not on
+the dashboard or full product API:
 
 ```text
 CAREER_CHAT_STANDALONE=true
@@ -91,10 +94,12 @@ TRUST_PROXY_HOPS=1
 Never prefix the Dahl key with `NEXT_PUBLIC_` or `VITE_`. Redeploy the API after
 changing it. The dashboard needs no chatbot secret.
 
-`CAREER_CHAT_STANDALONE=true` is intended for a Nori-only Vercel API project.
+`CAREER_CHAT_STANDALONE=true` is required for the Nori-only Vercel API project.
 It deliberately bypasses the full ApplyAI module graph, so PostgreSQL, BullMQ,
 JWT, storage, billing, and the primary AI provider are not loaded.
-Production standalone deployments still require managed Redis for shared
+The full product `AppModule` does not register the public career-chat route or
+include Nori in its readiness checks. Production standalone deployments still
+require managed Redis for shared
 request/token limits across serverless instances. `TRUST_PROXY_HOPS=1` tells
 Express to use the visitor address forwarded by Vercel; use another explicit
 value only when the real proxy topology is different. Only the health and
@@ -120,6 +125,7 @@ Before pushing:
 
 ```bash
 NEXT_PUBLIC_API_URL=https://api.example.com \
+NEXT_PUBLIC_CAREER_CHAT_API_URL=https://nori-api.example.com \
   pnpm --filter @applyai/dashboard build
 ```
 
@@ -128,9 +134,12 @@ After deployment:
 1. Open the homepage and check images, navigation, pricing expansion, and the
    company marquee.
 2. Confirm `/register` and `/login` load.
-3. Confirm the browser calls the HTTPS API origin, not `localhost`.
+3. Confirm product requests call `NEXT_PUBLIC_API_URL`, Nori calls
+   `NEXT_PUBLIC_CAREER_CHAT_API_URL`, and neither calls `localhost`.
 4. Complete registration, login, token refresh, logout, and one resume upload.
 5. Check the API health endpoint before enabling production traffic.
-6. Open Nori, ask one Morocco career question, confirm a response, and verify in
-   browser developer tools that the Dahl key is absent from scripts and network
-   request headers sent by the dashboard.
+6. Confirm Nori exists on `/` but is absent from `/login`, `/register`, and all
+   authenticated dashboard routes.
+7. Open Nori, ask one Morocco career question, confirm a response, and verify in
+   browser developer tools that the request goes to the Nori-only origin and
+   the Dahl key is absent from scripts and browser request headers.

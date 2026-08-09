@@ -1,13 +1,16 @@
 # Independent Morocco career assistant
 
 This module powers Nori, the floating Morocco career chatbot. It is deliberately
-isolated from `modules/ai`.
+isolated from `modules/ai` and is loaded only by the standalone Nori root
+module. The full ApplyAI `AppModule` does not import this module or expose its
+routes.
 
 ## Isolation contract
 
 - Uses only `DAHL_CAREER_CHAT_*` configuration.
 - Does not import `AIModule`, `AIService`, `AIProviderFactory`, or CV/application
   prompts.
+- Is not registered in the authenticated ApplyAI API or its readiness checks.
 - Does not reserve or consume `UsageLimit.aiRequestsUsed`.
 - Has its own user-aware/IP-aware request throttle.
 - Does not receive resume, profile, application, or account data.

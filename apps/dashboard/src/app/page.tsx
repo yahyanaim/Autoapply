@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Separator } from "@/components/ui/separator";
 import { ApplyAILogo } from "@/components/brand/ApplyAILogo";
+import { FloatingCareerAssistant } from "@/components/career-chat/FloatingCareerAssistant";
 import {
   isLandingLocale,
   LANDING_LOCALE_STORAGE_KEY,
@@ -1636,6 +1637,7 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+      <FloatingCareerAssistant />
     </div>
   );
 }

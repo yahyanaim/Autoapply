@@ -1,6 +1,5 @@
 import '@/app/globals.css';
 import { Providers } from '@/components/providers';
-import { FloatingCareerAssistant } from '@/components/career-chat/FloatingCareerAssistant';
 import type { Metadata } from 'next';
 import { IBM_Plex_Sans_Arabic } from 'next/font/google';
 
@@ -23,10 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${ibmPlexSansArabic.variable} min-h-screen bg-background font-sans text-foreground`}
       >
-        <Providers>
-          {children}
-          <FloatingCareerAssistant />
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

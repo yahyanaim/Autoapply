@@ -181,31 +181,6 @@ if secret_has_value CORS_ALLOWED_ORIGINS; then
   fi
 fi
 
-if secret_has_value CAREER_CHAT_ENABLED; then
-  career_chat_enabled="$(read_secret_value CAREER_CHAT_ENABLED)"
-  normalized_career_chat_enabled="$(
-    printf '%s' "$career_chat_enabled" | tr '[:upper:]' '[:lower:]'
-  )"
-  case "$normalized_career_chat_enabled" in
-    true | "1")
-      if ! secret_has_value DAHL_CAREER_CHAT_API_KEY; then
-        echo "DAHL_CAREER_CHAT_API_KEY is required when CAREER_CHAT_ENABLED=true" >&2
-        exit 1
-      fi
-      if secret_has_value DAHL_CAREER_CHAT_BASE_URL; then
-        validate_https_url \
-          DAHL_CAREER_CHAT_BASE_URL \
-          "$(read_secret_value DAHL_CAREER_CHAT_BASE_URL)"
-      fi
-      ;;
-    false | "0") ;;
-    *)
-      echo "CAREER_CHAT_ENABLED must be true or false" >&2
-      exit 1
-      ;;
-  esac
-fi
-
 tls_type="$(kubectl get secret "$tls_secret" --namespace "$K8S_NAMESPACE" -o jsonpath='{.type}')"
 if [[ "$tls_type" != "kubernetes.io/tls" ]]; then
   echo "$tls_secret must be a kubernetes.io/tls secret in namespace $K8S_NAMESPACE" >&2
