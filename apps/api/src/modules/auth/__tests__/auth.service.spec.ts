@@ -12,6 +12,7 @@ import {
 import { createHmac } from 'crypto';
 import { MfaService } from '../infrastructure/mfa.service';
 import { NotificationService } from '../../notification/application/notification.service';
+import { Prisma } from '@prisma/client';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -26,6 +27,7 @@ describe('AuthService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       subscription: {
         create: jest.fn(),
@@ -165,6 +167,23 @@ describe('AuthService', () => {
       });
     });
 
+    it('converts a concurrent database uniqueness race into a conflict', async () => {
+      const email = 'racing@example.com';
+      prismaMock.user.findUnique.mockResolvedValue(null);
+      passwordServiceMock.hash.mockResolvedValue('hashed_password');
+      prismaMock.user.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.register(email, 'SecurePass123!@', undefined, true),
+      ).rejects.toThrow(ConflictException);
+      expect(prismaMock.subscription.create).not.toHaveBeenCalled();
+    });
+
     it('requires explicit data-processing consent', async () => {
       await expect(
         service.register('test@example.com', 'SecurePass123!@'),
@@ -234,6 +253,15 @@ describe('AuthService', () => {
       expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
         where: { email },
       });
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: null,
+            type: 'auth_login_failed',
+            metadata: { method: 'unknown_account' },
+          }),
+        }),
+      );
     });
 
     it('should throw UnauthorizedException if user has no password hash', async () => {
@@ -266,6 +294,44 @@ describe('AuthService', () => {
         service.login('admin@example.com', 'SecurePass123!@'),
       ).rejects.toThrow('A valid MFA code is required');
       expect(prismaMock.session.create).not.toHaveBeenCalled();
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'auth_login_failed',
+            metadata: { method: 'invalid_mfa' },
+          }),
+        }),
+      );
+    });
+
+    it('locks an account after repeated invalid passwords and audits the lockout', async () => {
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'user_123',
+          email: 'person@example.com',
+          passwordHash: 'hashed',
+          failedLoginAttempts: 4,
+          lockedUntil: null,
+        })
+        .mockResolvedValueOnce({ failedLoginAttempts: 5 });
+      passwordServiceMock.verify.mockResolvedValue(false);
+
+      await expect(service.login('person@example.com', 'wrong')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(prismaMock.user.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { failedLoginAttempts: { increment: 1 } },
+        }),
+      );
+      expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'auth_account_locked',
+            metadata: { method: 'failed_login_threshold' },
+          }),
+        }),
+      );
     });
   });
 

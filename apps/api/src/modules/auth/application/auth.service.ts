@@ -38,6 +38,8 @@ class RefreshTokenReuseDetectedError extends Error {
     this.name = 'RefreshTokenReuseDetectedError';
   }
 }
+const DEFAULT_LOGIN_LOCKOUT_THRESHOLD = 5;
+const DEFAULT_LOGIN_LOCKOUT_MINUTES = 15;
 
 @Injectable()
 export class AuthService {
@@ -139,7 +141,23 @@ export class AuthService {
   ) {
     email = email.trim().toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
+    const now = this.clock.now();
+    if (user?.lockedUntil && user.lockedUntil > now) {
+      await this.writeAuthActivity(
+        user.id,
+        ActivityType.auth_account_locked,
+        'login_while_locked',
+        sessionMetadata,
+      );
+      throw new UnauthorizedException('Invalid credentials');
+    }
     if (!user || !user.passwordHash) {
+      await this.writeAuthActivity(
+        null,
+        ActivityType.auth_login_failed,
+        'unknown_account',
+        sessionMetadata,
+      );
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -148,6 +166,7 @@ export class AuthService {
       password,
     );
     if (!isValid) {
+      await this.recordFailedLogin(user.id, sessionMetadata);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -163,10 +182,21 @@ export class AuthService {
           mfaCode,
         ))
     ) {
+      await this.writeAuthActivity(
+        user.id,
+        ActivityType.auth_login_failed,
+        'invalid_mfa',
+        sessionMetadata,
+      );
       throw new UnauthorizedException(
         'A valid MFA code is required for administrator accounts',
       );
     }
+
+    await this.prisma.user.updateMany({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
 
     const tokens = await this.generateTokens(
       user.id,
@@ -654,7 +684,7 @@ export class AuthService {
   }
 
   private async writeAuthActivity(
-    userId: string,
+    userId: string | null,
     type: ActivityType,
     method: string,
     metadata?: SessionMetadata,
@@ -676,6 +706,84 @@ export class AuthService {
         }`,
       );
     }
+  }
+
+  private async recordFailedLogin(
+    userId: string,
+    sessionMetadata?: SessionMetadata,
+  ): Promise<void> {
+    const now = this.clock.now();
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        id: userId,
+        OR: [{ lockedUntil: null }, { lockedUntil: { lte: now } }],
+      },
+      data: { failedLoginAttempts: { increment: 1 } },
+    });
+
+    if (updated.count !== 1) {
+      await this.writeAuthActivity(
+        userId,
+        ActivityType.auth_account_locked,
+        'login_while_locked',
+        sessionMetadata,
+      );
+      return;
+    }
+
+    const current = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { failedLoginAttempts: true },
+    });
+    const threshold = this.getLoginLockoutThreshold();
+    await this.writeAuthActivity(
+      userId,
+      ActivityType.auth_login_failed,
+      'invalid_password',
+      sessionMetadata,
+    );
+
+    if ((current?.failedLoginAttempts ?? 0) < threshold) return;
+
+    const lockedUntil = new Date(
+      now.getTime() + this.getLoginLockoutMinutes() * 60_000,
+    );
+    const locked = await this.prisma.user.updateMany({
+      where: { id: userId, lockedUntil: null },
+      data: { lockedUntil },
+    });
+    if (locked.count === 1) {
+      await this.writeAuthActivity(
+        userId,
+        ActivityType.auth_account_locked,
+        'failed_login_threshold',
+        sessionMetadata,
+      );
+    }
+  }
+
+  private getLoginLockoutThreshold(): number {
+    return Math.max(
+      1,
+      Number(
+        this.configService.get(
+          'AUTH_LOGIN_LOCKOUT_THRESHOLD',
+          DEFAULT_LOGIN_LOCKOUT_THRESHOLD,
+        ),
+      ) || DEFAULT_LOGIN_LOCKOUT_THRESHOLD,
+    );
+  }
+
+  private getLoginLockoutMinutes(): number {
+    return Math.max(
+      1,
+      Number(
+        this.configService.get(
+          'AUTH_LOGIN_LOCKOUT_MINUTES',
+          DEFAULT_LOGIN_LOCKOUT_MINUTES,
+        ),
+      ) || DEFAULT_LOGIN_LOCKOUT_MINUTES,
+    );
   }
 
   private async rotateTokens(
