@@ -38,4 +38,8 @@ describe('RolesGuard MFA enforcement', () => {
       ),
     ).toBe(true);
   });
+
+  it('rejects a regular user from admin-only routes', () => {
+    expect(guard.canActivate(context({ role: UserRole.user }))).toBe(false);
+  });
 });

@@ -109,6 +109,8 @@ enum IdempotencyStatus {
 
 enum ActivityType {
   auth_login
+  auth_login_failed
+  auth_account_locked
   auth_logout
   auth_token_reuse
   resume_upload
@@ -133,6 +135,8 @@ model User {
   privacyPolicyVersion    String?
   mfaSecretEncrypted      String?
   mfaEnabledAt            DateTime?
+  failedLoginAttempts     Int       @default(0)
+  lockedUntil             DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
