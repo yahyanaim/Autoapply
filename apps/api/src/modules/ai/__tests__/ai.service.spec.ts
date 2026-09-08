@@ -14,6 +14,7 @@ describe('AIService resume ownership and readiness', () => {
     job: { findFirst: jest.fn() },
     user: { findUnique: jest.fn() },
     resumeVersion: { create: jest.fn() },
+    coverLetter: { create: jest.fn() },
     usageLimit: {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
@@ -190,27 +191,28 @@ describe('AIService resume ownership and readiness', () => {
   });
 
   it('stores a validated generated CV document with the optimized version', async () => {
+    const parsedResume = {
+      skills: ['TypeScript', 'React'],
+      experience: [
+        {
+          title: 'Software Engineer',
+          company: 'Acme',
+          startDate: '2022',
+          endDate: 'Present',
+          description: 'Built web applications.',
+          highlights: ['Built customer features'],
+        },
+      ],
+      education: [],
+      projects: [],
+      languages: ['English'],
+      certifications: [],
+    };
     prisma.resume.findFirst.mockResolvedValue({
       id: 'resume_1',
       userId: 'user_1',
       parseStatus: 'ready',
-      parsedJson: {
-        skills: ['TypeScript', 'React'],
-        experience: [
-          {
-            title: 'Software Engineer',
-            company: 'Acme',
-            startDate: '2022',
-            endDate: 'Present',
-            description: 'Built web applications.',
-            highlights: ['Built customer features'],
-          },
-        ],
-        education: [],
-        projects: [],
-        languages: ['English'],
-        certifications: [],
-      },
+      parsedJson: parsedResume,
     });
     prisma.job.findFirst.mockResolvedValue({
       id: 'job_1',
@@ -254,8 +256,53 @@ describe('AIService resume ownership and readiness', () => {
     expect(prisma.resumeVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         documentJson: expect.objectContaining({ template: 'classic-ats-v1' }),
+        matchScore: calculateMatchScore(
+          { content: JSON.stringify(parsedResume) },
+          'TypeScript and React',
+        ).score,
       }),
     });
+  });
+
+  it('does not persist a cover letter with a metric absent from the verified CV', async () => {
+    prisma.resume.findFirst.mockResolvedValue({
+      id: 'resume_1',
+      userId: 'user_1',
+      parseStatus: 'ready',
+      parsedJson: {
+        skills: ['TypeScript'],
+        experience: [
+          {
+            title: 'Software Engineer',
+            company: 'Acme',
+            startDate: '2022',
+            endDate: 'Present',
+            description: 'Built customer features.',
+            highlights: [],
+          },
+        ],
+        education: [],
+        projects: [],
+        languages: [],
+        certifications: [],
+      },
+    });
+    prisma.job.findFirst.mockResolvedValue({
+      id: 'job_1',
+      description: 'Build TypeScript services for a Casablanca team.',
+    });
+    jest.spyOn(service, 'complete').mockResolvedValue({
+      content: JSON.stringify({
+        coverLetter:
+          'Dear Acme hiring team, I built TypeScript customer features and increased conversion by 47% while working in Casablanca. I would bring that same practical focus to this role.',
+      }),
+      model: 'test-model',
+    });
+
+    await expect(
+      service.generateCoverLetter('user_1', 'job_1', 'resume_1'),
+    ).rejects.toThrow('47%');
+    expect(prisma.coverLetter.create).not.toHaveBeenCalled();
   });
 });
 

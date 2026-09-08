@@ -35,6 +35,9 @@ describe('CareerChatService', () => {
     const sentMessages = provider.complete.mock.calls[0]?.[0] ?? [];
     expect(sentMessages[0]?.role).toBe('system');
     expect(sentMessages[0]?.content).toContain('Morocco career guide');
+    expect(sentMessages[0]?.content).toContain(
+      'ApplyAI never supplies a visitor\'s identity, account, profile, CV, applications, dashboard data, or saved job data',
+    );
     expect(sentMessages[1]?.content).toContain('Reference context');
     expect(sentMessages.at(-1)).toEqual({
       role: 'user',

@@ -277,6 +277,49 @@ describe('ApplicationTrackerService', () => {
         }),
       );
     });
+
+    it('refuses approval when the cover letter has an unsupported metric', async () => {
+      const parsedJson = {
+        skills: ['TypeScript'],
+        experience: [
+          {
+            company: 'Acme',
+            title: 'Software Engineer',
+            startDate: '2022',
+            endDate: 'Present',
+            description: 'Built customer features.',
+            highlights: [],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: [],
+      };
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        preparationStatus: ApplicationPreparationStatus.ready_for_review,
+        jobAnalysis: { summary: 'Build software' },
+        sourceResume: { parsedJson },
+        resumeVersion: {
+          documentJson: {
+            ...documentJson,
+            profile: 'Software Engineer with TypeScript experience.',
+            experience: parsedJson.experience,
+            skills: parsedJson.skills,
+          },
+        },
+        coverLetter: {
+          content:
+            'Dear Acme team, I built customer features and increased conversion by 47%.',
+        },
+        timeline: [],
+      });
+
+      await expect(service.approve('u1', 'a1')).rejects.toThrow('47%');
+      expect(prismaMock.application.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('manual material edits', () => {
@@ -336,6 +379,59 @@ describe('ApplicationTrackerService', () => {
         }),
       ).rejects.toThrow('45%');
       expect(prismaMock.resumeVersion.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a cover-letter metric that is absent from the uploaded CV', async () => {
+      const parsedJson = {
+        skills: ['Figma'],
+        experience: [
+          {
+            company: 'Studio Casa',
+            title: 'Designer',
+            startDate: '2020',
+            endDate: '2024',
+            description: 'Improved the design system.',
+            highlights: [],
+          },
+        ],
+        education: [],
+        projects: [],
+        certifications: [],
+        languages: [],
+      };
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        preparationStatus: ApplicationPreparationStatus.ready_for_review,
+        sourceResume: { parsedJson },
+        resumeVersion: {
+          id: 'rv1',
+          documentJson: {
+            template: 'classic-ats-v1',
+            contact: {
+              fullName: 'Design Candidate',
+              email: 'designer@example.com',
+            },
+            profile: 'Designer with Figma experience.',
+            experience: parsedJson.experience,
+            education: [],
+            skills: ['Figma'],
+            projects: [],
+            certifications: [],
+            languages: [],
+          },
+        },
+        coverLetter: { id: 'cl1', content: 'Dear hiring team' },
+        timeline: [],
+      });
+
+      await expect(
+        service.updateMaterials('u1', 'a1', {
+          coverLetter:
+            'Dear Studio Casa, I improved the design system and increased conversion by 47%.',
+        }),
+      ).rejects.toThrow('47%');
+      expect(prismaMock.coverLetter.update).not.toHaveBeenCalled();
     });
   });
 

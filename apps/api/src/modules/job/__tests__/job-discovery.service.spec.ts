@@ -118,7 +118,7 @@ describe('JobDiscoveryService', () => {
         matchedResumeSkills: expect.arrayContaining(['React', 'TypeScript']),
         missingKeywords: expect.any(Array),
         explanation: expect.arrayContaining([
-          expect.stringMatching(/^Role-title alignment:/),
+          expect.stringMatching(/^Verified CV skills found in this posting:/),
         ]),
       }),
     );
@@ -131,12 +131,31 @@ describe('JobDiscoveryService', () => {
         where: {
           AND: expect.arrayContaining([
             {
-              OR: [{ capturedByUserId: null }, { capturedByUserId: 'user-1' }],
+              OR: [
+                expect.objectContaining({
+                  capturedByUserId: null,
+                  scrapedAt: { gte: expect.any(Date) },
+                }),
+                { capturedByUserId: 'user-1' },
+              ],
             },
           ]),
         },
       }),
     );
+    const displayedScore = result.jobs.find(
+      (job) => job.id === 'job-0',
+    )?.matchScore;
+    const expectedScore = calculateMatchScore(
+      {
+        content: JSON.stringify({
+          skills: ['React', 'TypeScript', 'REST'],
+          experience: [{ title: 'Frontend Engineer' }],
+        }),
+      },
+      'Frontend Engineer\nBuild React and TypeScript software using REST APIs.',
+    ).score;
+    expect(displayedScore).toBe(expectedScore);
   });
 
   it('refreshes only configured approved ATS sources', async () => {

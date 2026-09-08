@@ -60,7 +60,10 @@ public origin changes.
 ## 3. Deploy the API separately
 
 Deploy `apps/api` with the repository's production Docker image to a
-container-capable host. Provision:
+container-capable host. This is required for the full product API: it starts a
+BullMQ resume-processing worker and manages durable PostgreSQL, Redis, and S3
+connections. Vercel serverless is suitable only for the separate Nori-only
+mode below, not for the full product API. Provision:
 
 - PostgreSQL with the Prisma migrations applied;
 - Redis with TLS for shared rate limits and BullMQ;

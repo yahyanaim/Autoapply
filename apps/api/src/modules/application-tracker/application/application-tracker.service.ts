@@ -402,7 +402,7 @@ export class ApplicationTrackerService {
     const verifiedText = verifiedResumeToText(
       application.sourceResume.parsedJson,
     );
-    const truthfulness = analyzeResumeTruthfulness(
+    const resumeTruthfulness = analyzeResumeTruthfulness(
       {
         content: `${JSON.stringify(
           application.sourceResume.parsedJson,
@@ -414,15 +414,15 @@ export class ApplicationTrackerService {
         optimized: document,
       },
     );
-    if (blockedTruthfulnessFindings(truthfulness).length) {
+    if (blockedTruthfulnessFindings(resumeTruthfulness).length) {
       throw new BadRequestException({
         statusCode: 400,
         code: 'TRUTHFULNESS_VALIDATION_FAILED',
         message: formatTruthfulnessFailure(
-          truthfulness,
+          resumeTruthfulness,
           'Your edits were not saved because they introduced unsupported claims.',
         ),
-        truthfulness,
+        truthfulness: resumeTruthfulness,
       });
     }
 
@@ -442,6 +442,24 @@ export class ApplicationTrackerService {
       const content = cleanMultilineText(edits.coverLetter, 8_000);
       if (!content)
         throw new BadRequestException('Cover letter cannot be empty');
+      const coverLetterTruthfulness = this.coverLetterTruthfulnessFor(
+        application,
+        content,
+      );
+      if (
+        coverLetterTruthfulness &&
+        blockedTruthfulnessFindings(coverLetterTruthfulness).length
+      ) {
+        throw new BadRequestException({
+          statusCode: 400,
+          code: 'TRUTHFULNESS_VALIDATION_FAILED',
+          message: formatTruthfulnessFailure(
+            coverLetterTruthfulness,
+            'Your cover letter was not saved because it introduced unsupported claims.',
+          ),
+          truthfulness: coverLetterTruthfulness,
+        });
+      }
       updates.push(
         this.prisma.coverLetter.update({
           where: { id: application.coverLetter.id },
@@ -484,7 +502,7 @@ export class ApplicationTrackerService {
     ) {
       throw new BadRequestException('Application package is incomplete');
     }
-    const truthfulness = this.truthfulnessFor(application);
+    const truthfulness = this.packageTruthfulnessFor(application);
     if (truthfulness?.status === 'blocked') {
       throw new BadRequestException({
         statusCode: 400,
@@ -648,7 +666,7 @@ export class ApplicationTrackerService {
     if (!application) throw new NotFoundException('Application not found');
     return {
       ...application,
-      truthfulness: this.truthfulnessFor(application),
+      truthfulness: this.packageTruthfulnessFor(application),
     };
   }
 
@@ -770,6 +788,46 @@ export class ApplicationTrackerService {
         optimized: application.resumeVersion.documentJson,
       },
     );
+  }
+
+  private coverLetterTruthfulnessFor(
+    application: {
+      sourceResume: { parsedJson: Prisma.JsonValue | null } | null;
+    },
+    coverLetterContent: string,
+  ): TruthfulnessReport | null {
+    if (!application.sourceResume?.parsedJson) return null;
+    const verifiedText = verifiedResumeToText(
+      application.sourceResume.parsedJson,
+    );
+    return analyzeResumeTruthfulness(
+      {
+        content: `${JSON.stringify(
+          application.sourceResume.parsedJson,
+        )}\n${verifiedText}`,
+      },
+      { content: coverLetterContent },
+      {
+        original: application.sourceResume.parsedJson,
+        optimized: { coverLetterContent },
+      },
+    );
+  }
+
+  private packageTruthfulnessFor(application: {
+    sourceResume: { parsedJson: Prisma.JsonValue | null } | null;
+    resumeVersion: { documentJson: Prisma.JsonValue | null } | null;
+    coverLetter?: { content: string } | null;
+  }): TruthfulnessReport | null {
+    return combineTruthfulnessReports([
+      this.truthfulnessFor(application),
+      application.coverLetter
+        ? this.coverLetterTruthfulnessFor(
+            application,
+            application.coverLetter.content,
+          )
+        : null,
+    ]);
   }
 
   private safeGenerationError(error: unknown, fallback: string): string {
@@ -910,6 +968,38 @@ export class ApplicationTrackerService {
 
 function hashContent(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function combineTruthfulnessReports(
+  reports: Array<TruthfulnessReport | null>,
+): TruthfulnessReport | null {
+  const present = reports.filter(
+    (report): report is TruthfulnessReport => report !== null,
+  );
+  if (!present.length) return null;
+
+  const summary: TruthfulnessReport['summary'] = {
+    supported: 0,
+    safe_rewording: 0,
+    needs_confirmation: 0,
+    unsupported_blocked: 0,
+  };
+  for (const report of present) {
+    summary.supported += report.summary.supported;
+    summary.safe_rewording += report.summary.safe_rewording;
+    summary.needs_confirmation += report.summary.needs_confirmation;
+    summary.unsupported_blocked += report.summary.unsupported_blocked;
+  }
+
+  return {
+    status: summary.unsupported_blocked
+      ? 'blocked'
+      : summary.needs_confirmation
+        ? 'review_required'
+        : 'passed',
+    summary,
+    findings: present.flatMap((report) => report.findings),
+  };
 }
 
 function cleanUserText(value: string, maxLength: number): string {

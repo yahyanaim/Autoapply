@@ -10,10 +10,7 @@ import { Prisma, RemoteType, ResumeParseStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { MatchScoreCacheService } from '../../ai/application/match-score-cache.service';
 import { DiscoverJobsDto } from '../interface/dto/discover-jobs.dto';
-import {
-  JobIngestionService,
-  JobSource,
-} from './job-ingestion.service';
+import { JobIngestionService, JobSource } from './job-ingestion.service';
 import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
 
 const MAX_CANDIDATES = 500;
@@ -92,8 +89,7 @@ export class JobDiscoveryService {
         Boolean(job.description?.trim()),
       );
       const jobTexts = completeCandidates.map(
-        (job) =>
-          `${job.title}\n${(job.description ?? '').slice(0, 50_000)}`,
+        (job) => `${job.title}\n${(job.description ?? '').slice(0, 50_000)}`,
       );
       const matches = await this.matchScoreCache.scoreMany(
         resume.id,
@@ -104,25 +100,15 @@ export class JobDiscoveryService {
         .map((job, index) => {
           const jobText = jobTexts[index]!;
           const match = matches[index]!;
-          const roleAlignment = calculateRoleAlignment(
-            profile.roles,
-            job.title,
-          );
           const skillAlignment = calculateResumeSkillAlignment(
             profile.skills,
             jobText,
           );
-          const score = Math.min(
-            100,
-            Math.max(
-              0,
-              Math.round(
-                match.score * 0.65 +
-                  skillAlignment.score * 0.25 +
-                  roleAlignment * 0.1,
-              ),
-            ),
-          );
+          // `match.score` is the single user-facing score. It already
+          // accounts for verified skills and experience; blending a second
+          // skills/role score double-counted those signals while leaving the
+          // displayed breakdown mathematically misleading.
+          const score = match.score;
           return {
             id: job.id,
             source: job.source,
@@ -146,8 +132,9 @@ export class JobDiscoveryService {
             weakSections: match.weakSections,
             explanation: [
               ...match.explanation,
-              `Verified CV skill overlap: ${skillAlignment.score}%`,
-              `Role-title alignment: ${roleAlignment}%`,
+              skillAlignment.matched.length
+                ? `Verified CV skills found in this posting: ${skillAlignment.matched.join(', ')}.`
+                : 'No verified CV skills were found verbatim in this posting.',
             ],
             trackedApplication: job.applications[0] ?? null,
             rankingScore: score + freshnessTieBreaker(job.scrapedAt),
@@ -200,7 +187,13 @@ export class JobDiscoveryService {
   ): Prisma.JobWhereInput {
     const constraints: Prisma.JobWhereInput[] = [
       {
-        OR: [{ capturedByUserId: null }, { capturedByUserId: userId }],
+        OR: [
+          {
+            capturedByUserId: null,
+            scrapedAt: { gte: this.minimumPublicListingDate() },
+          },
+          { capturedByUserId: userId },
+        ],
       },
       {
         description: { not: null },
@@ -228,6 +221,14 @@ export class JobDiscoveryService {
       constraints.push({ remoteType: input.remoteType as RemoteType });
     }
     return { AND: constraints };
+  }
+
+  private minimumPublicListingDate(): Date {
+    const maxAgeHours = this.config.get<number>(
+      'JOB_DISCOVERY_MAX_JOB_AGE_HOURS',
+      168,
+    );
+    return new Date(Date.now() - maxAgeHours * 60 * 60 * 1_000);
   }
 
   private async refreshConfiguredSources(): Promise<SourceRefreshResult[]> {
@@ -337,8 +338,7 @@ export class JobDiscoveryService {
         usage.jobDiscoveriesUsed + 1,
         currentUsage.jobDiscoveriesUsed,
       );
-      const unlimited =
-        currentUsage.jobDiscoveriesMax >= UNLIMITED_PLAN_LIMIT;
+      const unlimited = currentUsage.jobDiscoveriesMax >= UNLIMITED_PLAN_LIMIT;
       return {
         used,
         maximum: currentUsage.jobDiscoveriesMax,
@@ -366,7 +366,10 @@ export class JobDiscoveryService {
 export function parseConfiguredSources(value: string): ConfiguredSource[] {
   const results: ConfiguredSource[] = [];
   const seen = new Set<string>();
-  for (const entry of value.split(',').map((item) => item.trim()).filter(Boolean)) {
+  for (const entry of value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)) {
     const separator = entry.indexOf(':');
     if (separator <= 0) continue;
     const source = entry.slice(0, separator).toLowerCase();
@@ -413,14 +416,6 @@ function readResumeSearchProfile(value: Prisma.JsonValue): ResumeSearchProfile {
   };
 }
 
-function calculateRoleAlignment(roles: string[], jobTitle: string): number {
-  const roleTokens = new Set(roles.flatMap(tokenizeRole));
-  const jobTokens = tokenizeRole(jobTitle);
-  if (!roleTokens.size || !jobTokens.length) return 50;
-  const matches = jobTokens.filter((token) => roleTokens.has(token)).length;
-  return Math.round((matches / jobTokens.length) * 100);
-}
-
 function calculateResumeSkillAlignment(
   skills: string[],
   jobText: string,
@@ -436,23 +431,6 @@ function calculateResumeSkillAlignment(
     score: Math.min(100, Math.round((matched.length / denominator) * 100)),
     matched: matched.slice(0, 8),
   };
-}
-
-function tokenizeRole(value: string): string[] {
-  const ignored = new Set([
-    'and',
-    'the',
-    'for',
-    'senior',
-    'junior',
-    'lead',
-    'manager',
-    'specialist',
-  ]);
-  return cleanLabel(value)
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}+#]+/u)
-    .filter((token) => token.length >= 3 && !ignored.has(token));
 }
 
 function cleanLabel(value: string): string {

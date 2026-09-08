@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JobService } from '../application/job.service';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 describe('JobService', () => {
   let service: JobService;
@@ -22,6 +23,12 @@ describe('JobService', () => {
       providers: [
         JobService,
         { provide: PrismaService, useValue: prismaMock },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((_key: string, fallback: unknown) => fallback),
+          },
+        },
       ],
     }).compile();
 
@@ -41,6 +48,18 @@ describe('JobService', () => {
       });
       expect(result.jobs).toHaveLength(1);
       expect(result.total).toBe(1);
+      expect(prismaMock.job.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: [
+              expect.objectContaining({
+                capturedByUserId: null,
+                scrapedAt: { gte: expect.any(Date) },
+              }),
+            ],
+          }),
+        }),
+      );
     });
   });
 
@@ -103,9 +122,9 @@ describe('JobService', () => {
           create: expect.objectContaining({
             capturedBy: { connect: { id: 'user-1' } },
           }),
+          update: expect.objectContaining({ scrapedAt: expect.any(Date) }),
         }),
       );
     });
   });
-
 });

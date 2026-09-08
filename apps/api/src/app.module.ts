@@ -128,6 +128,11 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
           .min(5)
           .max(1440)
           .default(30),
+        JOB_DISCOVERY_MAX_JOB_AGE_HOURS: Joi.number()
+          .integer()
+          .min(1)
+          .max(720)
+          .default(168),
         OPENAI_API_KEY: Joi.string().allow('').default(''),
         ANTHROPIC_API_KEY: Joi.string().allow('').default(''),
         GOOGLE_AI_API_KEY: Joi.string().allow('').default(''),
