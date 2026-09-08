@@ -1,11 +1,19 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { JobSearchFilter } from '../domain/job-search-filter';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class JobService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async search(filters: JobSearchFilter, userId?: string) {
     const page = filters.page || 1;
@@ -13,9 +21,7 @@ export class JobService {
     const skip = (page - 1) * limit;
 
     const where: Prisma.JobWhereInput = {
-      OR: userId
-        ? [{ capturedByUserId: null }, { capturedByUserId: userId }]
-        : [{ capturedByUserId: null }],
+      OR: this.visibleJobSources(userId),
     };
 
     if (filters.query) {
@@ -89,7 +95,9 @@ export class JobService {
     const sourceUrl = this.normalizeSourceUrl(data.sourceUrl);
     const title = data.title.trim();
     if (!title || title.length > 300) {
-      throw new BadRequestException('Job title must be between 1 and 300 characters');
+      throw new BadRequestException(
+        'Job title must be between 1 and 300 characters',
+      );
     }
     const source = data.source.trim().slice(0, 50);
     if (!source) throw new BadRequestException('Job source is required');
@@ -107,7 +115,9 @@ export class JobService {
       source,
       description: data.description?.slice(0, 200_000),
       location: data.location?.trim().slice(0, 300),
-      remoteType: /\bremote\b/i.test(data.location ?? '') ? 'remote' as const : undefined,
+      remoteType: /\bremote\b/i.test(data.location ?? '')
+        ? ('remote' as const)
+        : undefined,
       capturedBy: data.capturedByUserId
         ? { connect: { id: data.capturedByUserId } }
         : undefined,
@@ -118,8 +128,27 @@ export class JobService {
     return this.prisma.job.upsert({
       where: { sourceKey },
       create: { ...jobData, sourceUrl, sourceKey },
-      update: jobData,
+      // `scrapedAt` is the last time an approved provider or the extension
+      // observed this posting. It must move forward on refresh so discovery
+      // does not rank a currently available job as stale.
+      update: { ...jobData, scrapedAt: new Date() },
     });
+  }
+
+  private visibleJobSources(userId?: string): Prisma.JobWhereInput[] {
+    const maxAgeHours = this.config.get<number>(
+      'JOB_DISCOVERY_MAX_JOB_AGE_HOURS',
+      168,
+    );
+    const publicListing = {
+      capturedByUserId: null,
+      scrapedAt: {
+        gte: new Date(Date.now() - maxAgeHours * 60 * 60 * 1_000),
+      },
+    };
+    return userId
+      ? [publicListing, { capturedByUserId: userId }]
+      : [publicListing];
   }
 
   private normalizeSourceUrl(sourceUrl?: string): string | undefined {
@@ -133,5 +162,4 @@ export class JobService {
       throw new BadRequestException('Job source URL must be a valid HTTPS URL');
     }
   }
-
 }

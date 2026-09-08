@@ -68,6 +68,9 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @applyai/api prisma:generate
 
+      - name: Validate Prisma schema and migrations
+        run: pnpm --filter @applyai/api exec prisma validate --schema src/database/prisma/schema.prisma
+
       - name: Lint
         run: pnpm lint
 
@@ -91,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      CI: 'true'
+      CI: "true"
       NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
     steps:
       - name: Check out repository

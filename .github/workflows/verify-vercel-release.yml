@@ -1,0 +1,37 @@
+name: Verify Vercel production release
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: Smoke-test deployed production origins
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DASHBOARD_URL: ${{ github.event.deployment_status.target_url }}
+      PRODUCT_API_URL: ${{ vars.PRODUCTION_API_URL }}
+      NORI_API_URL: ${{ vars.PRODUCTION_NORI_API_URL }}
+    steps:
+      - name: Verify dashboard and API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in "$DASHBOARD_URL" "$PRODUCT_API_URL"; do
+            test -n "$url"
+            node -e "const url = new URL(process.argv[1]); if (url.protocol !== 'https:') process.exit(1)" "$url"
+          done
+
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors "$DASHBOARD_URL/" >/dev/null
+          curl --fail --silent --show-error --location --retry 3 --retry-all-errors "$PRODUCT_API_URL/health/ready" >/dev/null
+
+          if [ -n "$NORI_API_URL" ]; then
+            node -e "const url = new URL(process.argv[1]); if (url.protocol !== 'https:') process.exit(1)" "$NORI_API_URL"
+            curl --fail --silent --show-error --location --retry 3 --retry-all-errors "$NORI_API_URL/health/ready" >/dev/null
+          fi

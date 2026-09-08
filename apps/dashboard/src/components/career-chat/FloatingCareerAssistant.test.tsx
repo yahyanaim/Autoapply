@@ -67,11 +67,14 @@ afterEach(() => {
 });
 
 describe('FloatingCareerAssistant', () => {
-  it('opens the public Career Assistant with its privacy notice', () => {
+  it('opens the independent public Career Assistant with its privacy notice', () => {
     openAssistant();
 
     expect(container.textContent).toContain('Ask Nori');
     expect(container.textContent).toContain('Career Assistant');
+    expect(container.textContent).toContain(
+      'Nori cannot access your ApplyAI profile, CV, or dashboard',
+    );
     expect(container.textContent).toContain('Chat messages are not stored');
   });
 

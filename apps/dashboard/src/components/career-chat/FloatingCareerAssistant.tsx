@@ -360,7 +360,7 @@ export function FloatingCareerAssistant() {
             </div>
             <p className="mt-2 flex items-center justify-center gap-1 text-[10px] text-gray-400">
               <ShieldCheck className="h-3 w-3" />
-              Chat messages are not stored. Verify important information.
+              Nori cannot access your ApplyAI profile, CV, or dashboard. Chat messages are not stored.
             </p>
           </form>
         </section>

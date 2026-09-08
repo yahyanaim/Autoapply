@@ -79,4 +79,5 @@ Configure the approved discovery catalog before launch:
 ```dotenv
 JOB_DISCOVERY_SOURCES=greenhouse:board-token,lever:site-name,ashby:job-board-name
 JOB_DISCOVERY_REFRESH_TTL_MINUTES=30
+JOB_DISCOVERY_MAX_JOB_AGE_HOURS=168
 ```

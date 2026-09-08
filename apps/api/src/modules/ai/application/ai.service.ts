@@ -368,7 +368,11 @@ export class AIService {
     }
 
     const matchResult = calculateMatchScore(
-      { content: optimizedText },
+      // The score answers "how does the candidate's verified CV fit this
+      // job?". Tailored wording is a separate quality concern; scoring the
+      // generated document would make an AI rewrite appear to improve the
+      // candidate's underlying experience.
+      { content: resumeContent },
       jobDescription,
     );
 
@@ -512,6 +516,25 @@ export class AIService {
       throw new BadGatewayException(
         'AI provider returned a generic cover letter; regenerate for more specificity',
       );
+    }
+    const verifiedResumeText = verifiedResumeToText(resume.parsedJson);
+    const truthfulness = analyzeResumeTruthfulness(
+      {
+        content: `${JSON.stringify(resume.parsedJson)}\n${verifiedResumeText}`,
+      },
+      { content: coverLetterContent },
+      { original: resume.parsedJson, optimized: { coverLetterContent } },
+    );
+    if (blockedTruthfulnessFindings(truthfulness).length > 0) {
+      throw new BadGatewayException({
+        statusCode: 502,
+        code: 'TRUTHFULNESS_VALIDATION_FAILED',
+        message: formatTruthfulnessFailure(
+          truthfulness,
+          'The generated cover letter was rejected because it contained unsupported claims.',
+        ),
+        truthfulness,
+      });
     }
 
     const coverLetter = await this.prisma.coverLetter.create({

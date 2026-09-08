@@ -27,6 +27,9 @@ describe('careerChatClient', () => {
     expect(url.pathname).toBe('/career-chat/messages');
     expect(options.credentials).toBe('omit');
     expect(new Headers(options.headers).has('Authorization')).toBe(false);
+    expect(JSON.parse(String(options.body))).toEqual({
+      messages: [{ role: 'user', content: 'Where can I look?' }],
+    });
   });
 
   it('surfaces the standalone API error message', async () => {

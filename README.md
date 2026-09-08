@@ -76,6 +76,7 @@ Configure sources with:
 ```env
 JOB_DISCOVERY_SOURCES=greenhouse:board-token,lever:site-name,ashby:job-board-name
 JOB_DISCOVERY_REFRESH_TTL_MINUTES=30
+JOB_DISCOVERY_MAX_JOB_AGE_HOURS=168
 ```
 
 The extension has a separate, user-initiated path for supported Moroccan sites.
@@ -392,7 +393,10 @@ Build the extension with its real `VITE_API_BASE_URL` and
 resulting browser extension ID as `EXTENSION_ID` on the backend.
 
 See [Vercel and backend deployment](docs/VERCEL_DEPLOYMENT.md) for the complete
-configuration and verification checklist.
+configuration and verification checklist. See [CI/CD and release gates](docs/CI_CD.md)
+for the required GitHub checks, Vercel smoke test, and release sequence.
+The current architectural and business-logic assessment is in
+[Architecture and product audit](docs/ARCHITECTURE_AND_PRODUCT_AUDIT.md).
 
 ## Security, privacy, and legal boundaries
 
