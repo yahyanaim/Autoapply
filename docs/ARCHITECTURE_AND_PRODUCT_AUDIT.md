@@ -1,6 +1,6 @@
 # ApplyAI architecture and product-quality audit
 
-Audit date: 2026-09-08
+Audit date: 2026-09-09
 
 ## Product contract
 
@@ -51,10 +51,26 @@ cannot improve the candidate's real experience.
 ### Corrected: listing freshness
 
 `scrapedAt` now records the latest observation of a source listing during an
-upsert. Public search and discovery exclude public listings older than
-`JOB_DISCOVERY_MAX_JOB_AGE_HOURS` (seven days by default); a user can still see
-their own browser-captured listings. This prevents an old job from being
-presented as fresh merely because its record was originally created recently.
+upsert. One shared visibility policy excludes public listings older than
+`JOB_DISCOVERY_MAX_JOB_AGE_HOURS` (seven days by default) from search,
+discovery, direct viewing, scoring, analysis, and new application preparation.
+A user can still use their own browser-captured listings. This prevents an old
+job from being presented as fresh merely because its record was originally
+created recently or because a stale record ID was used directly.
+
+### Corrected: conservative multilingual scoring
+
+The deterministic scorer now preserves Unicode letters and includes a tested
+baseline of Arabic aliases for languages, education, requirements, experience,
+and common responsibilities. English and French remain supported. A year-only
+employment date is now a lower-bound signal rather than an assumed full year,
+so it cannot overstate the verified duration used for an experience threshold.
+
+### Corrected: required production Redis configuration
+
+Redis powers distributed rate limiting and background queues. Development and
+test still default to localhost, but production configuration now fails fast if
+it does not explicitly name a `redis://` or `rediss://` instance.
 
 ### Corrected: cover-letter truthfulness
 
@@ -69,6 +85,12 @@ user's explicit confirmation.
 The GitHub workflows now provide a repeatable pull-request gate, dependency
 review, CodeQL scanning, and production-release smoke tests. Full details are
 in [CI_CD.md](CI_CD.md).
+
+The Vercel smoke workflow is scoped to Vercel's actual dashboard deployment
+environment name (`Production – autoapply`). The repository still needs the
+operator to set `PRODUCTION_API_URL` (and `PRODUCTION_NORI_API_URL` when Nori
+is public) as GitHub repository variables before an end-to-end release check
+can pass.
 
 ### Accepted trade-off: existing-registration feedback
 

@@ -30,6 +30,10 @@ the candidate.
 See [Project use cases](docs/USE_CASES.md) for detailed actors, flows, plan
 branches, failure cases, and product boundaries.
 
+For the current technical model, product rules, and review history, see
+[ApplyAI overview](docs/APPLYAI_OVERVIEW.md), [Architecture](docs/ARCHITECTURE.md),
+and [Code review](docs/CODE_REVIEW.md).
+
 ## Feature status
 
 Status values are intentionally conservative:
@@ -87,8 +91,8 @@ take a screenshot and does not crawl search-result pages.
 ## Explainable match scoring
 
 Match score v2 compares the **original parsed resume** with a job title and
-description. It is deterministic and supports English/French terminology
-aliases. The available categories are:
+description. It is deterministic and supports English, French, and baseline
+Arabic terminology aliases. The available categories are:
 
 | Category         | Base weight |
 | ---------------- | ----------: |
@@ -113,7 +117,10 @@ Results are cached by resume/job/scorer-version hashes. Raw duplicate job
 descriptions are not stored in the score cache. Because the scorer is
 deterministic, ranking jobs consumes no AI-provider tokens.
 
-The algorithm is documented in
+Year-only dates are deliberately treated conservatively: a year is not assumed
+to mean a full verified twelve months. Public listings must be within the
+configured freshness window for discovery, direct viewing, scoring, analysis,
+and new application preparation. The algorithm is documented in
 [Match score v2](apps/api/src/modules/ai/domain/MATCH_SCORE.md).
 
 ## Plans and quotas

@@ -8,6 +8,7 @@ import {
   Optional,
   PayloadTooLargeException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { AIProviderFactory } from '../infrastructure/providers/provider.factory';
 import { PromptService } from './prompt.service';
@@ -34,6 +35,7 @@ import {
   readJobAnalysis,
 } from '../domain/job-analysis';
 import { MatchScoreCacheService } from './match-score-cache.service';
+import { accessibleFreshJobWhere } from '../../job/domain/job-visibility';
 
 @Injectable()
 export class AIService {
@@ -45,6 +47,7 @@ export class AIService {
     private readonly promptService: PromptService,
     private readonly matchScoreCache: MatchScoreCacheService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
+    @Optional() private readonly config: ConfigService = new ConfigService(),
   ) {}
 
   async complete(
@@ -720,10 +723,12 @@ export class AIService {
     userId: string,
     jobId: string,
   ): Prisma.JobWhereInput {
-    return {
-      id: jobId,
-      OR: [{ capturedByUserId: null }, { capturedByUserId: userId }],
-    };
+    return accessibleFreshJobWhere(
+      userId,
+      jobId,
+      this.clock.now(),
+      this.config.get<number>('JOB_DISCOVERY_MAX_JOB_AGE_HOURS', 168),
+    );
   }
 
   private async getOwnedResume(userId: string, resumeId: string) {

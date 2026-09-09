@@ -223,4 +223,73 @@ describe('calculateMatchScore', () => {
     expect(result.explanation.join(' ')).toMatch(/CV verifies 4 years/i);
     expect(result.missingKeywords).toContain('5+ years experience');
   });
+
+  it('does not turn year-only employment dates into unverified full years', () => {
+    const result = calculateMatchScore(
+      {
+        content: JSON.stringify({
+          skills: ['SQL'],
+          experience: [
+            {
+              title: 'Data Analyst',
+              startDate: '2020',
+              endDate: '2024',
+              description: 'Analyzed data.',
+            },
+          ],
+          education: [],
+          projects: [],
+          languages: [],
+          certifications: [],
+        }),
+      },
+      'Data Analyst\nMinimum 5 years of experience. SQL is required.',
+    );
+
+    expect(result.explanation.join(' ')).toMatch(/CV verifies 3\.2 years/i);
+    expect(result.missingKeywords).toContain('5+ years experience');
+  });
+
+  it('scores baseline Arabic CV and job-offer evidence without dropping Arabic text', () => {
+    const result = calculateMatchScore(
+      {
+        content: JSON.stringify({
+          skills: ['SQL', 'Power BI', 'Excel'],
+          experience: [
+            {
+              title: 'محلل بيانات',
+              startDate: '2020-01',
+              endDate: '2024-12',
+              description:
+                'حللت البيانات وأنشأت التقارير ولوحات المعلومات لتحسين الأداء.',
+            },
+          ],
+          education: [{ degree: 'ماجستير في علوم البيانات' }],
+          projects: [],
+          languages: ['العربية', 'الفرنسية'],
+          certifications: [],
+        }),
+      },
+      `
+        محلل بيانات
+        مطلوب محلل بيانات مع 3 سنوات من الخبرة.
+        المهارات المطلوبة: SQL و Power BI و Excel.
+        إجادة العربية والفرنسية مطلوبة.
+        ماجستير ضروري.
+        المسؤوليات: تحليل البيانات وإعداد التقارير ولوحات المعلومات.
+      `,
+    );
+
+    expect(result.score).toBeGreaterThanOrEqual(80);
+    expect(result.breakdown).toEqual(
+      expect.objectContaining({
+        skills: 100,
+        education: 100,
+        languages: 100,
+      }),
+    );
+    expect(result.matchedKeywords).toEqual(
+      expect.arrayContaining(['SQL', 'Power BI', 'Excel']),
+    );
+  });
 });

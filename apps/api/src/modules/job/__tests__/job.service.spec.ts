@@ -73,6 +73,30 @@ describe('JobService', () => {
       expect(result).toHaveProperty('id', 'j1');
     });
 
+    it('allows a user-owned captured job while requiring public listings to be fresh', async () => {
+      prismaMock.job.findFirst.mockResolvedValue({
+        id: 'captured-job',
+        title: 'Engineer',
+      });
+
+      await service.getJob('captured-job', 'user-1');
+
+      expect(prismaMock.job.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'captured-job',
+            OR: [
+              {
+                capturedByUserId: null,
+                scrapedAt: { gte: expect.any(Date) },
+              },
+              { capturedByUserId: 'user-1' },
+            ],
+          },
+        }),
+      );
+    });
+
     it('should throw NotFoundException if job not found', async () => {
       prismaMock.job.findFirst.mockResolvedValue(null);
       await expect(service.getJob('nonexistent')).rejects.toThrow(

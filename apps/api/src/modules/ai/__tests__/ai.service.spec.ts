@@ -75,6 +75,18 @@ describe('AIService resume ownership and readiness', () => {
     expect(prisma.resume.findFirst).toHaveBeenCalledWith({
       where: { id: 'resume_1', userId: 'user_1' },
     });
+    expect(prisma.job.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'job_1',
+        OR: [
+          {
+            capturedByUserId: null,
+            scrapedAt: { gte: expect.any(Date) },
+          },
+          { capturedByUserId: 'user_1' },
+        ],
+      },
+    });
   });
 
   it('rejects a resume that is still parsing', async () => {
