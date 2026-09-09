@@ -70,6 +70,15 @@ The GitHub workflows now provide a repeatable pull-request gate, dependency
 review, CodeQL scanning, and production-release smoke tests. Full details are
 in [CI_CD.md](CI_CD.md).
 
+### Accepted trade-off: existing-registration feedback
+
+`/register` returns `User with this email already exists` when an account is
+already registered. This is a deliberate UX choice so a legitimate user can
+recover the right account path, not an overlooked enumeration issue. Login
+failure responses remain generic and run equivalent password-verification work
+for unknown and known accounts, which closes the more practical timing
+side-channel.
+
 ## Product limitations to resolve before a broad launch
 
 These are intentionally documented rather than hidden by an unsafe code change:

@@ -19,6 +19,7 @@ describe('AuthService', () => {
   let prismaMock: any;
   let passwordServiceMock: any;
   let jwtServiceMock: any;
+  let mfaServiceMock: any;
   let notificationServiceMock: any;
 
   beforeEach(async () => {
@@ -73,10 +74,19 @@ describe('AuthService', () => {
     passwordServiceMock = {
       hash: jest.fn(),
       verify: jest.fn(),
+      verifyDummy: jest.fn().mockResolvedValue(undefined),
     };
 
     jwtServiceMock = {
       sign: jest.fn(),
+    };
+    mfaServiceMock = {
+      createEnrollment: jest.fn().mockReturnValue({
+        secret: 'BASE32SECRET',
+        otpAuthUri: 'otpauth://totp/ApplyAI',
+        encryptedSecret: 'encrypted-secret',
+      }),
+      verifyAndConsumeEncryptedSecret: jest.fn().mockResolvedValue(true),
     };
     notificationServiceMock = {
       create: jest.fn().mockResolvedValue({ id: 'security_notice' }),
@@ -90,14 +100,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: jwtServiceMock },
         {
           provide: MfaService,
-          useValue: {
-            createEnrollment: jest.fn().mockReturnValue({
-              secret: 'BASE32SECRET',
-              otpAuthUri: 'otpauth://totp/ApplyAI',
-              encryptedSecret: 'encrypted-secret',
-            }),
-            verifyEncryptedSecret: jest.fn().mockReturnValue(true),
-          },
+          useValue: mfaServiceMock,
         },
         {
           provide: ConfigService,
@@ -218,6 +221,7 @@ describe('AuthService', () => {
         hashedPassword,
         password,
       );
+      expect(passwordServiceMock.verifyDummy).not.toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException if password is wrong', async () => {
@@ -239,6 +243,7 @@ describe('AuthService', () => {
         hashedPassword,
         password,
       );
+      expect(passwordServiceMock.verifyDummy).not.toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException if user does not exist', async () => {
@@ -253,6 +258,8 @@ describe('AuthService', () => {
       expect(prismaMock.user.findUnique).toHaveBeenCalledWith({
         where: { email },
       });
+      expect(passwordServiceMock.verifyDummy).toHaveBeenCalledWith(password);
+      expect(passwordServiceMock.verify).not.toHaveBeenCalled();
       expect(prismaMock.activityLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -277,6 +284,7 @@ describe('AuthService', () => {
       await expect(service.login(email, password)).rejects.toThrow(
         UnauthorizedException,
       );
+      expect(passwordServiceMock.verifyDummy).toHaveBeenCalledWith(password);
     });
 
     it('requires MFA for privileged accounts', async () => {
@@ -301,6 +309,30 @@ describe('AuthService', () => {
             metadata: { method: 'invalid_mfa' },
           }),
         }),
+      );
+    });
+
+    it('consumes a privileged account MFA code before creating a session', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: 'admin_1',
+        email: 'admin@example.com',
+        passwordHash: 'hashed',
+        role: 'platform_admin',
+        mfaEnabledAt: new Date(),
+        mfaSecretEncrypted: 'encrypted-secret',
+      });
+      passwordServiceMock.verify.mockResolvedValue(true);
+      prismaMock.session.create.mockResolvedValue({ id: 'session_1' });
+      jwtServiceMock.sign.mockReturnValue('access_token');
+
+      await expect(
+        service.login('admin@example.com', 'SecurePass123!@', undefined, '123456'),
+      ).resolves.toHaveProperty('accessToken', 'access_token');
+
+      expect(mfaServiceMock.verifyAndConsumeEncryptedSecret).toHaveBeenCalledWith(
+        'admin_1',
+        'encrypted-secret',
+        '123456',
       );
     });
 
@@ -362,6 +394,11 @@ describe('AuthService', () => {
         where: { id: 'user_123' },
         data: { mfaSecretEncrypted: 'encrypted-secret' },
       });
+      expect(mfaServiceMock.verifyAndConsumeEncryptedSecret).toHaveBeenCalledWith(
+        'user_123',
+        'encrypted-secret',
+        '123456',
+      );
       expect(prismaMock.session.updateMany).toHaveBeenCalledWith({
         where: { id: 'session_1', userId: 'user_123' },
         data: { mfaVerifiedAt: expect.any(Date) },

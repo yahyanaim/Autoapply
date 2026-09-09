@@ -135,6 +135,7 @@ model User {
   privacyPolicyVersion    String?
   mfaSecretEncrypted      String?
   mfaEnabledAt            DateTime?
+  mfaLastUsedStep         Int?
   failedLoginAttempts     Int       @default(0)
   lockedUntil             DateTime?
   createdAt               DateTime  @default(now())

@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
+  OnModuleInit,
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -13,15 +15,33 @@ import {
   createHash,
 } from 'node:crypto';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
+import { PrismaService } from '../../../database/prisma/prisma.service';
 
 @Injectable()
-export class MfaService {
+export class MfaService implements OnModuleInit {
   private readonly base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  private readonly logger = new Logger(MfaService.name);
+  private readonly timeStepMs = 30_000;
+  private hasLoggedDevelopmentFallbackWarning = false;
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
+
+  onModuleInit(): void {
+    const usesDevelopmentFallback = !this.configService.get<string>(
+      'MFA_ENCRYPTION_KEY',
+    );
+    this.encryptionKey();
+    if (usesDevelopmentFallback && !this.hasLoggedDevelopmentFallbackWarning) {
+      this.logger.warn(
+        'MFA_ENCRYPTION_KEY is not configured; using the development-only JWT_SECRET-derived MFA key',
+      );
+      this.hasLoggedDevelopmentFallbackWarning = true;
+    }
+  }
 
   createEnrollment(email: string) {
     const secret = this.encodeBase32(randomBytes(20));
@@ -38,13 +58,47 @@ export class MfaService {
     return this.verifyCode(this.decrypt(encryptedSecret), code);
   }
 
+  async verifyAndConsumeEncryptedSecret(
+    userId: string,
+    encryptedSecret: string,
+    code: string,
+  ): Promise<boolean> {
+    const matchedStep = this.findMatchingStep(
+      this.decrypt(encryptedSecret),
+      code,
+    );
+    if (matchedStep === null) return false;
+
+    const consumed = await this.prisma.user.updateMany({
+      where: {
+        id: userId,
+        OR: [
+          { mfaLastUsedStep: null },
+          { mfaLastUsedStep: { lt: matchedStep } },
+        ],
+      },
+      data: { mfaLastUsedStep: matchedStep },
+    });
+    return consumed.count === 1;
+  }
+
   verifyCode(secret: string, code: string, timestamp?: number): boolean {
+    return this.findMatchingStep(secret, code, timestamp) !== null;
+  }
+
+  private findMatchingStep(
+    secret: string,
+    code: string,
+    timestamp?: number,
+  ): number | null {
     const referenceTime = timestamp ?? this.clock.nowMs();
-    if (!/^\d{6}$/.test(code)) return false;
+    if (!/^\d{6}$/.test(code)) return null;
+    const referenceStep = Math.floor(referenceTime / this.timeStepMs);
     for (const offset of [-1, 0, 1]) {
+      const candidateStep = referenceStep + offset;
       const expected = this.generateCode(
         secret,
-        referenceTime + offset * 30_000,
+        candidateStep * this.timeStepMs,
       );
       const actualBuffer = Buffer.from(code);
       const expectedBuffer = Buffer.from(expected);
@@ -52,14 +106,16 @@ export class MfaService {
         actualBuffer.length === expectedBuffer.length &&
         timingSafeEqual(actualBuffer, expectedBuffer)
       ) {
-        return true;
+        return candidateStep;
       }
     }
-    return false;
+    return null;
   }
 
   generateCode(secret: string, timestamp?: number): string {
-    const counter = Math.floor((timestamp ?? this.clock.nowMs()) / 30_000);
+    const counter = Math.floor(
+      (timestamp ?? this.clock.nowMs()) / this.timeStepMs,
+    );
     const counterBuffer = Buffer.alloc(8);
     counterBuffer.writeBigUInt64BE(BigInt(counter));
     const digest = createHmac('sha1', this.decodeBase32(secret))
@@ -119,6 +175,9 @@ export class MfaService {
         throw new Error('MFA_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
       }
       return key;
+    }
+    if (this.configService.get<string>('NODE_ENV') === 'production') {
+      throw new Error('MFA_ENCRYPTION_KEY is required in production');
     }
     return createHash('sha256')
       .update(
