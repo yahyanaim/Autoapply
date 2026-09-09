@@ -2,17 +2,24 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
+import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { JobSearchFilter } from '../domain/job-search-filter';
 import { Prisma } from '@prisma/client';
+import {
+  accessibleFreshJobWhere,
+  visibleJobSources,
+} from '../domain/job-visibility';
 
 @Injectable()
 export class JobService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
   async search(filters: JobSearchFilter, userId?: string) {
@@ -21,7 +28,11 @@ export class JobService {
     const skip = (page - 1) * limit;
 
     const where: Prisma.JobWhereInput = {
-      OR: this.visibleJobSources(userId),
+      OR: visibleJobSources(
+        userId,
+        this.clock.now(),
+        this.maximumPublicJobAgeHours(),
+      ),
     };
 
     if (filters.query) {
@@ -70,13 +81,23 @@ export class JobService {
   }
 
   async getJob(id: string, userId?: string) {
+    const now = this.clock.now();
     const job = await this.prisma.job.findFirst({
-      where: {
-        id,
-        OR: userId
-          ? [{ capturedByUserId: null }, { capturedByUserId: userId }]
-          : [{ capturedByUserId: null }],
-      },
+      where: userId
+        ? accessibleFreshJobWhere(
+            userId,
+            id,
+            now,
+            this.maximumPublicJobAgeHours(),
+          )
+        : {
+            id,
+            OR: visibleJobSources(
+              undefined,
+              now,
+              this.maximumPublicJobAgeHours(),
+            ),
+          },
       include: { company: true, skills: true },
     });
     if (!job) throw new NotFoundException('Job not found');
@@ -131,24 +152,15 @@ export class JobService {
       // `scrapedAt` is the last time an approved provider or the extension
       // observed this posting. It must move forward on refresh so discovery
       // does not rank a currently available job as stale.
-      update: { ...jobData, scrapedAt: new Date() },
+      update: { ...jobData, scrapedAt: this.clock.now() },
     });
   }
 
-  private visibleJobSources(userId?: string): Prisma.JobWhereInput[] {
-    const maxAgeHours = this.config.get<number>(
+  private maximumPublicJobAgeHours(): number {
+    return this.config.get<number>(
       'JOB_DISCOVERY_MAX_JOB_AGE_HOURS',
       168,
     );
-    const publicListing = {
-      capturedByUserId: null,
-      scrapedAt: {
-        gte: new Date(Date.now() - maxAgeHours * 60 * 60 * 1_000),
-      },
-    };
-    return userId
-      ? [publicListing, { capturedByUserId: userId }]
-      : [publicListing];
   }
 
   private normalizeSourceUrl(sourceUrl?: string): string | undefined {

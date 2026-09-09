@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApplicationPreparationStatus,
   ApplicationStatus,
@@ -17,6 +18,7 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { AIService } from '../../ai/application/ai.service';
+import { accessibleFreshJobWhere } from '../../job/domain/job-visibility';
 import { readJobAnalysis } from '../../ai/domain/job-analysis';
 import {
   analyzeResumeTruthfulness,
@@ -40,6 +42,7 @@ export class ApplicationTrackerService {
     private readonly prisma: PrismaService,
     private readonly aiService: AIService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
+    @Optional() private readonly config: ConfigService = new ConfigService(),
   ) {}
 
   async create(
@@ -64,10 +67,7 @@ export class ApplicationTrackerService {
     if (existing) return existing;
 
     const job = await this.prisma.job.findFirst({
-      where: {
-        id: jobId,
-        OR: [{ capturedByUserId: null }, { capturedByUserId: userId }],
-      },
+      where: this.accessibleJobWhere(userId, jobId),
     });
     if (!job) throw new NotFoundException('Job not found');
 
@@ -166,10 +166,7 @@ export class ApplicationTrackerService {
 
     const [job, resume] = await Promise.all([
       this.prisma.job.findFirst({
-        where: {
-          id: jobId,
-          OR: [{ capturedByUserId: null }, { capturedByUserId: userId }],
-        },
+        where: this.accessibleJobWhere(userId, jobId),
       }),
       this.prisma.resume.findFirst({ where: { id: resumeId, userId } }),
     ]);
@@ -955,6 +952,18 @@ export class ApplicationTrackerService {
 
   private getNextResetDate(now: Date): Date {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  }
+
+  private accessibleJobWhere(
+    userId: string,
+    jobId: string,
+  ): Prisma.JobWhereInput {
+    return accessibleFreshJobWhere(
+      userId,
+      jobId,
+      this.clock.now(),
+      this.config.get<number>('JOB_DISCOVERY_MAX_JOB_AGE_HOURS', 168),
+    );
   }
 
   private timelineEntries(

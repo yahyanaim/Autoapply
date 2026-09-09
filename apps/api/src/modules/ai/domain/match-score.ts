@@ -54,6 +54,11 @@ interface ResumeEvidence {
   experienceYears: number | null;
 }
 
+interface ParsedMonth {
+  value: number;
+  precision: 'month' | 'year';
+}
+
 const SKILLS: TermDefinition[] = [
   term('JavaScript', 'javascript', 'js'),
   term('TypeScript', 'typescript', 'ts'),
@@ -161,13 +166,13 @@ const SKILLS: TermDefinition[] = [
 ];
 
 const LANGUAGES: TermDefinition[] = [
-  term('English', 'english', 'anglais'),
-  term('French', 'french', 'francais', 'français'),
-  term('Arabic', 'arabic', 'arabe'),
-  term('Spanish', 'spanish', 'espagnol'),
-  term('German', 'german', 'allemand'),
-  term('Italian', 'italian', 'italien'),
-  term('Portuguese', 'portuguese', 'portugais'),
+  term('English', 'english', 'anglais', 'الانجليزية', 'الإنجليزية'),
+  term('French', 'french', 'francais', 'français', 'الفرنسية'),
+  term('Arabic', 'arabic', 'arabe', 'العربية'),
+  term('Spanish', 'spanish', 'espagnol', 'الاسبانية', 'الإسبانية'),
+  term('German', 'german', 'allemand', 'الألمانية'),
+  term('Italian', 'italian', 'italien', 'الإيطالية'),
+  term('Portuguese', 'portuguese', 'portugais', 'البرتغالية'),
   term('Dutch', 'dutch', 'neerlandais', 'néerlandais'),
 ];
 
@@ -198,6 +203,8 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'analysed',
     'analysed data',
     'analyzed data',
+    'تحليل البيانات',
+    'تحليل بيانات',
   ),
   term(
     'reporting and dashboards',
@@ -206,6 +213,8 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'dashboards',
     'tableau de bord',
     'tableaux de bord',
+    'التقارير',
+    'لوحات المعلومات',
   ),
   term(
     'automation',
@@ -214,6 +223,8 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'automation',
     'automatiser',
     'automatisation',
+    'الأتمتة',
+    'أتمتة',
   ),
   term(
     'building and development',
@@ -227,6 +238,8 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'developed software',
     'developper',
     'developpement',
+    'تطوير البرمجيات',
+    'تطوير',
   ),
   term(
     'design',
@@ -234,6 +247,7 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'designed',
     'concevoir',
     'conception',
+    'تصميم',
   ),
   term(
     'implementation',
@@ -242,6 +256,7 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'implementation',
     'mettre en oeuvre',
     'mise en oeuvre',
+    'تنفيذ',
   ),
   term(
     'optimization',
@@ -251,6 +266,8 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'optimiser',
     'optimisation',
     'ameliorer',
+    'تحسين الأداء',
+    'تحسين',
   ),
   term(
     'deployment',
@@ -267,6 +284,8 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
     'quality assurance',
     'assurance qualite',
     'tests',
+    'اختبار',
+    'الجودة',
   ),
   term(
     'project delivery',
@@ -287,6 +306,7 @@ const RESPONSIBILITY_CONCEPTS: TermDefinition[] = [
   ),
   term(
     'collaboration',
+    'التعاون',
     'collaborate',
     'collaborated',
     'cross functional',
@@ -353,6 +373,12 @@ const REQUIRED_MARKERS = [
   'imperatif',
   'indispensable',
   'maitrise',
+  'مطلوب',
+  'إلزامي',
+  'ضروري',
+  'يتطلب',
+  'يجب',
+  'إجادة',
   'minimum',
 ];
 
@@ -367,6 +393,8 @@ const PREFERRED_MARKERS = [
   'apprecie',
   'atout',
   'idealement',
+  'يفضل',
+  'ميزة إضافية',
 ];
 
 const EQUIVALENT_EDUCATION_MARKERS = [
@@ -374,6 +402,8 @@ const EQUIVALENT_EDUCATION_MARKERS = [
   'or equivalent',
   'ou experience equivalente',
   'ou equivalent',
+  'او خبرة معادلة',
+  'أو خبرة معادلة',
 ];
 
 const STOPWORDS = new Set(
@@ -388,6 +418,7 @@ const STOPWORDS = new Set(
       'profil mission missions recherche recherchons candidat candidate',
       'competence competences exigence exigences requis requise obligatoire',
       'souhaite souhaitee plus an ans annee annees minimum maitrise',
+      'من في على الى إلى عن مع هذا هذه الذي التي ان أن او أو و ما لا من خلال لدى',
     ].join(' '),
   )
     .trim()
@@ -407,6 +438,10 @@ const ROLE_STOPWORDS = new Set([
   'stagiaire',
   'responsable',
   'hiring',
+  'مدير',
+  'مسؤول',
+  'خبير',
+  'متدرب',
 ]);
 
 export function calculateMatchScore(
@@ -835,10 +870,15 @@ function calculateStructuredExperienceYears(
       typeof item.startDate === 'string' ? parseMonth(item.startDate) : null;
     const end =
       typeof item.endDate === 'string' ? parseMonth(item.endDate, true) : null;
-    if (start === null || end === null || end < start) continue;
+    if (start === null || end === null) continue;
+    // A year-only start date has unknown month precision. Start at the end of
+    // that year so an inferred duration never overstates verified experience.
+    const firstVerifiedMonth =
+      start.value + (start.precision === 'year' ? 11 : 0);
+    if (end.value < firstVerifiedMonth) continue;
     for (
-      let month = start;
-      month <= end && month - start <= 1_200;
+      let month = firstVerifiedMonth;
+      month <= end.value && month - firstVerifiedMonth <= 1_200;
       month += 1
     ) {
       months.add(month);
@@ -847,14 +887,17 @@ function calculateStructuredExperienceYears(
   return months.size ? Math.round((months.size / 12) * 10) / 10 : null;
 }
 
-function parseMonth(value: string, allowPresent = false): number | null {
+function parseMonth(value: string, allowPresent = false): ParsedMonth | null {
   const normalized = normalizeText(value).trim();
   if (
     allowPresent &&
     /^(present|current|now|aujourd hui|actuel|en cours)$/.test(normalized)
   ) {
     const now = new Date();
-    return now.getUTCFullYear() * 12 + now.getUTCMonth();
+    return {
+      value: now.getUTCFullYear() * 12 + now.getUTCMonth(),
+      precision: 'month',
+    };
   }
   const yearMatch = normalized.match(/\b(19|20)\d{2}\b/);
   if (!yearMatch) return null;
@@ -877,21 +920,19 @@ function parseMonth(value: string, allowPresent = false): number | null {
   const namedIndex = monthNames.findIndex((aliases) =>
     aliases.some((alias) => normalized.includes(alias)),
   );
+  if (namedIndex < 0 && !numeric) {
+    return { value: year * 12, precision: 'year' };
+  }
   const month =
-    namedIndex >= 0
-      ? namedIndex
-      : numeric
-        ? Math.max(0, Number(numeric[0]) - 1)
-        : allowPresent
-          ? 11
-          : 0;
-  return year * 12 + month;
+    namedIndex >= 0 ? namedIndex : Math.max(0, Number(numeric![0]) - 1);
+  return { value: year * 12 + month, precision: 'month' };
 }
 
 function extractRequiredYears(normalizedJob: string): number | null {
   const patterns = [
     /(?:minimum|min|at least|au moins)?\s*(\d{1,2})(?:\s*[-–]\s*\d{1,2})?\s*\+?\s*(?:years?|ans?|annees?)\s*(?:(?:of|d|de)\s+)?(?:relevant |pertinente? )?(?:experience|experience professionnelle)/g,
     /(?:experience|experience professionnelle)\s*(?:of|de|d au moins|minimum)?\s*(\d{1,2})\s*\+?\s*(?:years?|ans?|annees?)/g,
+    /(?:خبرة\s*(?:لا تقل عن|بحد ادنى)?\s*)?(\d{1,2})\s*\+?\s*(?:سنوات|سنة)\s*(?:من\s*)?(?:الخبرة)?/g,
   ];
   return maxPatternNumber(normalizedJob, patterns);
 }
@@ -900,6 +941,7 @@ function extractDeclaredExperienceYears(normalizedResume: string): number | null
   const patterns = [
     /(\d{1,2})\s*\+?\s*(?:years?|ans?|annees?)\s*(?:(?:of|d|de)\s+)?(?:professional |professionnelle? )?experience/g,
     /experience\s*(?:of|de)?\s*(\d{1,2})\s*\+?\s*(?:years?|ans?|annees?)/g,
+    /(?:خبرة\s*(?:لا تقل عن|بحد ادنى)?\s*)?(\d{1,2})\s*\+?\s*(?:سنوات|سنة)\s*(?:من\s*)?(?:الخبرة)?/g,
   ];
   return maxPatternNumber(normalizedResume, patterns);
 }
@@ -998,8 +1040,8 @@ function importantTerms(
 
 function educationLevel(text: string): number {
   const levels: Array<[number, string[]]> = [
-    [5, ['phd', 'doctorate', 'doctorat']],
-    [4, ['master', 'msc', 'm sc', 'mba', 'bac+5', 'bac 5']],
+    [5, ['phd', 'doctorate', 'doctorat', 'دكتوراه']],
+    [4, ['master', 'msc', 'm sc', 'mba', 'bac+5', 'bac 5', 'ماجستير']],
     [
       3,
       [
@@ -1013,10 +1055,27 @@ function educationLevel(text: string): number {
         'bac 3',
         'bac+4',
         'bac 4',
+        'بكالوريوس',
+        'اجازة',
+        'إجازة',
+        'هندسة',
       ],
     ],
-    [2, ['associate degree', 'dut', 'bts', 'deug', 'bac+2', 'bac 2']],
-    [1, ['high school', 'secondary school', 'baccalaureat', 'baccalaureate']],
+    [
+      2,
+      ['associate degree', 'dut', 'bts', 'deug', 'bac+2', 'bac 2', 'دبلوم'],
+    ],
+    [
+      1,
+      [
+        'high school',
+        'secondary school',
+        'baccalaureat',
+        'baccalaureate',
+        'بكالوريا',
+        'ثانوي',
+      ],
+    ],
   ];
   for (const [level, aliases] of levels) {
     if (containsAny(text, aliases)) return level;
@@ -1152,7 +1211,7 @@ function normalizeText(value: string): string {
     .replace(/&/g, ' and ')
     .replace(/\.net\b/g, ' dotnet ')
     .replace(/([a-z])\.js\b/g, '$1 js')
-    .replace(/[^a-z0-9+#]+/g, ' ')
+    .replace(/[^\p{L}\p{N}+#]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim()} `;
 }

@@ -24,17 +24,18 @@ Every pull request to `main` runs:
    browser critical-flow test, and production builds;
 5. dependency-diff review and CodeQL analysis.
 
-Configure GitHub branch protection for `main` to require these checks before a
-merge:
+GitHub branch protection for `main` requires these checks before a merge:
 
 - `Quality, tests, and production builds`
 - `Dashboard critical-flow browser test`
 - `Review dependency changes` (pull requests)
 - `CodeQL analysis`
 
-Require one approving review and disallow force pushes. Vercel should deploy
-production only from `main`, so branch protection prevents an unreviewed or
-unverified change from reaching production.
+It resolves conversations, covers administrators, and disallows force pushes.
+This is a single-maintainer repository, so it deliberately does **not** require
+a second-person approval; the required automated checks remain the merge gate.
+Vercel should deploy production only from `main`, so branch protection prevents
+an unverified change from reaching production.
 
 ## Vercel release verification
 
@@ -52,6 +53,12 @@ PRODUCTION_NORI_API_URL=https://nori.example.com
 
 Leave `PRODUCTION_NORI_API_URL` empty only while Nori is intentionally not
 public. The API domains must be HTTPS and must not contain credentials.
+
+The smoke job intentionally listens only to Vercel's dashboard deployment
+environment, currently named `Production – autoapply`. This avoids duplicate
+checks from separate Vercel projects while still checking the dashboard and the
+independently hosted product API. If the Vercel project is renamed, update the
+workflow condition and test it with a production deployment.
 
 ## Release sequence
 

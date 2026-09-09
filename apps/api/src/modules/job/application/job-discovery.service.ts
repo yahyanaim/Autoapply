@@ -4,12 +4,15 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, RemoteType, ResumeParseStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma/prisma.service';
+import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { MatchScoreCacheService } from '../../ai/application/match-score-cache.service';
 import { DiscoverJobsDto } from '../interface/dto/discover-jobs.dto';
+import { visibleJobSources } from '../domain/job-visibility';
 import { JobIngestionService, JobSource } from './job-ingestion.service';
 import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
 
@@ -43,6 +46,7 @@ export class JobDiscoveryService {
     private readonly ingestion: JobIngestionService,
     private readonly config: ConfigService,
     private readonly matchScoreCache: MatchScoreCacheService,
+    @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
   async discover(userId: string, input: DiscoverJobsDto) {
@@ -137,7 +141,8 @@ export class JobDiscoveryService {
                 : 'No verified CV skills were found verbatim in this posting.',
             ],
             trackedApplication: job.applications[0] ?? null,
-            rankingScore: score + freshnessTieBreaker(job.scrapedAt),
+            rankingScore:
+              score + freshnessTieBreaker(job.scrapedAt, this.clock.nowMs()),
           };
         })
         .sort((left, right) => right.rankingScore - left.rankingScore)
@@ -146,7 +151,7 @@ export class JobDiscoveryService {
 
       return {
         resumeId: resume.id,
-        generatedAt: new Date().toISOString(),
+        generatedAt: this.clock.now().toISOString(),
         requestedLimit: Math.min(20, input.limit),
         totalCandidates: candidates.filter((job) =>
           Boolean(job.description?.trim()),
@@ -188,11 +193,11 @@ export class JobDiscoveryService {
     const constraints: Prisma.JobWhereInput[] = [
       {
         OR: [
-          {
-            capturedByUserId: null,
-            scrapedAt: { gte: this.minimumPublicListingDate() },
-          },
-          { capturedByUserId: userId },
+          ...visibleJobSources(
+            userId,
+            this.clock.now(),
+            this.maximumPublicJobAgeHours(),
+          ),
         ],
       },
       {
@@ -223,12 +228,11 @@ export class JobDiscoveryService {
     return { AND: constraints };
   }
 
-  private minimumPublicListingDate(): Date {
-    const maxAgeHours = this.config.get<number>(
+  private maximumPublicJobAgeHours(): number {
+    return this.config.get<number>(
       'JOB_DISCOVERY_MAX_JOB_AGE_HOURS',
       168,
     );
-    return new Date(Date.now() - maxAgeHours * 60 * 60 * 1_000);
   }
 
   private async refreshConfiguredSources(): Promise<SourceRefreshResult[]> {
@@ -241,7 +245,7 @@ export class JobDiscoveryService {
       'JOB_DISCOVERY_REFRESH_TTL_MINUTES',
       30,
     );
-    const now = Date.now();
+    const now = this.clock.nowMs();
     if (now - this.lastRefreshAt < ttlMinutes * 60_000) {
       return sources.map((source) => ({
         ...source,
@@ -445,8 +449,8 @@ function normalizeSearchText(value: string): string {
     .trim()} `;
 }
 
-function freshnessTieBreaker(value: Date): number {
-  const ageDays = Math.max(0, (Date.now() - value.getTime()) / 86_400_000);
+function freshnessTieBreaker(value: Date, nowMs: number): number {
+  const ageDays = Math.max(0, (nowMs - value.getTime()) / 86_400_000);
   return Math.max(0, 0.99 - ageDays / 10_000);
 }
 

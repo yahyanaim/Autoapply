@@ -97,6 +97,18 @@ describe('ApplicationTrackerService', () => {
           preparationStatus: 'ready_for_review',
         }),
       );
+      expect(prismaMock.job.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'j1',
+          OR: [
+            {
+              capturedByUserId: null,
+              scrapedAt: { gte: expect.any(Date) },
+            },
+            { capturedByUserId: 'u1' },
+          ],
+        },
+      });
       expect(aiServiceMock.analyzeJob).toHaveBeenCalledWith('u1', 'j1');
       expect(aiServiceMock.optimizeResume).toHaveBeenCalledWith(
         'u1',
@@ -125,6 +137,18 @@ describe('ApplicationTrackerService', () => {
       const result = await service.create('u1', 'j1');
       expect(result).toHaveProperty('id', 'a1');
       expect(result.status).toBe('draft');
+      expect(prismaMock.job.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'j1',
+          OR: [
+            {
+              capturedByUserId: null,
+              scrapedAt: { gte: expect.any(Date) },
+            },
+            { capturedByUserId: 'u1' },
+          ],
+        },
+      });
     });
 
     it('should throw NotFoundException if job not found', async () => {

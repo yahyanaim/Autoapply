@@ -18,6 +18,7 @@ import { HealthController } from './health.controller';
 import { RedisThrottlerStorage } from './shared/throttling/redis-throttler.storage';
 import { ObservabilityModule } from './shared/observability/observability.module';
 import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttler.guard';
+import { redisUrlSchema } from './shared/config/production-environment.schema';
 
 @Module({
   imports: [
@@ -66,9 +67,7 @@ import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttle
         CORS_ALLOWED_ORIGINS: Joi.string().allow('').default(''),
         TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
         EXTENSION_ID: Joi.string().allow('').optional(),
-        REDIS_URL: Joi.string()
-          .uri({ scheme: ['redis', 'rediss'] })
-          .default('redis://localhost:6379'),
+        REDIS_URL: redisUrlSchema(),
         STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
         S3_BUCKET_RESUMES: Joi.string().when('STORAGE_DRIVER', {
           is: 's3',
