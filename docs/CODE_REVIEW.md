@@ -31,8 +31,9 @@ Last reviewed: 2026-09-09
   public, as GitHub repository variables. The values cannot be inferred safely
   from source code.
 - Branch protection is enabled for `main`: current pull requests need the
-  quality, browser, dependency-review, and CodeQL checks plus one approval;
-  force pushes are disabled and administrators are covered too.
+  quality, browser, dependency-review, and CodeQL checks. Because this is a
+  single-maintainer repository, no second-person approval is required; force
+  pushes are disabled and administrators are covered too.
 - Run a production restore drill, configure alert routing, and validate each
   live job source's permission and data lifecycle.
 - Separate workers and distributed source-refresh locking before running

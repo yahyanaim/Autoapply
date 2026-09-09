@@ -31,10 +31,11 @@ GitHub branch protection for `main` requires these checks before a merge:
 - `Review dependency changes` (pull requests)
 - `CodeQL analysis`
 
-It also requires one approving review, resolves conversations, covers
-administrators, and disallows force pushes. Vercel should deploy production
-only from `main`, so branch protection prevents an unreviewed or unverified
-change from reaching production.
+It resolves conversations, covers administrators, and disallows force pushes.
+This is a single-maintainer repository, so it deliberately does **not** require
+a second-person approval; the required automated checks remain the merge gate.
+Vercel should deploy production only from `main`, so branch protection prevents
+an unverified change from reaching production.
 
 ## Vercel release verification
 
