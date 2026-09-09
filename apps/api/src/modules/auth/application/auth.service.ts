@@ -152,6 +152,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
     if (!user || !user.passwordHash) {
+      await this.passwordService.verifyDummy(password);
       await this.writeAuthActivity(
         null,
         ActivityType.auth_login_failed,
@@ -172,16 +173,15 @@ export class AuthService {
 
     const privileged =
       user.role === UserRole.org_admin || user.role === UserRole.platform_admin;
-    if (
-      privileged &&
-      (!user.mfaEnabledAt ||
-        !user.mfaSecretEncrypted ||
-        !mfaCode ||
-        !this.mfaService.verifyEncryptedSecret(
-          user.mfaSecretEncrypted,
-          mfaCode,
-        ))
-    ) {
+    const hasValidMfaCode =
+      privileged && user.mfaEnabledAt && user.mfaSecretEncrypted && mfaCode
+        ? await this.mfaService.verifyAndConsumeEncryptedSecret(
+            user.id,
+            user.mfaSecretEncrypted,
+            mfaCode,
+          )
+        : false;
+    if (privileged && !hasValidMfaCode) {
       await this.writeAuthActivity(
         user.id,
         ActivityType.auth_login_failed,
@@ -281,7 +281,13 @@ export class AuthService {
     if (!user?.mfaSecretEncrypted) {
       throw new BadRequestException('Start MFA setup first');
     }
-    if (!this.mfaService.verifyEncryptedSecret(user.mfaSecretEncrypted, code)) {
+    if (
+      !(await this.mfaService.verifyAndConsumeEncryptedSecret(
+        userId,
+        user.mfaSecretEncrypted,
+        code,
+      ))
+    ) {
       throw new UnauthorizedException('Invalid MFA code');
     }
 
