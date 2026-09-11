@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, type DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import Joi from 'joi';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -19,6 +19,14 @@ import { RedisThrottlerStorage } from './shared/throttling/redis-throttler.stora
 import { ObservabilityModule } from './shared/observability/observability.module';
 import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttler.guard';
 import { redisUrlSchema } from './shared/config/production-environment.schema';
+import { parseApiSentryConfiguration } from './shared/observability/sentry-config';
+
+function sentryModuleImports(): DynamicModule[] {
+  if (!parseApiSentryConfiguration().enabled) return [];
+
+  const { SentryModule } = require('@sentry/nestjs/setup') as typeof import('@sentry/nestjs/setup');
+  return [SentryModule.forRoot()];
+}
 
 @Module({
   imports: [
@@ -68,6 +76,16 @@ import { redisUrlSchema } from './shared/config/production-environment.schema';
         TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
         EXTENSION_ID: Joi.string().allow('').optional(),
         REDIS_URL: redisUrlSchema(),
+        SENTRY_ENABLED: Joi.string().valid('true', 'false').default('false'),
+        SENTRY_DSN: Joi.string().allow('').default(''),
+        SENTRY_ENVIRONMENT: Joi.string().max(64).allow('').default(''),
+        SENTRY_RELEASE: Joi.string().max(64).allow('').default(''),
+        BETA_MODE: Joi.boolean().default(false),
+        BETA_MAX_REGISTRATIONS: Joi.number()
+          .integer()
+          .min(1)
+          .max(100_000)
+          .default(100),
         STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
         S3_BUCKET_RESUMES: Joi.string().when('STORAGE_DRIVER', {
           is: 's3',
@@ -196,6 +214,25 @@ import { redisUrlSchema } from './shared/config/production-environment.schema';
             );
           if (oauthError) return oauthError;
 
+          try {
+            parseApiSentryConfiguration({
+              SENTRY_ENABLED: configured.SENTRY_ENABLED as string | undefined,
+              SENTRY_DSN: configured.SENTRY_DSN as string | undefined,
+              SENTRY_ENVIRONMENT: configured.SENTRY_ENVIRONMENT as
+                | string
+                | undefined,
+              SENTRY_RELEASE: configured.SENTRY_RELEASE as string | undefined,
+              NODE_ENV: configured.NODE_ENV as string | undefined,
+            });
+          } catch (error) {
+            return helpers.message({
+              custom:
+                error instanceof Error
+                  ? error.message
+                  : 'Sentry configuration is invalid',
+            });
+          }
+
           if (configured.NODE_ENV === 'production') {
             if (configured.STORAGE_DRIVER !== 's3') {
               return helpers.message({
@@ -282,6 +319,7 @@ import { redisUrlSchema } from './shared/config/production-environment.schema';
       }),
     }),
     PrismaModule,
+    ...sentryModuleImports(),
     ObservabilityModule,
     AuthModule,
     UserModule,

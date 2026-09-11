@@ -86,6 +86,9 @@ jobs:
       - name: Integration test
         run: pnpm --filter @applyai/api test:integration
 
+      - name: Complete workspace check
+        run: pnpm check
+
       - name: Build
         run: pnpm build
 
