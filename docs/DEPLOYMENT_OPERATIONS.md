@@ -78,6 +78,87 @@ Alert routing, on-call destinations, and cloud-provider budget alarms remain
 external environment configuration. Record the owner and test each route
 quarterly; source review alone does not prove that an alert reaches a person.
 
+### Optional Sentry error monitoring
+
+Sentry is disabled by default. Enable each runtime explicitly; an unset, empty,
+or `false` flag keeps its SDK inactive. Any other value is invalid. A `true`
+flag requires a valid DSN and fails startup before the application begins
+serving traffic.
+
+| Runtime | Enable flag | DSN |
+| --- | --- | --- |
+| Product API | `SENTRY_ENABLED=true` | `SENTRY_DSN` |
+| Dashboard browser | `NEXT_PUBLIC_SENTRY_ENABLED=true` | `NEXT_PUBLIC_SENTRY_DSN` |
+| Dashboard server and edge | `DASHBOARD_SENTRY_ENABLED=true` | `DASHBOARD_SENTRY_DSN` |
+
+The browser flag controls only browser initialization. The dashboard server and
+edge runtimes never read browser flags. `DASHBOARD_SENTRY_*` is intentionally
+separate from the product API's `SENTRY_*` values, so deployments can use
+different Sentry projects and DSNs.
+
+ApplyAI builds a new minimal error event instead of editing the SDK event. The
+only retained diagnostics are the fixed `ApplyAIError` category, optional
+line/column numbers, and the internal-frame boolean. Trusted deployment
+environment and release values come only from configuration; file names,
+function names, exception messages/types, modules, routes, transactions,
+request/user data, breadcrumbs, tags, and arbitrary metadata are dropped.
+
+The sanitizer fails closed (`null`) for malformed values, getters/proxies,
+circular input, non-plain objects, excessive or sparse arrays, deep input, or
+an oversized event. Limits are: 8,192 total characters, depth 8, array length
+64, object keys 64, exception values 4, stack frames 32, and a string length of
+256 characters. The final allow-listed event is also limited to 8,192
+characters. Before it can leave, a transport boundary drops every non-error
+envelope item, including sessions, replays, traces, logs, metrics, profiles,
+check-ins, client reports, and attachments. Do not add `captureMessage`,
+request/user contexts, breadcrumbs, tags, or new retained fields without a new
+privacy review and sanitizer test.
+
+### Closed-beta registration capacity
+
+`BETA_MODE=true` activates the database-backed lifetime registration cap set by
+`BETA_MAX_REGISTRATIONS`. The additive migration creates the singleton counter
+at zero. Accounts created before the gate migration or before beta is enabled
+do not retrospectively consume a slot.
+
+Every successful new password registration consumes one slot, even while its
+email remains unverified. Every successful first OAuth registration consumes
+one slot as well. The slot claim, user, subscription, and usage-limit records
+are in one transaction: any failed or rolled-back registration consumes no
+slot. Returning OAuth users do not consume another slot. Deleted users also do
+not release a slot because this is a lifetime successful-registration cap, not
+an active-user cap.
+
+The conditional database increment makes the cap safe across concurrent API
+instances. Set the intended maximum before enabling beta. Lowering a maximum
+below the current count blocks new registrations but never resets or reduces
+the stored counter; changing the maximum never resets it. To pause new
+sign-ups, set `BETA_MODE=false` and redeploy. Never delete, reset, or migrate
+away the singleton counter during beta.
+
+For a rollback, begin by deploying these disabled values:
+
+```env
+SENTRY_ENABLED=false
+DASHBOARD_SENTRY_ENABLED=false
+NEXT_PUBLIC_SENTRY_ENABLED=false
+BETA_MODE=false
+```
+
+Preserve the `beta_registration_gate` table and its value. There is no
+destructive down migration or counter reset. A rollback target must understand
+the additive table, or beta mode must stay disabled.
+
+### Beta Gate integration-test database
+
+The integration suite refuses to run unless `DATABASE_URL` contains `test`.
+It must point to an isolated PostgreSQL database only; never reuse a local
+development, preview, staging, or production URL. CI provisions PostgreSQL
+with database name `applyai_test`, runs `pnpm --filter @applyai/api
+prisma:migrate:deploy`, then runs `pnpm --filter @applyai/api test:integration`.
+Replicate that arrangement for local verification with a disposable database
+whose name clearly includes `test`.
+
 ## PostgreSQL backup and restore
 
 Configure encrypted snapshots with the database provider. Separately, create a

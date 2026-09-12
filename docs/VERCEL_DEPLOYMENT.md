@@ -30,6 +30,10 @@ Add these variables to Production, Preview, and Development as appropriate:
 ```text
 NEXT_PUBLIC_API_URL=https://api.example.com
 NEXT_PUBLIC_CAREER_CHAT_API_URL=https://nori-api.example.com
+NEXT_PUBLIC_SENTRY_ENABLED=false
+NEXT_PUBLIC_SENTRY_DSN=
+DASHBOARD_SENTRY_ENABLED=false
+DASHBOARD_SENTRY_DSN=
 ```
 
 `NEXT_PUBLIC_API_URL` is the full authenticated NestJS product API.
@@ -142,7 +146,15 @@ After deployment:
 4. Complete registration, login, token refresh, logout, and one resume upload.
 5. Check the API health endpoint before enabling production traffic.
 6. Confirm Nori exists on `/` but is absent from `/login`, `/register`, and all
-   authenticated dashboard routes.
+authenticated dashboard routes.
+
+Sentry is opt-in. `NEXT_PUBLIC_SENTRY_ENABLED` enables only browser error
+monitoring and must be paired with `NEXT_PUBLIC_SENTRY_DSN`.
+`DASHBOARD_SENTRY_ENABLED` and `DASHBOARD_SENTRY_DSN` control only the
+dashboard's server and edge runtimes. Enable the two runtimes independently and
+redeploy after changing either public value. The API uses its own
+`SENTRY_ENABLED` and `SENTRY_DSN` in its separate hosting environment; use
+separate projects/DSNs when operational ownership differs.
 7. Open Nori, ask one Morocco career question, confirm a response, and verify in
    browser developer tools that the request goes to the Nori-only origin and
    the Dahl key is absent from scripts and browser request headers.

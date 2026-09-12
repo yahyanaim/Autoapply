@@ -1,3 +1,4 @@
+import { initializeSentryEarly } from './instrument';
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -13,7 +14,12 @@ import {
 } from './shared/security/cors-policy';
 
 async function bootstrap() {
+  await initializeSentryEarly();
   const rootModule = await loadRootModule();
+  // ConfigModule loads local environment files while the root module is built.
+  // Re-check once so a local, explicitly enabled Sentry configuration receives
+  // the same early validation and initialization as deployment environment vars.
+  await initializeSentryEarly();
   const app = await NestFactory.create<NestExpressApplication>(rootModule, {
     bufferLogs: process.env.CAREER_CHAT_STANDALONE !== 'true',
     rawBody: true,
