@@ -75,7 +75,8 @@ function validateSentryDsn(dsn: string): void {
     throw new Error('SENTRY_DSN must be a valid Sentry DSN URL');
   }
 
-  const projectId = parsed.pathname.split('/').filter(Boolean).at(-1);
+  const pathSegments = parsed.pathname.split('/').filter(Boolean);
+  const projectId = pathSegments[pathSegments.length - 1];
   const validProtocol = parsed.protocol === 'https:' || parsed.protocol === 'http:';
   if (
     !validProtocol ||
