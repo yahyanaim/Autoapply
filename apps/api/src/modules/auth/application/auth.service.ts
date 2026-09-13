@@ -26,6 +26,7 @@ import {
 import { MfaService } from '../infrastructure/mfa.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { NotificationService } from '../../notification/application/notification.service';
+import { BetaRegistrationGateService } from '../../beta/application/beta-registration-gate.service';
 
 export interface SessionMetadata {
   userAgent?: string;
@@ -51,6 +52,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mfaService: MfaService,
+    private readonly betaRegistrationGate: BetaRegistrationGateService,
     @Optional() private readonly notificationService?: NotificationService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
@@ -78,6 +80,7 @@ export class AuthService {
     let user;
     try {
       user = await this.prisma.$transaction(async (transaction) => {
+        await this.betaRegistrationGate.claimSlot(transaction);
         const created = await transaction.user.create({
           data: {
             email,
@@ -401,6 +404,7 @@ export class AuthService {
       const resetAt = this.getNextResetDate();
 
       user = await this.prisma.$transaction(async (transaction) => {
+        await this.betaRegistrationGate.claimSlot(transaction);
         const created = await transaction.user.create({
           data: {
             email: profile.email,

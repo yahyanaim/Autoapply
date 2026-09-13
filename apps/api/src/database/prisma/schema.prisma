@@ -161,6 +161,14 @@ model User {
   @@map("users")
 }
 
+model BetaRegistrationGate {
+  id        String   @id
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("beta_registration_gate")
+}
+
 model ExtensionAuthHandoff {
   id        String    @id @default(cuid())
   userId    String

@@ -7,12 +7,14 @@ import { PrismaService } from '../../../database/prisma/prisma.service';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { MfaService } from '../infrastructure/mfa.service';
 import { NotificationService } from '../../notification/application/notification.service';
 import { Prisma } from '@prisma/client';
+import { BetaRegistrationGateService } from '../../beta/application/beta-registration-gate.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -21,6 +23,7 @@ describe('AuthService', () => {
   let jwtServiceMock: any;
   let mfaServiceMock: any;
   let notificationServiceMock: any;
+  let betaRegistrationGateMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -39,6 +42,9 @@ describe('AuthService', () => {
       },
       usageLimit: {
         create: jest.fn(),
+      },
+      oAuthAccount: {
+        findUnique: jest.fn(),
       },
       session: {
         create: jest.fn(),
@@ -91,6 +97,9 @@ describe('AuthService', () => {
     notificationServiceMock = {
       create: jest.fn().mockResolvedValue({ id: 'security_notice' }),
     };
+    betaRegistrationGateMock = {
+      claimSlot: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -101,6 +110,10 @@ describe('AuthService', () => {
         {
           provide: MfaService,
           useValue: mfaServiceMock,
+        },
+        {
+          provide: BetaRegistrationGateService,
+          useValue: betaRegistrationGateMock,
         },
         {
           provide: ConfigService,
@@ -151,6 +164,9 @@ describe('AuthService', () => {
       expect(prismaMock.user.create).toHaveBeenCalled();
       expect(prismaMock.subscription.create).toHaveBeenCalled();
       expect(prismaMock.usageLimit.create).toHaveBeenCalled();
+      expect(betaRegistrationGateMock.claimSlot).toHaveBeenCalledWith(
+        prismaMock,
+      );
     });
 
     it('should throw ConflictException if email already exists', async () => {
@@ -192,6 +208,73 @@ describe('AuthService', () => {
         service.register('test@example.com', 'SecurePass123!@'),
       ).rejects.toThrow(BadRequestException);
       expect(prismaMock.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('does not create a user when the beta gate has no remaining slots', async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null);
+      passwordServiceMock.hash.mockResolvedValue('hashed_password');
+      betaRegistrationGateMock.claimSlot.mockRejectedValue(
+        new ForbiddenException('The ApplyAI beta is currently full'),
+      );
+
+      await expect(
+        service.register('beta@example.com', 'SecurePass123!@', undefined, true),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prismaMock.user.create).not.toHaveBeenCalled();
+      expect(prismaMock.subscription.create).not.toHaveBeenCalled();
+      expect(prismaMock.usageLimit.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('OAuth beta registration gate', () => {
+    it('claims a slot for a newly created OAuth user inside the registration transaction', async () => {
+      prismaMock.oAuthAccount.findUnique.mockResolvedValue(null);
+      prismaMock.user.findUnique.mockResolvedValue(null);
+      prismaMock.user.create.mockResolvedValue({
+        id: 'oauth_user_1',
+        email: 'oauth@example.com',
+        role: 'user',
+        dataProcessingConsentAt: null,
+        privacyPolicyVersion: null,
+        mfaEnabledAt: null,
+      });
+      prismaMock.session.create.mockResolvedValue({ id: 'session_1' });
+      jwtServiceMock.sign.mockReturnValue('access_token');
+
+      await service.validateOAuthUser({
+        email: 'oauth@example.com',
+        provider: 'google' as never,
+        providerId: 'google_1',
+      });
+
+      expect(betaRegistrationGateMock.claimSlot).toHaveBeenCalledWith(
+        prismaMock,
+      );
+      expect(prismaMock.user.create).toHaveBeenCalled();
+    });
+
+    it('does not claim another slot when an existing OAuth user signs in', async () => {
+      prismaMock.oAuthAccount.findUnique.mockResolvedValue({
+        user: {
+          id: 'oauth_user_1',
+          email: 'oauth@example.com',
+          role: 'user',
+          dataProcessingConsentAt: null,
+          privacyPolicyVersion: null,
+          mfaEnabledAt: null,
+        },
+      });
+      prismaMock.session.create.mockResolvedValue({ id: 'session_1' });
+      jwtServiceMock.sign.mockReturnValue('access_token');
+
+      await service.validateOAuthUser({
+        email: 'oauth@example.com',
+        provider: 'google' as never,
+        providerId: 'google_1',
+      });
+
+      expect(betaRegistrationGateMock.claimSlot).not.toHaveBeenCalled();
+      expect(prismaMock.user.create).not.toHaveBeenCalled();
     });
   });
 
