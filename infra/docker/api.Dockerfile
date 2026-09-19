@@ -18,7 +18,7 @@ COPY packages ./packages
 
 RUN pnpm --filter @applyai/api prisma:generate
 RUN pnpm --filter @applyai/api build
-RUN pnpm --filter @applyai/api deploy --prod /prod/api \
+RUN pnpm --filter @applyai/api deploy --legacy --prod /prod/api \
   && cd /prod/api \
   && ./node_modules/.bin/prisma generate --schema src/database/prisma/schema.prisma
 
