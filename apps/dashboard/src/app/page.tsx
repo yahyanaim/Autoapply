@@ -12,12 +12,15 @@ import { Input } from "@/components/ui/Input";
 import { Separator } from "@/components/ui/separator";
 import { ApplyAILogo } from "@/components/brand/ApplyAILogo";
 import { FloatingCareerAssistant } from "@/components/career-chat/FloatingCareerAssistant";
+import { EarlyUserForm } from "@/components/landing/EarlyUserForm";
+import { FaqSection } from "@/components/landing/FaqSection";
 import {
   isLandingLocale,
   LANDING_LOCALE_STORAGE_KEY,
   type LandingLocale,
   translateLanding,
 } from "@/lib/landing-i18n";
+import { LANDING_SECTION_SPACING } from "@/lib/landing-layout";
 import { pricingPlans } from "@/lib/pricing";
 
 const categories = [
@@ -678,7 +681,7 @@ export default function HomePage() {
 
         <section
           id="features"
-          className="overflow-hidden bg-white py-20 sm:py-28"
+          className={LANDING_SECTION_SPACING.features}
         >
           <div className="section-shell text-center">
             <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
@@ -752,7 +755,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="how-it-works" className="bg-white py-20 sm:py-32">
+        <section
+          id="how-it-works"
+          className={LANDING_SECTION_SPACING.workflow}
+        >
           <div className="section-shell">
             <div className="mx-auto max-w-4xl text-center">
               <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
@@ -1270,7 +1276,10 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="pricing" className="bg-[#f1f1ed] py-16 sm:py-24">
+        <section
+          id="pricing"
+          className={LANDING_SECTION_SPACING.pricing}
+        >
           <div className="section-shell">
             <div className="mx-auto max-w-3xl text-center">
               <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
@@ -1577,6 +1586,34 @@ export default function HomePage() {
                   ))}
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <FaqSection />
+
+        <section
+          id="early-beta"
+          aria-labelledby="early-beta-heading"
+          className="bg-[#f1f1ed] py-16 sm:py-24"
+        >
+          <div className="section-shell">
+            <div className="mx-auto grid max-w-5xl gap-10 rounded-[28px] border border-black/[0.07] bg-white p-6 shadow-[0_22px_70px_rgba(35,28,21,0.08)] lg:grid-cols-[0.82fr_1.18fr] lg:p-10">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
+                  Early access
+                </p>
+                <h2
+                  id="early-beta-heading"
+                  className="mt-4 text-4xl font-medium leading-[1.02] tracking-[-0.045em] sm:text-5xl"
+                >
+                  Join the ApplyAI Early Beta
+                </h2>
+                <p className="mt-5 max-w-md text-sm leading-6 text-gray-600 sm:text-base">
+                  Tell us only what we need to contact you about the beta. We do not ask for a CV, application materials, payment details, or account credentials here.
+                </p>
+              </div>
+              <EarlyUserForm />
             </div>
           </div>
         </section>
