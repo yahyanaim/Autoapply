@@ -11,6 +11,11 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { AIProviderFactory } from '../infrastructure/providers/provider.factory';
+import {
+  AiExecutionBoundary,
+  PlanAwareAiRouter,
+  ResolvedAiExecution,
+} from './plan-aware-ai.router';
 import { PromptService } from './prompt.service';
 import { calculateMatchScore } from '../domain/match-score';
 import {
@@ -36,6 +41,7 @@ import {
 } from '../domain/job-analysis';
 import { MatchScoreCacheService } from './match-score-cache.service';
 import { accessibleFreshJobWhere } from '../../job/domain/job-visibility';
+import { serializeSafeLog } from '../../../shared/observability/safe-log';
 
 @Injectable()
 export class AIService {
@@ -44,6 +50,7 @@ export class AIService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly providerFactory: AIProviderFactory,
+    private readonly planAwareRouter: PlanAwareAiRouter,
     private readonly promptService: PromptService,
     private readonly matchScoreCache: MatchScoreCacheService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
@@ -54,13 +61,13 @@ export class AIService {
     feature: AIRequestFeature,
     userId: string,
     params: Record<string, unknown>,
+    expectedBoundary?: AiExecutionBoundary,
   ): Promise<{ content: string; model: string }> {
     const promptId = this.getPromptId(feature);
     const template = this.promptService.loadTemplate(promptId);
 
     const systemPrompt = this.extractSystemPrompt(template);
     const userPrompt = this.extractUserPrompt(template);
-    this.assertRequestBudget(systemPrompt, userPrompt, params);
 
     const consentingUser = await this.prisma.user.findFirst({
       where: { id: userId, dataProcessingConsentAt: { not: null } },
@@ -72,11 +79,33 @@ export class AIService {
       );
     }
 
+    // Resolve before reserving usage so an invalid, missing, or canceled
+    // entitlement does not temporarily consume an AI allowance.
+    const route = await this.planAwareRouter.resolve(userId);
+    this.assertRequestBudget(systemPrompt, userPrompt, params, route);
+
     const usageResetAt = await this.reserveUsage(userId);
 
     try {
+      // A queued task can wait across a subscription update. Resolve again at
+      // the execution boundary, after reservation and immediately before the
+      // provider call, so it cannot silently cross from its signed queue into
+      // another provider path. Any failure here releases the reservation below.
+      const executionRoute = await this.planAwareRouter.resolve(userId);
+      this.assertRequestBudget(systemPrompt, userPrompt, params, executionRoute);
+      if (
+        expectedBoundary !== undefined &&
+        executionRoute.boundary !== expectedBoundary
+      ) {
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'AI_EXECUTION_BOUNDARY_CHANGED',
+          message: 'AI execution is unavailable for this account.',
+        });
+      }
       const startTime = this.clock.nowMs();
-      const completion = await this.providerFactory.completeWithFallback(
+      const completion = await this.planAwareRouter.complete(
+        executionRoute,
         {
           id: promptId,
           version: promptId.split('.').pop() ?? 'unknown',
@@ -96,6 +125,7 @@ export class AIService {
       const totalTokens =
         response.tokensUsed.input + response.tokensUsed.output;
       const cost = this.calculateCost(
+        completion.providerName,
         response.tokensUsed.input,
         response.tokensUsed.output,
       );
@@ -273,11 +303,11 @@ export class AIService {
         await this.releaseResumeOptimization(userId, optimizationResetAt);
       } catch (releaseError) {
         this.logger.error(
-          `Failed to release resume-optimization reservation for ${userId}: ${
-            releaseError instanceof Error
-              ? releaseError.message
-              : String(releaseError)
-          }`,
+          serializeSafeLog({
+            event: 'resume_optimization_release_failed',
+            component: 'ai',
+            error: releaseError,
+          }),
         );
       }
       throw error;
@@ -675,9 +705,21 @@ export class AIService {
     return indexes.length ? Math.min(...indexes) : -1;
   }
 
-  private calculateCost(inputTokens: number, outputTokens: number): number {
-    const inputPerMillion = this.providerFactory.getInputCostPerMillion();
-    const outputPerMillion = this.providerFactory.getOutputCostPerMillion();
+  private calculateCost(
+    providerName: string,
+    inputTokens: number,
+    outputTokens: number,
+  ): number {
+    // Free GLM calls never inherit paid-provider price configuration. Provider
+    // usage is retained for quota/audit purposes, while cost reconciliation for
+    // the Free beta remains external to the paid billing cost model.
+    if (providerName === 'glm') return 0;
+    const inputPerMillion = this.providerFactory.getInputCostPerMillion(
+      providerName,
+    );
+    const outputPerMillion = this.providerFactory.getOutputCostPerMillion(
+      providerName,
+    );
     return (
       (inputTokens * inputPerMillion + outputTokens * outputPerMillion) /
       1_000_000
@@ -688,6 +730,7 @@ export class AIService {
     systemPrompt: string,
     userPrompt: string,
     params: Record<string, unknown>,
+    route: ResolvedAiExecution,
   ): void {
     const renderedUserPrompt = userPrompt.replace(
       /\{\{\s*(\w+)\s*\}\}/g,
@@ -696,18 +739,21 @@ export class AIService {
     );
     const inputBytes =
       Buffer.byteLength(systemPrompt) + Buffer.byteLength(renderedUserPrompt);
-    if (inputBytes > this.providerFactory.getMaxInputBytes()) {
+    if (inputBytes > route.maxInputBytes) {
       throw new PayloadTooLargeException(
         'AI request input exceeds the configured limit',
       );
     }
 
-    // Byte count is a deliberately conservative upper bound for tokenizer output.
+    // Free execution has no paid-provider budget at all. Paid execution keeps
+    // the existing conservative request-cost admission check.
+    if (route.boundary !== 'paid') return;
     const projectedCost = this.calculateCost(
+      this.providerFactory.getProviderName(),
       inputBytes,
-      this.providerFactory.getMaxOutputTokens(),
+      route.maxOutputTokens,
     );
-    if (projectedCost > this.providerFactory.getMaxRequestCost()) {
+    if (projectedCost > (route.maxRequestCostUsd ?? 0)) {
       throw new BadRequestException(
         'AI request exceeds the configured cost ceiling',
       );

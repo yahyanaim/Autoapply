@@ -5,6 +5,8 @@ import { AIProviderFactory } from './infrastructure/providers/provider.factory';
 import { OpenAIProvider } from './infrastructure/providers/openai.provider';
 import { ClaudeProvider } from './infrastructure/providers/claude.provider';
 import { GeminiProvider } from './infrastructure/providers/gemini.provider';
+import { GlmProvider } from './infrastructure/providers/glm.provider';
+import { PlanAwareAiRouter } from './application/plan-aware-ai.router';
 import { AIController } from './interface/ai.controller';
 import { BillingModule } from '../billing/billing.module';
 import { MatchScoreCacheService } from './application/match-score-cache.service';
@@ -19,9 +21,16 @@ import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
     OpenAIProvider,
     ClaudeProvider,
     GeminiProvider,
+    GlmProvider,
+    PlanAwareAiRouter,
     MatchScoreCacheService,
   ],
   controllers: [AIController],
-  exports: [AIService, PromptService, MatchScoreCacheService],
+  exports: [
+    AIService,
+    PromptService,
+    PlanAwareAiRouter,
+    MatchScoreCacheService,
+  ],
 })
 export class AIModule {}

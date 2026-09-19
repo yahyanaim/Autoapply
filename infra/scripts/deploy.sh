@@ -22,6 +22,8 @@ api_image="$ECR_REGISTRY/$ECR_REPOSITORY-api:$IMAGE_TAG"
 dashboard_image="$ECR_REGISTRY/$ECR_REPOSITORY-dashboard:$IMAGE_TAG"
 migration_job="api-migrate-${IMAGE_TAG:0:12}"
 overlay_path="infra/k8s/overlays/$DEPLOY_OVERLAY"
+free_worker_secret_name="resume-worker-free-secrets"
+paid_worker_secret_name="resume-worker-paid-secrets"
 
 cleanup_migration_job() {
   kubectl delete job "$migration_job" \
@@ -39,27 +41,61 @@ done
 
 aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
 kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
-api_secret_json="$(
-  kubectl get secret api-secrets \
-    --namespace "$K8S_NAMESPACE" \
-    --output json
-)"
+
+get_secret_json() {
+  local secret_name="$1"
+  local secret_json
+  if ! secret_json="$(
+    kubectl get secret "$secret_name" \
+      --namespace "$K8S_NAMESPACE" \
+      --output json
+  )"; then
+    echo "Required Kubernetes secret is unavailable: $secret_name" >&2
+    return 1
+  fi
+  printf '%s' "$secret_json"
+}
 
 secret_has_value() {
-  local secret_key="$1"
+  local secret_json="$1"
+  local secret_key="$2"
   jq --exit-status \
     --arg key "$secret_key" \
     '.data[$key] | type == "string" and length > 0' \
-    <<<"$api_secret_json" >/dev/null
+    <<<"$secret_json" >/dev/null
 }
 
 read_secret_value() {
-  local secret_key="$1"
+  local secret_json="$1"
+  local secret_key="$2"
   jq --exit-status \
     --raw-output \
     --arg key "$secret_key" \
     '.data[$key] | @base64d' \
-    <<<"$api_secret_json"
+    <<<"$secret_json"
+}
+
+require_secret_keys() {
+  local secret_name="$1"
+  local secret_json="$2"
+  shift 2
+
+  local secret_key
+  for secret_key in "$@"; do
+    if ! secret_has_value "$secret_json" "$secret_key"; then
+      echo "$secret_name is missing required key: $secret_key" >&2
+      exit 1
+    fi
+  done
+}
+
+provider_key_for() {
+  case "$1" in
+    openai) printf '%s\n' 'OPENAI_API_KEY' ;;
+    claude) printf '%s\n' 'ANTHROPIC_API_KEY' ;;
+    gemini) printf '%s\n' 'GOOGLE_AI_API_KEY' ;;
+    *) return 1 ;;
+  esac
 }
 
 validate_positive_number() {
@@ -102,11 +138,16 @@ validate_https_url() {
   fi
 }
 
+api_secret_json="$(get_secret_json api-secrets)"
+free_worker_secret_json="$(get_secret_json "$free_worker_secret_name")"
+paid_worker_secret_json="$(get_secret_json "$paid_worker_secret_name")"
+
 required_api_secret_keys=(
   DATABASE_URL
   REDIS_URL
   JWT_SECRET
   MFA_ENCRYPTION_KEY
+  RESUME_QUEUE_SIGNING_KEY
   S3_BUCKET_RESUMES
   STRIPE_SECRET_KEY
   STRIPE_WEBHOOK_SECRET
@@ -118,42 +159,38 @@ required_api_secret_keys=(
   DASHBOARD_URL
   STRIPE_SUCCESS_URL
   STRIPE_CANCEL_URL
+  GLM_FREE_PLAN_API_KEY
+  GLM_FREE_PLAN_MODEL
+  GLM_FREE_PLAN_BASE_URL
 )
-for secret_key in "${required_api_secret_keys[@]}"; do
-  if ! secret_has_value "$secret_key"; then
-    echo "api-secrets is missing required key: $secret_key" >&2
-    exit 1
-  fi
-done
+require_secret_keys api-secrets "$api_secret_json" "${required_api_secret_keys[@]}"
 
-ai_provider="$(read_secret_value AI_PROVIDER)"
-case "$ai_provider" in
-  openai) selected_provider_key="OPENAI_API_KEY" ;;
-  claude) selected_provider_key="ANTHROPIC_API_KEY" ;;
-  gemini) selected_provider_key="GOOGLE_AI_API_KEY" ;;
-  *)
-    echo "AI_PROVIDER must be one of: openai, claude, gemini" >&2
-    exit 1
-    ;;
-esac
-if ! secret_has_value "$selected_provider_key"; then
+ai_provider="$(read_secret_value "$api_secret_json" AI_PROVIDER)"
+if ! selected_provider_key="$(provider_key_for "$ai_provider")"; then
+  echo "AI_PROVIDER must be one of: openai, claude, gemini" >&2
+  exit 1
+fi
+if ! secret_has_value "$api_secret_json" "$selected_provider_key"; then
   echo "api-secrets is missing $selected_provider_key for AI_PROVIDER=$ai_provider" >&2
   exit 1
 fi
 
 validate_positive_number \
   AI_INPUT_COST_PER_MILLION \
-  "$(read_secret_value AI_INPUT_COST_PER_MILLION)"
+  "$(read_secret_value "$api_secret_json" AI_INPUT_COST_PER_MILLION)"
 validate_positive_number \
   AI_OUTPUT_COST_PER_MILLION \
-  "$(read_secret_value AI_OUTPUT_COST_PER_MILLION)"
+  "$(read_secret_value "$api_secret_json" AI_OUTPUT_COST_PER_MILLION)"
 
-validate_https_url DASHBOARD_URL "$(read_secret_value DASHBOARD_URL)" true
-validate_https_url STRIPE_SUCCESS_URL "$(read_secret_value STRIPE_SUCCESS_URL)"
-validate_https_url STRIPE_CANCEL_URL "$(read_secret_value STRIPE_CANCEL_URL)"
+validate_https_url DASHBOARD_URL "$(read_secret_value "$api_secret_json" DASHBOARD_URL)" true
+validate_https_url STRIPE_SUCCESS_URL "$(read_secret_value "$api_secret_json" STRIPE_SUCCESS_URL)"
+validate_https_url STRIPE_CANCEL_URL "$(read_secret_value "$api_secret_json" STRIPE_CANCEL_URL)"
+validate_https_url \
+  GLM_FREE_PLAN_BASE_URL \
+  "$(read_secret_value "$api_secret_json" GLM_FREE_PLAN_BASE_URL)"
 
-if secret_has_value CORS_ALLOWED_ORIGINS; then
-  cors_allowed_origins="$(read_secret_value CORS_ALLOWED_ORIGINS)"
+if secret_has_value "$api_secret_json" CORS_ALLOWED_ORIGINS; then
+  cors_allowed_origins="$(read_secret_value "$api_secret_json" CORS_ALLOWED_ORIGINS)"
   if ! VALIDATION_VALUE="$cors_allowed_origins" node -e '
     try {
       const origins = process.env.VALIDATION_VALUE
@@ -180,6 +217,86 @@ if secret_has_value CORS_ALLOWED_ORIGINS; then
     exit 1
   fi
 fi
+
+# Workers receive separate secrets so the Free process never receives paid
+# provider or Stripe credentials, and the paid process never receives GLM.
+# Each still needs its own database, Redis, signing-key, and object-storage
+# access to validate and process the trusted job.
+required_worker_common_secret_keys=(
+  DATABASE_URL
+  REDIS_URL
+  JWT_SECRET
+  MFA_ENCRYPTION_KEY
+  RESUME_QUEUE_SIGNING_KEY
+  S3_BUCKET_RESUMES
+  DASHBOARD_URL
+)
+required_free_worker_secret_keys=(
+  "${required_worker_common_secret_keys[@]}"
+  GLM_FREE_PLAN_API_KEY
+  GLM_FREE_PLAN_MODEL
+  GLM_FREE_PLAN_BASE_URL
+)
+required_paid_worker_secret_keys=(
+  "${required_worker_common_secret_keys[@]}"
+  AI_PROVIDER
+  AI_INPUT_COST_PER_MILLION
+  AI_OUTPUT_COST_PER_MILLION
+)
+require_secret_keys \
+  "$free_worker_secret_name" \
+  "$free_worker_secret_json" \
+  "${required_free_worker_secret_keys[@]}"
+require_secret_keys \
+  "$paid_worker_secret_name" \
+  "$paid_worker_secret_json" \
+  "${required_paid_worker_secret_keys[@]}"
+
+api_resume_queue_signing_key="$(
+  read_secret_value "$api_secret_json" RESUME_QUEUE_SIGNING_KEY
+)"
+for worker_secret_name_and_json in \
+  "$free_worker_secret_name:$free_worker_secret_json" \
+  "$paid_worker_secret_name:$paid_worker_secret_json"; do
+  worker_secret_name="${worker_secret_name_and_json%%:*}"
+  worker_secret_json="${worker_secret_name_and_json#*:}"
+  if [[ "$(read_secret_value "$worker_secret_json" RESUME_QUEUE_SIGNING_KEY)" != "$api_resume_queue_signing_key" ]]; then
+    echo "$worker_secret_name RESUME_QUEUE_SIGNING_KEY must match api-secrets" >&2
+    exit 1
+  fi
+done
+
+validate_https_url \
+  "$free_worker_secret_name/DASHBOARD_URL" \
+  "$(read_secret_value "$free_worker_secret_json" DASHBOARD_URL)" \
+  true
+validate_https_url \
+  "$free_worker_secret_name/GLM_FREE_PLAN_BASE_URL" \
+  "$(read_secret_value "$free_worker_secret_json" GLM_FREE_PLAN_BASE_URL)"
+validate_https_url \
+  "$paid_worker_secret_name/DASHBOARD_URL" \
+  "$(read_secret_value "$paid_worker_secret_json" DASHBOARD_URL)" \
+  true
+
+paid_worker_provider="$(read_secret_value "$paid_worker_secret_json" AI_PROVIDER)"
+if [[ "$paid_worker_provider" != "$ai_provider" ]]; then
+  echo "$paid_worker_secret_name AI_PROVIDER must match api-secrets" >&2
+  exit 1
+fi
+if ! paid_worker_provider_key="$(provider_key_for "$paid_worker_provider")"; then
+  echo "$paid_worker_secret_name AI_PROVIDER must be one of: openai, claude, gemini" >&2
+  exit 1
+fi
+if ! secret_has_value "$paid_worker_secret_json" "$paid_worker_provider_key"; then
+  echo "$paid_worker_secret_name is missing $paid_worker_provider_key for AI_PROVIDER=$paid_worker_provider" >&2
+  exit 1
+fi
+validate_positive_number \
+  "$paid_worker_secret_name/AI_INPUT_COST_PER_MILLION" \
+  "$(read_secret_value "$paid_worker_secret_json" AI_INPUT_COST_PER_MILLION)"
+validate_positive_number \
+  "$paid_worker_secret_name/AI_OUTPUT_COST_PER_MILLION" \
+  "$(read_secret_value "$paid_worker_secret_json" AI_OUTPUT_COST_PER_MILLION)"
 
 tls_type="$(kubectl get secret "$tls_secret" --namespace "$K8S_NAMESPACE" -o jsonpath='{.type}')"
 if [[ "$tls_type" != "kubernetes.io/tls" ]]; then
@@ -245,3 +362,5 @@ kubectl kustomize "$overlay_path" \
 
 kubectl rollout status deployment/api --namespace "$K8S_NAMESPACE" --timeout=300s
 kubectl rollout status deployment/dashboard --namespace "$K8S_NAMESPACE" --timeout=300s
+kubectl rollout status deployment/resume-worker-free --namespace "$K8S_NAMESPACE" --timeout=300s
+kubectl rollout status deployment/resume-worker-paid --namespace "$K8S_NAMESPACE" --timeout=300s

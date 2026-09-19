@@ -6,7 +6,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import {
-  ResumeParseQueueToken,
+  ResumeParseFreeQueueToken,
   StorageToken,
 } from '../src/modules/resume/application/resume.service';
 import {
@@ -14,11 +14,13 @@ import {
   ResumeParser,
 } from '../src/modules/resume/infrastructure/parsers/resume-parser';
 import { PdfParser } from '../src/modules/resume/infrastructure/parsers/pdf.parser';
+import { ResumeParseJobSignatureService } from '../src/modules/resume/infrastructure/queue/resume-parse-job-signature.service';
 
 describe('API integration: successful resume processing', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let queue: Queue;
+  let jobSignature: ResumeParseJobSignatureService;
   const marker = `resume-processing-${Date.now()}`;
   const email = `${marker}@example.com`;
   const parser = {
@@ -68,7 +70,8 @@ describe('API integration: successful resume processing', () => {
     app = moduleRef.createNestApplication();
     await app.init();
     prisma = app.get(PrismaService);
-    queue = app.get<Queue>(ResumeParseQueueToken);
+    queue = app.get<Queue>(ResumeParseFreeQueueToken);
+    jobSignature = app.get(ResumeParseJobSignatureService);
 
     await request(app.getHttpServer())
       .post('/auth/register')
@@ -98,10 +101,16 @@ describe('API integration: successful resume processing', () => {
       },
     });
     const queueJobId = `integration-success-${resume.id}`;
+    const identity = {
+      resumeId: resume.id,
+      userId: user.id,
+      executionBoundary: 'free' as const,
+      jobId: queueJobId,
+    };
 
     await queue.add(
       'parse-resume',
-      { resumeId: resume.id, userId: user.id },
+      { ...identity, signature: jobSignature.sign(identity) },
       {
         jobId: queueJobId,
         attempts: 1,
@@ -131,6 +140,7 @@ describe('API integration: successful resume processing', () => {
     expect(parser.parse).toHaveBeenCalledWith(
       'Sara Amrani SQL Power BI operational reporting',
       user.id,
+      'free',
     );
     expect(persisted.parsedJson).toEqual(
       expect.objectContaining({

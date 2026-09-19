@@ -7,6 +7,7 @@ import {
   MatchScoreBreakdown,
   MatchScoreResult,
 } from '../domain/match-score';
+import { serializeSafeLog } from '../../../shared/observability/safe-log';
 
 export const MATCH_SCORE_ALGORITHM_VERSION = 'match-score.v2';
 
@@ -60,9 +61,12 @@ export class MatchScoreCacheService {
       return await this.readThroughCache(resumeId, resumeContent, inputs);
     } catch (error) {
       this.logger.warn(
-        `Match-score cache unavailable; calculating without cache: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        serializeSafeLog({
+          event: 'match_score_cache_unavailable',
+          component: 'ai',
+          action: 'match_score',
+          error,
+        }),
       );
       return inputs.map(({ description }) => ({
         ...calculateMatchScore(

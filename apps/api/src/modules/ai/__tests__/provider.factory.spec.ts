@@ -81,4 +81,120 @@ describe('AIProviderFactory resilience', () => {
       factory(openai, claude).completeWithFallback(prompt, {}),
     ).rejects.toThrow(ServiceUnavailableException);
   });
+
+  it('caps paid fallback attempts before another provider can be charged', async () => {
+    const openai = { complete: jest.fn().mockRejectedValue(new Error('outage')) };
+    const claude = { complete: jest.fn().mockResolvedValue(response) };
+
+    await expect(
+      factory(openai, claude, {
+        AI_FALLBACK_PROVIDERS: 'claude,gemini',
+        AI_MAX_PROVIDER_ATTEMPTS: 1,
+      }).completeWithFallback(prompt, {}),
+    ).rejects.toThrow(ServiceUnavailableException);
+
+    expect(openai.complete).toHaveBeenCalledTimes(1);
+    expect(claude.complete).not.toHaveBeenCalled();
+  });
+
+  it('does not call a paid provider when its bounded request estimate exceeds the total budget', async () => {
+    const openai = { complete: jest.fn().mockResolvedValue(response) };
+    const claude = { complete: jest.fn().mockResolvedValue(response) };
+
+    await expect(
+      factory(openai, claude, {
+        AI_MAX_FALLBACK_TOTAL_COST_USD: 0.01,
+        AI_OUTPUT_COST_PER_MILLION: 1_000,
+        AI_MAX_OUTPUT_TOKENS: 2_048,
+      }).completeWithFallback(prompt, {}),
+    ).rejects.toThrow('AI provider execution budget is unavailable');
+
+    expect(openai.complete).not.toHaveBeenCalled();
+    expect(claude.complete).not.toHaveBeenCalled();
+  });
+
+  it('never lets a fallback setting raise the paid per-request cost cap', () => {
+    const resilientFactory = factory(
+      { complete: jest.fn() },
+      { complete: jest.fn() },
+      {
+        AI_MAX_REQUEST_COST_USD: 0.2,
+        AI_MAX_FALLBACK_TOTAL_COST_USD: 0.8,
+      },
+    );
+
+    expect(resilientFactory.getMaxFallbackCost()).toBe(0.2);
+  });
+
+  it('passes provider-specific output bounds through each paid attempt', async () => {
+    const openai = { complete: jest.fn().mockResolvedValue(response) };
+    const claude = { complete: jest.fn() };
+
+    await factory(openai, claude, {
+      OPENAI_MAX_OUTPUT_TOKENS: 512,
+    }).completeWithFallback(prompt, {});
+
+    expect(openai.complete).toHaveBeenCalledWith(
+      prompt,
+      {},
+      expect.objectContaining({ maxOutputTokens: 512 }),
+    );
+  });
+
+  it('uses canonical ANTHROPIC settings for Claude provider bounds and costs', async () => {
+    const openai = { complete: jest.fn() };
+    const claude = { complete: jest.fn().mockResolvedValue(response) };
+    const resilientFactory = factory(openai, claude, {
+      AI_PROVIDER: 'claude',
+      AI_FALLBACK_PROVIDERS: '',
+      ANTHROPIC_MAX_OUTPUT_TOKENS: 512,
+      ANTHROPIC_INPUT_COST_PER_MILLION: 7,
+      ANTHROPIC_OUTPUT_COST_PER_MILLION: 11,
+      CLAUDE_MAX_OUTPUT_TOKENS: 256,
+      CLAUDE_INPUT_COST_PER_MILLION: 3,
+      CLAUDE_OUTPUT_COST_PER_MILLION: 5,
+    });
+
+    await resilientFactory.completeWithFallback(prompt, {});
+
+    expect(claude.complete).toHaveBeenCalledWith(
+      prompt,
+      {},
+      expect.objectContaining({ maxOutputTokens: 512 }),
+    );
+    expect(resilientFactory.getInputCostPerMillionForProvider('claude')).toBe(7);
+    expect(resilientFactory.getOutputCostPerMillionForProvider('claude')).toBe(11);
+  });
+
+  it('uses legacy CLAUDE settings only when canonical Anthropic settings are absent', () => {
+    const resilientFactory = factory(
+      { complete: jest.fn() },
+      { complete: jest.fn() },
+      {
+        CLAUDE_MAX_OUTPUT_TOKENS: 512,
+        CLAUDE_INPUT_COST_PER_MILLION: 7,
+        CLAUDE_OUTPUT_COST_PER_MILLION: 11,
+      },
+    );
+
+    expect(resilientFactory.getMaxOutputTokensForProvider('claude')).toBe(512);
+    expect(resilientFactory.getInputCostPerMillionForProvider('claude')).toBe(7);
+    expect(resilientFactory.getOutputCostPerMillionForProvider('claude')).toBe(11);
+  });
+
+  it('falls back safely when an optional provider override is blank', () => {
+    const resilientFactory = factory(
+      { complete: jest.fn() },
+      { complete: jest.fn() },
+      {
+        AI_MAX_OUTPUT_TOKENS: 2_048,
+        OPENAI_MAX_OUTPUT_TOKENS: '',
+        AI_INPUT_COST_PER_MILLION: 3,
+        OPENAI_INPUT_COST_PER_MILLION: '',
+      },
+    );
+
+    expect(resilientFactory.getMaxOutputTokensForProvider('openai')).toBe(2_048);
+    expect(resilientFactory.getInputCostPerMillionForProvider('openai')).toBe(3);
+  });
 });

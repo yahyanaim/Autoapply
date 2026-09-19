@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JobService } from '../../../application/job.service';
 import { PartnerApiClient } from '../partner-api.client';
+import { serializeSafeLog } from '../../../../../shared/observability/safe-log';
 
 interface GreenhouseJob {
   title: string;
@@ -97,11 +98,24 @@ export class GreenhouseAdapter {
         });
       }
       this.logger.log(
-        `Ingested ${jobs.length} jobs from Greenhouse board ${boardToken}`,
+        serializeSafeLog({
+          event: 'job_ingestion_completed',
+          component: 'job_ingestion',
+          provider: 'greenhouse',
+          action: 'job_ingestion',
+        }),
       );
       return jobs.length;
     } catch (error: unknown) {
-      this.logger.error(`Failed to fetch Greenhouse jobs: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        serializeSafeLog({
+          event: 'job_ingestion_failed',
+          component: 'job_ingestion',
+          provider: 'greenhouse',
+          action: 'job_ingestion',
+          error,
+        }),
+      );
       throw error;
     }
   }

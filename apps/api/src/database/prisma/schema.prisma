@@ -239,9 +239,32 @@ model Resume {
   applications Application[]
   skills       Skill[]           @relation("ResumeSkills")
   matchScores  MatchScoreCache[]
+  parseExecutionClaims ResumeParseExecutionClaim[]
 
   @@index([userId])
   @@map("resumes")
+}
+
+// A durable, minimal record of each signed queue delivery admitted to resume
+// parsing. The stable queue/job identity protects against copied work being
+// executed twice; a later BullMQ attempt must first consume a retry
+// authorization recorded after a real retryable failure.
+// Rows are retained until the resume is deleted, rather than expiring and
+// reopening the replay window.
+model ResumeParseExecutionClaim {
+  id        String   @id @default(cuid())
+  resumeId  String
+  queueName String
+  jobId     String
+  attempt   Int
+  retryAuthorizedAttempt Int?
+  claimedAt DateTime @default(now())
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@unique([queueName, jobId])
+  @@index([resumeId])
+  @@map("resume_parse_execution_claims")
 }
 
 model MatchScoreCache {

@@ -14,11 +14,20 @@
 
 ## Queue failures
 
-- Inspect `resume-parse` depth, worker errors, and Redis health.
-- Inspect `resume-parse-dead-letter`; each item includes the original job ID,
-  payload identifiers, attempts, and terminal reason.
-- Correct the cause before replay. Reuse the original idempotency key/job ID.
-- Confirm the resume state and activity record after replay.
+- Inspect `resume-parse-free` and `resume-parse-paid` depth, worker errors,
+  and Redis health. Do not route a Free job to the paid queue or vice versa.
+- Inspect `resume-parse-dead-letter`; retained metadata includes only the
+  original job ID, queue name, attempt, a safe error category, and timestamp.
+  It must never include job payloads, resume identifiers, filenames, CV text,
+  signed URLs, or secrets.
+- Correct the cause before retrying through a newly authorized product action.
+  Do not replay a delivered queue attempt: its atomic execution claim exists to
+  prevent duplicate provider calls.
+- The obsolete unsigned `resume-parse` queue is never replayed. If it has
+  outstanding work, run the dedicated, no-provider legacy quarantine worker
+  described in [FREE_BETA_EXECUTION.md](FREE_BETA_EXECUTION.md#legacy-resume-parse-queue-retirement),
+  then keep its redacted records for the incident-retention period.
+- Confirm the resume state and activity record after recovery.
 
 ## AI provider outage
 

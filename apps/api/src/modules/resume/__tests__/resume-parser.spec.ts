@@ -29,6 +29,29 @@ describe('ResumeParser', () => {
     );
   });
 
+  it('passes a queue boundary through to the trusted AI execution check', async () => {
+    aiService.complete.mockResolvedValue({
+      content: JSON.stringify({
+        skills: [],
+        experience: [],
+        education: [],
+        projects: [],
+        languages: [],
+        certifications: [],
+      }),
+      model: 'test-model',
+    });
+
+    await parser.parse('resume text', 'user-1', 'free');
+
+    expect(aiService.complete).toHaveBeenCalledWith(
+      'resume_parse',
+      'user-1',
+      { resumeText: 'resume text' },
+      'free',
+    );
+  });
+
   it('rejects malformed JSON instead of marking an empty resume ready', async () => {
     aiService.complete.mockResolvedValue({ content: 'not json', model: 'test-model' });
 

@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { RequestContextService } from '../../../../shared/observability/request-context.service';
 import { SystemClock } from '../../../../shared/adapters/system-clock.adapter';
+import { serializeSafeLog } from '../../../../shared/observability/safe-log';
 
 @Injectable()
 export class PartnerApiClient {
@@ -81,13 +82,14 @@ export class PartnerApiClient {
           );
       }
       this.logger.warn(
-        JSON.stringify({
+        serializeSafeLog({
           event: 'partner_api_failed',
+          component: 'job_ingestion',
           requestId: this.requestContext.getRequestId(),
-          userId: this.requestContext.getUserId(),
-          host: url.hostname,
-          failures: state.failures,
-          error: error instanceof Error ? error.message : String(error),
+          provider: 'partner_api',
+          action: 'partner_request',
+          attempt: state.failures,
+          error,
         }),
       );
       throw error;

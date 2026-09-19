@@ -14,6 +14,7 @@ import { Observable, catchError, from, mergeMap, tap, throwError } from 'rxjs';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { RequestContextService } from './request-context.service';
 import { SystemClock } from '../adapters/system-clock.adapter';
+import { serializeSafeLog } from './safe-log';
 
 interface AuthenticatedRequest extends Request {
   user?: { id?: string; sub?: string };
@@ -43,12 +44,10 @@ export class RequestObservabilityInterceptor implements NestInterceptor {
     return new Observable((subscriber) =>
       this.requestContext.run({ requestId, userId }, () => {
         this.traceLogger.log(
-          JSON.stringify({
+          serializeSafeLog({
             event: 'request_started',
+            component: 'api',
             requestId,
-            userId,
-            method: request.method,
-            path: request.path,
           }),
         );
         return next
@@ -56,12 +55,10 @@ export class RequestObservabilityInterceptor implements NestInterceptor {
           .pipe(
             tap(() => {
               this.traceLogger.log(
-                JSON.stringify({
+                serializeSafeLog({
                   event: 'request_completed',
+                  component: 'api',
                   requestId,
-                  userId,
-                  method: request.method,
-                  path: request.path,
                   statusCode: response.statusCode,
                   durationMs: this.clock.nowMs() - startedAt,
                 }),
@@ -93,15 +90,13 @@ export class RequestObservabilityInterceptor implements NestInterceptor {
   ): Promise<void> {
     const statusCode = error instanceof HttpException ? error.getStatus() : 500;
     this.traceLogger.error(
-      JSON.stringify({
+      serializeSafeLog({
         event: 'request_failed',
+        component: 'api',
         requestId,
-        userId,
-        method: request.method,
-        path: request.path,
         statusCode,
         durationMs,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error,
       }),
     );
     if (statusCode !== 401 && statusCode !== 403) return;
@@ -109,8 +104,6 @@ export class RequestObservabilityInterceptor implements NestInterceptor {
     const metadata = {
       event: 'access_denied',
       requestId,
-      method: request.method,
-      path: request.path,
       statusCode,
     };
     try {
@@ -123,12 +116,22 @@ export class RequestObservabilityInterceptor implements NestInterceptor {
           metadata: metadata as Prisma.InputJsonValue,
         },
       });
-      this.auditLogger.warn(JSON.stringify({ ...metadata, userId }));
+      this.auditLogger.warn(
+        serializeSafeLog({
+          event: 'access_denied',
+          component: 'security_audit',
+          requestId,
+          statusCode,
+        }),
+      );
     } catch (auditError) {
       this.auditLogger.error(
-        `Could not persist access-control audit event ${requestId}: ${
-          auditError instanceof Error ? auditError.message : String(auditError)
-        }`,
+        serializeSafeLog({
+          event: 'access_audit_persist_failed',
+          component: 'security_audit',
+          requestId,
+          error: auditError,
+        }),
       );
     }
   }

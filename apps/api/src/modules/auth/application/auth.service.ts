@@ -27,6 +27,7 @@ import { MfaService } from '../infrastructure/mfa.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { NotificationService } from '../../notification/application/notification.service';
 import { BetaRegistrationGateService } from '../../beta/application/beta-registration-gate.service';
+import { serializeSafeLog } from '../../../shared/observability/safe-log';
 
 export interface SessionMetadata {
   userAgent?: string;
@@ -711,9 +712,12 @@ export class AuthService {
       });
     } catch (error) {
       this.logger.error(
-        `Could not persist ${type} audit event for user ${userId}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        serializeSafeLog({
+          event: 'auth_audit_write_failed',
+          component: 'auth',
+          action: String(type),
+          error,
+        }),
       );
     }
   }
@@ -927,9 +931,12 @@ export class AuthService {
       }
     } catch (error) {
       this.logger.error(
-        `Could not notify user ${userId} about refresh-token reuse: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        serializeSafeLog({
+          event: 'auth_security_notification_failed',
+          component: 'auth',
+          action: 'refresh_token_reuse',
+          error,
+        }),
       );
     }
   }

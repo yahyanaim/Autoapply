@@ -15,6 +15,7 @@ import { DiscoverJobsDto } from '../interface/dto/discover-jobs.dto';
 import { visibleJobSources } from '../domain/job-visibility';
 import { JobIngestionService, JobSource } from './job-ingestion.service';
 import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
+import { serializeSafeLog } from '../../../shared/observability/safe-log';
 
 const MAX_CANDIDATES = 500;
 const MAX_CONFIGURED_SOURCES = 8;
@@ -175,11 +176,12 @@ export class JobDiscoveryService {
         await this.releaseDiscovery(userId, discoveryUsage.resetAt);
       } catch (releaseError) {
         this.logger.error(
-          `Failed to release discovery reservation for ${userId}: ${
-            releaseError instanceof Error
-              ? releaseError.message
-              : String(releaseError)
-          }`,
+          serializeSafeLog({
+            event: 'job_discovery_quota_release_failed',
+            component: 'job_discovery',
+            action: 'job_discovery',
+            error: releaseError,
+          }),
         );
       }
       throw error;
@@ -279,9 +281,13 @@ export class JobDiscoveryService {
         });
       } catch (error) {
         this.logger.warn(
-          `Discovery refresh failed for ${source.source}:${source.identifier}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          serializeSafeLog({
+            event: 'job_discovery_refresh_failed',
+            component: 'job_discovery',
+            provider: source.source,
+            action: 'job_discovery_refresh',
+            error,
+          }),
         );
         results.push({ ...source, status: 'failed' });
       }

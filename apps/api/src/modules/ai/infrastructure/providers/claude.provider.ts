@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import {
   AIProvider,
+  AIExecutionOptions,
   AIResponse,
   PromptTemplate,
 } from '../../domain/ai-provider.interface';
@@ -22,22 +23,31 @@ export class ClaudeProvider implements AIProvider {
   async complete(
     prompt: PromptTemplate,
     context: Record<string, unknown>,
+    options?: AIExecutionOptions,
   ): Promise<AIResponse> {
     const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
     if (!apiKey) throw new ServiceUnavailableException('Anthropic is not configured');
     this.client ??= new Anthropic({
       apiKey,
-      timeout: this.configService.get<number>('AI_REQUEST_TIMEOUT_MS', 30_000),
       maxRetries: 0,
     });
     const userContent = this.interpolate(prompt.userPrompt, context);
 
-    const response = await this.client.messages.create({
-      model: this.model,
-      max_tokens: this.configService.get<number>('AI_MAX_OUTPUT_TOKENS', 2_048),
-      system: prompt.systemPrompt,
-      messages: [{ role: 'user', content: userContent }],
-    });
+    const response = await this.client.messages.create(
+      {
+        model: this.model,
+        max_tokens:
+          options?.maxOutputTokens ??
+          this.configService.get<number>('AI_MAX_OUTPUT_TOKENS', 2_048),
+        system: prompt.systemPrompt,
+        messages: [{ role: 'user', content: userContent }],
+      },
+      {
+        timeout:
+          options?.timeoutMs ??
+          this.configService.get<number>('AI_REQUEST_TIMEOUT_MS', 30_000),
+      },
+    );
 
     const textBlock = response.content.find(block => block.type === 'text');
 

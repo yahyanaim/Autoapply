@@ -19,6 +19,7 @@ import { RedisThrottlerStorage } from './shared/throttling/redis-throttler.stora
 import { ObservabilityModule } from './shared/observability/observability.module';
 import { UserAwareThrottlerGuard } from './shared/throttling/user-aware-throttler.guard';
 import { redisUrlSchema } from './shared/config/production-environment.schema';
+import { planAwareExecutionConfigurationError } from './shared/config/plan-aware-execution-config';
 import { parseApiSentryConfiguration } from './shared/observability/sentry-config';
 
 function sentryModuleImports(): DynamicModule[] {
@@ -67,6 +68,17 @@ function sentryModuleImports(): DynamicModule[] {
                 }),
           )
           .default(''),
+        RESUME_QUEUE_SIGNING_KEY: Joi.string()
+          .allow('')
+          .custom((value: string, helpers) =>
+            !value || Buffer.from(value, 'base64').length === 32
+              ? value
+              : helpers.message({
+                  custom:
+                    'RESUME_QUEUE_SIGNING_KEY must be a base64-encoded 32-byte key',
+                }),
+          )
+          .default(''),
         DASHBOARD_URL: Joi.when('NODE_ENV', {
           is: 'production',
           then: Joi.string().uri().required(),
@@ -75,6 +87,10 @@ function sentryModuleImports(): DynamicModule[] {
         CORS_ALLOWED_ORIGINS: Joi.string().allow('').default(''),
         TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(0),
         EXTENSION_ID: Joi.string().allow('').optional(),
+        APP_PROCESS_ROLE: Joi.string()
+          .valid('all', 'api', 'worker')
+          .default('all'),
+        RESUME_PARSE_LEGACY_DRAIN_ENABLED: Joi.boolean().default(false),
         REDIS_URL: redisUrlSchema(),
         SENTRY_ENABLED: Joi.string().valid('true', 'false').default('false'),
         SENTRY_DSN: Joi.string().allow('').default(''),
@@ -87,11 +103,44 @@ function sentryModuleImports(): DynamicModule[] {
           .max(100_000)
           .default(100),
         STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
+        AWS_REGION: Joi.string().max(64).default('us-east-1'),
         S3_BUCKET_RESUMES: Joi.string().when('STORAGE_DRIVER', {
           is: 's3',
           then: Joi.required(),
           otherwise: Joi.optional(),
         }),
+        S3_ENDPOINT: Joi.string().allow('').default(''),
+        S3_REGION: Joi.string().max(64).allow('').default(''),
+        S3_ACCESS_KEY_ID: Joi.string().allow('').default(''),
+        S3_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+        S3_FORCE_PATH_STYLE: Joi.string()
+          .valid('true', 'false')
+          .default('false'),
+        AI_EXECUTION_ROLE: Joi.string()
+          .valid('all', 'free', 'paid')
+          .default('all'),
+        FREE_AI_PROVIDER: Joi.string().valid('glm').default('glm'),
+        GLM_FREE_PLAN_API_KEY: Joi.string().allow('').default(''),
+        GLM_FREE_PLAN_MODEL: Joi.string()
+          .pattern(/^[A-Za-z0-9._:-]{1,128}$/)
+          .allow('')
+          .default(''),
+        GLM_FREE_PLAN_BASE_URL: Joi.string().allow('').default(''),
+        GLM_FREE_PLAN_TIMEOUT_MS: Joi.number()
+          .integer()
+          .min(1_000)
+          .max(120_000)
+          .default(30_000),
+        GLM_FREE_PLAN_MAX_OUTPUT_TOKENS: Joi.number()
+          .integer()
+          .min(128)
+          .max(4_096)
+          .default(2_048),
+        GLM_FREE_PLAN_MAX_INPUT_BYTES: Joi.number()
+          .integer()
+          .min(1_000)
+          .max(500_000)
+          .default(100_000),
         AI_PROVIDER: Joi.string()
           .valid('openai', 'claude', 'gemini')
           .default('openai'),
@@ -113,7 +162,45 @@ function sentryModuleImports(): DynamicModule[] {
           .max(120_000)
           .default(30_000),
         AI_MAX_REQUEST_COST_USD: Joi.number().positive().max(100).default(0.5),
+        AI_MAX_FALLBACK_TOTAL_COST_USD: Joi.number()
+          .positive()
+          .max(100)
+          .default(0.5),
+        AI_MAX_PROVIDER_ATTEMPTS: Joi.number()
+          .integer()
+          .min(1)
+          .max(3)
+          .default(3),
+        AI_FALLBACK_TOTAL_TIMEOUT_MS: Joi.number()
+          .integer()
+          .min(1_000)
+          .max(120_000)
+          .default(30_000),
         AI_FALLBACK_PROVIDERS: Joi.string().allow('').default('claude,gemini'),
+        OPENAI_MAX_OUTPUT_TOKENS: Joi.number()
+          .integer()
+          .min(128)
+          .max(4_096)
+          .empty('')
+          .optional(),
+        ANTHROPIC_MAX_OUTPUT_TOKENS: Joi.number()
+          .integer()
+          .min(128)
+          .max(4_096)
+          .empty('')
+          .optional(),
+        GEMINI_MAX_OUTPUT_TOKENS: Joi.number()
+          .integer()
+          .min(128)
+          .max(4_096)
+          .empty('')
+          .optional(),
+        OPENAI_INPUT_COST_PER_MILLION: Joi.number().min(0).empty('').optional(),
+        OPENAI_OUTPUT_COST_PER_MILLION: Joi.number().min(0).empty('').optional(),
+        ANTHROPIC_INPUT_COST_PER_MILLION: Joi.number().min(0).empty('').optional(),
+        ANTHROPIC_OUTPUT_COST_PER_MILLION: Joi.number().min(0).empty('').optional(),
+        GEMINI_INPUT_COST_PER_MILLION: Joi.number().min(0).empty('').optional(),
+        GEMINI_OUTPUT_COST_PER_MILLION: Joi.number().min(0).empty('').optional(),
         AI_CIRCUIT_BREAKER_FAILURE_THRESHOLD: Joi.number()
           .integer()
           .min(1)
@@ -214,6 +301,27 @@ function sentryModuleImports(): DynamicModule[] {
             );
           if (oauthError) return oauthError;
 
+          const legacyResumeParseDrainEnabled =
+            configured.RESUME_PARSE_LEGACY_DRAIN_ENABLED === true;
+          if (
+            legacyResumeParseDrainEnabled &&
+            configured.APP_PROCESS_ROLE !== 'worker'
+          ) {
+            return helpers.message({
+              custom:
+                'RESUME_PARSE_LEGACY_DRAIN_ENABLED requires APP_PROCESS_ROLE=worker',
+            });
+          }
+
+          const executionConfigurationError =
+            planAwareExecutionConfigurationError(configured);
+          if (executionConfigurationError) {
+            return helpers.message({ custom: executionConfigurationError });
+          }
+          const canExecutePaid =
+            !legacyResumeParseDrainEnabled &&
+            configured.AI_EXECUTION_ROLE !== 'free';
+
           try {
             parseApiSentryConfiguration({
               SENTRY_ENABLED: configured.SENTRY_ENABLED as string | undefined,
@@ -239,41 +347,54 @@ function sentryModuleImports(): DynamicModule[] {
                 custom: 'STORAGE_DRIVER must be s3 in production',
               });
             }
-            const providerKey = {
-              openai: 'OPENAI_API_KEY',
-              claude: 'ANTHROPIC_API_KEY',
-              gemini: 'GOOGLE_AI_API_KEY',
-            }[String(configured.AI_PROVIDER)];
-            if (!providerKey || !configured[providerKey]) {
-              return helpers.message({
-                custom: `The API key for AI_PROVIDER=${String(configured.AI_PROVIDER)} is required in production`,
-              });
-            }
-            for (const key of [
-              'AI_INPUT_COST_PER_MILLION',
-              'AI_OUTPUT_COST_PER_MILLION',
-            ]) {
-              if (!(Number(configured[key]) > 0)) {
+            if (canExecutePaid) {
+              const providerKey = {
+                openai: 'OPENAI_API_KEY',
+                claude: 'ANTHROPIC_API_KEY',
+                gemini: 'GOOGLE_AI_API_KEY',
+              }[String(configured.AI_PROVIDER)];
+              if (!providerKey || !configured[providerKey]) {
                 return helpers.message({
-                  custom: `${key} must be greater than zero in production`,
+                  custom: 'The configured paid AI provider is required in production',
                 });
               }
+              for (const key of [
+                'AI_INPUT_COST_PER_MILLION',
+                'AI_OUTPUT_COST_PER_MILLION',
+              ]) {
+                if (!(Number(configured[key]) > 0)) {
+                  return helpers.message({
+                    custom: `${key} must be greater than zero in production`,
+                  });
+                }
+              }
             }
-            for (const key of [
-              'STRIPE_SECRET_KEY',
-              'STRIPE_WEBHOOK_SECRET',
-              'STRIPE_PRO_PRICE_ID',
-              'STRIPE_PREMIUM_PRICE_ID',
-            ]) {
-              if (!configured[key]) {
-                return helpers.message({
-                  custom: `${key} is required in production`,
-                });
+            if (configured.APP_PROCESS_ROLE !== 'worker') {
+              for (const key of [
+                'STRIPE_SECRET_KEY',
+                'STRIPE_WEBHOOK_SECRET',
+                'STRIPE_PRO_PRICE_ID',
+                'STRIPE_PREMIUM_PRICE_ID',
+              ]) {
+                if (!configured[key]) {
+                  return helpers.message({
+                    custom: `${key} is required in production`,
+                  });
+                }
               }
             }
             if (!configured.MFA_ENCRYPTION_KEY) {
               return helpers.message({
                 custom: 'MFA_ENCRYPTION_KEY is required in production',
+              });
+            }
+            if (
+              !legacyResumeParseDrainEnabled &&
+              !configured.RESUME_QUEUE_SIGNING_KEY
+            ) {
+              return helpers.message({
+                custom:
+                  'RESUME_QUEUE_SIGNING_KEY is required in production',
               });
             }
             for (const key of [

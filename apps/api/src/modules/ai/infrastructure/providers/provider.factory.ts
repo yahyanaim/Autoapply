@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  AIExecutionOptions,
   AIProvider,
   AIResponse,
   PromptTemplate,
@@ -15,6 +16,7 @@ import { ClaudeProvider } from './claude.provider';
 import { GeminiProvider } from './gemini.provider';
 import { RequestContextService } from '../../../../shared/observability/request-context.service';
 import { SystemClock } from '../../../../shared/adapters/system-clock.adapter';
+import { serializeSafeLog } from '../../../../shared/observability/safe-log';
 
 @Injectable()
 export class AIProviderFactory {
@@ -54,29 +56,56 @@ export class AIProviderFactory {
     context: Record<string, unknown>,
   ): Promise<{ response: AIResponse; providerName: string }> {
     const attempted: string[] = [];
-    for (const providerName of this.getProviderOrder()) {
+    const deadline = this.clock.nowMs() + this.getFallbackTimeoutMs();
+    const inputBytes = this.renderedInputBytes(prompt, context);
+    let estimatedCost = 0;
+
+    for (const providerName of this.getProviderOrder().slice(
+      0,
+      this.getMaxProviderAttempts(),
+    )) {
+      const remainingMs = deadline - this.clock.nowMs();
+      if (remainingMs <= 0) break;
+
+      const maxOutputTokens = this.getMaxOutputTokensForProvider(providerName);
+      const options: AIExecutionOptions = {
+        timeoutMs: remainingMs,
+        maxOutputTokens,
+      };
+      const nextEstimatedCost = this.estimateProviderCost(
+        providerName,
+        inputBytes,
+        maxOutputTokens,
+      );
+      if (estimatedCost + nextEstimatedCost > this.getMaxFallbackCost()) {
+        break;
+      }
+      estimatedCost += nextEstimatedCost;
       attempted.push(providerName);
       try {
         const response = await this.executeWithCircuitBreaker(
           providerName,
           prompt,
           context,
+          options,
         );
         return { response, providerName };
       } catch (error) {
         this.logger.warn(
-          JSON.stringify({
+          serializeSafeLog({
             event: 'ai_provider_failed',
+            component: 'ai',
             requestId: this.requestContext.getRequestId(),
-            userId: this.requestContext.getUserId(),
             provider: providerName,
-            error: error instanceof Error ? error.message : String(error),
+            error,
           }),
         );
       }
     }
     throw new ServiceUnavailableException(
-      `AI providers are temporarily unavailable (${attempted.join(', ')})`,
+      attempted.length > 0
+        ? 'AI providers are temporarily unavailable'
+        : 'AI provider execution budget is unavailable',
     );
   }
 
@@ -98,6 +127,7 @@ export class AIProviderFactory {
     providerName: string,
     prompt: PromptTemplate,
     context: Record<string, unknown>,
+    options: AIExecutionOptions,
   ): Promise<AIResponse> {
     const state = this.circuitStates.get(providerName) ?? {
       failures: 0,
@@ -117,7 +147,11 @@ export class AIProviderFactory {
     if (probing) state.probeInFlight = true;
 
     try {
-      const response = await this.create(providerName).complete(prompt, context);
+      const response = await this.create(providerName).complete(
+        prompt,
+        context,
+        options,
+      );
       state.failures = 0;
       state.openUntil = 0;
       return response;
@@ -146,12 +180,12 @@ export class AIProviderFactory {
     );
   }
 
-  getInputCostPerMillion(): number {
-    return Number(this.configService.get('AI_INPUT_COST_PER_MILLION', 0));
+  getInputCostPerMillion(providerName?: string): number {
+    return this.getInputCostPerMillionForProvider(providerName);
   }
 
-  getOutputCostPerMillion(): number {
-    return Number(this.configService.get('AI_OUTPUT_COST_PER_MILLION', 0));
+  getOutputCostPerMillion(providerName?: string): number {
+    return this.getOutputCostPerMillionForProvider(providerName);
   }
 
   getMaxInputBytes(): number {
@@ -165,4 +199,128 @@ export class AIProviderFactory {
   getMaxRequestCost(): number {
     return Number(this.configService.get('AI_MAX_REQUEST_COST_USD', 0.5));
   }
+
+  getMaxOutputTokensForProvider(providerName: string): number {
+    return (
+      this.getProviderNumber(providerName, 'MAX_OUTPUT_TOKENS') ??
+      this.getMaxOutputTokens()
+    );
+  }
+
+  getMaxProviderAttempts(): number {
+    return Math.max(
+      1,
+      Math.min(
+        3,
+        Number(this.configService.get('AI_MAX_PROVIDER_ATTEMPTS', 3)),
+      ),
+    );
+  }
+
+  getFallbackTimeoutMs(): number {
+    return Math.max(
+      1_000,
+      Number(
+        this.configService.get(
+          'AI_FALLBACK_TOTAL_TIMEOUT_MS',
+          this.configService.get('AI_REQUEST_TIMEOUT_MS', 30_000),
+        ),
+      ),
+    );
+  }
+
+  getMaxFallbackCost(): number {
+    const configuredFallbackCap = Number(
+      this.configService.get(
+        'AI_MAX_FALLBACK_TOTAL_COST_USD',
+        this.getMaxRequestCost(),
+      ),
+    );
+    // The fallback budget is an additional constraint, never a way to raise
+    // the absolute spend allowed for one paid request.
+    return Math.min(configuredFallbackCap, this.getMaxRequestCost());
+  }
+
+  getInputCostPerMillionForProvider(providerName?: string): number {
+    return this.getProviderCost(
+      providerName,
+      'INPUT_COST_PER_MILLION',
+      'AI_INPUT_COST_PER_MILLION',
+    );
+  }
+
+  getOutputCostPerMillionForProvider(providerName?: string): number {
+    return this.getProviderCost(
+      providerName,
+      'OUTPUT_COST_PER_MILLION',
+      'AI_OUTPUT_COST_PER_MILLION',
+    );
+  }
+
+  private getProviderCost(
+    providerName: string | undefined,
+    suffix: string,
+    fallbackKey: string,
+  ): number {
+    const configured = providerName
+      ? this.getProviderNumber(providerName, suffix)
+      : undefined;
+    return Number(
+      configured ?? this.configService.get(fallbackKey, 0),
+    );
+  }
+
+  private getProviderNumber(
+    providerName: string,
+    suffix: string,
+  ): number | undefined {
+    for (const prefix of this.getProviderConfigPrefixes(providerName)) {
+      const configured = this.configService.get<unknown>(`${prefix}_${suffix}`);
+      if (typeof configured === 'number' && Number.isFinite(configured)) {
+        return configured;
+      }
+    }
+    return undefined;
+  }
+
+  private getProviderConfigPrefixes(providerName: string): string[] {
+    switch (providerName.trim().toLowerCase()) {
+      case 'claude':
+        // ANTHROPIC_* is the documented configuration. CLAUDE_* remains a
+        // fallback for deployments that adopted the provider's runtime name.
+        return ['ANTHROPIC', 'CLAUDE'];
+      case 'openai':
+        return ['OPENAI'];
+      case 'gemini':
+        return ['GEMINI'];
+      default:
+        return [providerName.trim().toUpperCase()];
+    }
+  }
+
+  private estimateProviderCost(
+    providerName: string,
+    inputBytes: number,
+    maxOutputTokens: number,
+  ): number {
+    // Bytes deliberately over-estimate input tokens across tokenizers.
+    return (
+      (inputBytes * this.getInputCostPerMillionForProvider(providerName) +
+        maxOutputTokens * this.getOutputCostPerMillionForProvider(providerName)) /
+      1_000_000
+    );
+  }
+
+  private renderedInputBytes(
+    prompt: PromptTemplate,
+    context: Record<string, unknown>,
+  ): number {
+    const userPrompt = prompt.userPrompt.replace(
+      /\{\{\s*(\w+)\s*\}\}/g,
+      (_, key) =>
+        context[key] !== undefined ? String(context[key]) : `{{${key}}}`,
+    );
+    return Buffer.byteLength(prompt.systemPrompt) + Buffer.byteLength(userPrompt);
+  }
+
 }

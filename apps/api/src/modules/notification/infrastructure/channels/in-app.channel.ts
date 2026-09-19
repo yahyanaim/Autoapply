@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../database/prisma/prisma.service';
 import { NotificationStatus } from '@prisma/client';
 import { SystemClock } from '../../../../shared/adapters/system-clock.adapter';
+import { serializeSafeLog } from '../../../../shared/observability/safe-log';
 
 @Injectable()
 export class InAppChannel {
@@ -17,6 +18,12 @@ export class InAppChannel {
       where: { id: notification.id },
       data: { status: NotificationStatus.sent, sentAt: this.clock.now() },
     });
-    this.logger.log(`In-app notification ${notification.id} delivered`);
+    this.logger.log(
+      serializeSafeLog({
+        event: 'in_app_notification_delivered',
+        component: 'notification',
+        action: 'in_app_delivery',
+      }),
+    );
   }
 }

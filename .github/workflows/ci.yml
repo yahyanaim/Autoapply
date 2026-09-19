@@ -17,7 +17,7 @@ jobs:
   quality:
     name: Quality, tests, and production builds
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:16-alpine
@@ -46,6 +46,13 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: integration-test-jwt-secret-at-least-32-characters
       NODE_ENV: test
+      # Synthetic validation-only configuration. No CI test contacts GLM.
+      AI_EXECUTION_ROLE: all
+      FREE_AI_PROVIDER: glm
+      GLM_FREE_PLAN_API_KEY: ci-synthetic-glm-key
+      GLM_FREE_PLAN_MODEL: glm-test-model
+      GLM_FREE_PLAN_BASE_URL: https://glm.example.test/v1
+      RESUME_QUEUE_SIGNING_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -91,6 +98,12 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Docker build smoke test
+        run: |
+          docker build --file infra/docker/api.Dockerfile --tag applyai-api-ci:${{ github.sha }} .
+          docker build --file infra/docker/free-worker.Dockerfile --tag applyai-free-worker-ci:${{ github.sha }} .
+          docker build --file infra/docker/dashboard.Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://api.example.test --tag applyai-dashboard-ci:${{ github.sha }} .
 
   dashboard-e2e:
     name: Dashboard critical-flow browser test

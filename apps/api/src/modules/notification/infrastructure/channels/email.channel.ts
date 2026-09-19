@@ -9,6 +9,7 @@ import nodemailer, { Transporter } from 'nodemailer';
 import { PrismaService } from '../../../../database/prisma/prisma.service';
 import { NotificationStatus } from '@prisma/client';
 import { SystemClock } from '../../../../shared/adapters/system-clock.adapter';
+import { serializeSafeLog } from '../../../../shared/observability/safe-log';
 
 @Injectable()
 export class EmailChannel {
@@ -48,13 +49,22 @@ export class EmailChannel {
         where: { id: notification.id },
         data: { status: NotificationStatus.sent, sentAt: this.clock.now() },
       });
-      this.logger.log(`Email notification ${notification.id} delivered`);
+      this.logger.log(
+        serializeSafeLog({
+          event: 'email_notification_delivered',
+          component: 'notification',
+          action: 'email_delivery',
+        }),
+      );
     } catch (error) {
       await this.markFailed(notification.id);
       this.logger.error(
-        `Email notification ${notification.id} failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        serializeSafeLog({
+          event: 'email_notification_failed',
+          component: 'notification',
+          action: 'email_delivery',
+          error,
+        }),
       );
       throw new ServiceUnavailableException('Email delivery failed');
     }
@@ -89,9 +99,12 @@ export class EmailChannel {
       });
     } catch (error) {
       this.logger.error(
-        `Could not persist failed state for notification ${id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        serializeSafeLog({
+          event: 'email_notification_failure_state_write_failed',
+          component: 'notification',
+          action: 'email_delivery',
+          error,
+        }),
       );
     }
   }

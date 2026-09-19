@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AIRequestFeature } from '@prisma/client';
 import { AIService } from '../../../ai/application/ai.service';
+import type { AiExecutionBoundary } from '../../../ai/application/plan-aware-ai.router';
 
 export interface ParsedResume {
   skills: string[];
@@ -40,11 +41,16 @@ export class UnrecoverableResumeParseError extends Error {
 export class ResumeParser {
   constructor(private readonly aiService: AIService) {}
 
-  async parse(rawText: string, userId: string): Promise<ParsedResume> {
+  async parse(
+    rawText: string,
+    userId: string,
+    expectedBoundary?: AiExecutionBoundary,
+  ): Promise<ParsedResume> {
     const response = await this.aiService.complete(
       AIRequestFeature.resume_parse,
       userId,
       { resumeText: rawText.slice(0, 100_000) },
+      expectedBoundary,
     );
 
     const content = response.content.trim();
