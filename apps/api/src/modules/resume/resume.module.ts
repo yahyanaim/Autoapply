@@ -4,8 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import {
   ResumeService,
   StorageToken,
-  ResumeParseQueueToken,
+  ResumeParseFreeQueueToken,
+  ResumeParsePaidQueueToken,
   ResumeParseDeadLetterQueueToken,
+  resumeParseQueueName,
 } from './application/resume.service';
 import { S3StorageAdapter } from './infrastructure/storage/s3-storage.adapter';
 import { LocalStorageAdapter } from '../../shared/adapters/local-storage.adapter';
@@ -14,9 +16,37 @@ import { AIModule } from '../ai/ai.module';
 import { ResumeController } from './interface/resume.controller';
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import { ResumeParseWorker } from './infrastructure/queue/resume-parse.worker';
+import { ResumeParseJobSignatureService } from './infrastructure/queue/resume-parse-job-signature.service';
 import { BillingModule } from '../billing/billing.module';
 import { GeneratedResumePdfService } from './infrastructure/pdf/generated-resume-pdf.service';
 import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
+import { serializeSafeLog } from '../../shared/observability/safe-log';
+
+class InactiveResumeQueue {
+  constructor(private readonly boundary: 'free' | 'paid') {}
+
+  get client(): Promise<never> {
+    return Promise.reject(
+      new Error(`The ${this.boundary} resume queue is disabled in this role`),
+    );
+  }
+
+  async add(): Promise<never> {
+    throw new Error(`The ${this.boundary} resume queue is disabled in this role`);
+  }
+
+  async close(): Promise<void> {
+    // No network connection was opened for an inactive queue.
+  }
+}
+
+function canAccessResumeQueue(
+  configService: ConfigService,
+  boundary: 'free' | 'paid',
+): boolean {
+  const role = configService.get<string>('AI_EXECUTION_ROLE', 'all');
+  return role === 'all' || role === boundary;
+}
 
 function redisConnection(configService: ConfigService) {
   const url = new URL(
@@ -31,6 +61,34 @@ function redisConnection(configService: ConfigService) {
   };
 }
 
+function createResumeQueue(
+  configService: ConfigService,
+  boundary: 'free' | 'paid',
+): Queue {
+  if (!canAccessResumeQueue(configService, boundary)) {
+    // Restricted worker roles do not even initialize a client for the other
+    // queue. Redis ACLs/network policy must still enforce the same boundary.
+    return new InactiveResumeQueue(boundary) as unknown as Queue;
+  }
+  const queue = new Queue(resumeParseQueueName(boundary), {
+    connection: redisConnection(configService),
+  });
+  const logger = new Logger(
+    boundary === 'free' ? 'ResumeParseFreeQueue' : 'ResumeParsePaidQueue',
+  );
+  queue.on('error', (error) => {
+    logger.error(
+      serializeSafeLog({
+        event: 'resume_parse_queue_failed',
+        component: 'resume_queue',
+        action: 'resume_parse',
+        error,
+      }),
+    );
+  });
+  return queue;
+}
+
 @Module({
   imports: [AIModule, PrismaModule, BillingModule, IdempotencyModule],
   providers: [
@@ -39,6 +97,7 @@ function redisConnection(configService: ConfigService) {
     S3StorageAdapter,
     LocalStorageAdapter,
     ResumeParseWorker,
+    ResumeParseJobSignatureService,
     GeneratedResumePdfService,
     {
       provide: StorageToken,
@@ -53,17 +112,15 @@ function redisConnection(configService: ConfigService) {
       inject: [ConfigService, LocalStorageAdapter, S3StorageAdapter],
     },
     {
-      provide: ResumeParseQueueToken,
-      useFactory: (configService: ConfigService) => {
-        const queue = new Queue('resume-parse', {
-          connection: redisConnection(configService),
-        });
-        const logger = new Logger('ResumeParseQueue');
-        queue.on('error', (error) => {
-          logger.error(`Resume parse queue error: ${error.message}`);
-        });
-        return queue;
-      },
+      provide: ResumeParseFreeQueueToken,
+      useFactory: (configService: ConfigService) =>
+        createResumeQueue(configService, 'free'),
+      inject: [ConfigService],
+    },
+    {
+      provide: ResumeParsePaidQueueToken,
+      useFactory: (configService: ConfigService) =>
+        createResumeQueue(configService, 'paid'),
       inject: [ConfigService],
     },
     {
@@ -76,6 +133,11 @@ function redisConnection(configService: ConfigService) {
     },
   ],
   controllers: [ResumeController],
-  exports: [ResumeService, ResumeParseQueueToken, StorageToken],
+  exports: [
+    ResumeService,
+    ResumeParseFreeQueueToken,
+    ResumeParsePaidQueueToken,
+    StorageToken,
+  ],
 })
 export class ResumeModule {}

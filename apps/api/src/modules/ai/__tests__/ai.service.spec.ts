@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
@@ -35,6 +36,7 @@ describe('AIService resume ownership and readiness', () => {
   };
   const service = new AIService(
     prisma as never,
+    {} as never,
     {} as never,
     {} as never,
     matchScoreCache as never,
@@ -320,7 +322,7 @@ describe('AIService resume ownership and readiness', () => {
 
 describe('AIService request budgets', () => {
   it('rejects oversized prompts before reserving quota or calling a provider', async () => {
-    const prisma = {
+    const prisma: any = {
       user: { findFirst: jest.fn() },
       $transaction: jest.fn(),
     };
@@ -332,13 +334,24 @@ describe('AIService request budgets', () => {
       getMaxRequestCost: jest.fn().mockReturnValue(0.5),
       getInputCostPerMillion: jest.fn().mockReturnValue(0.15),
       getOutputCostPerMillion: jest.fn().mockReturnValue(0.6),
+      getProviderName: jest.fn().mockReturnValue('openai'),
     };
+    const planAwareRouter = {
+      resolve: jest.fn().mockResolvedValue({
+        boundary: 'paid',
+        maxInputBytes: 64,
+        maxOutputTokens: 2_048,
+        maxRequestCostUsd: 0.5,
+      }),
+    };
+    prisma.user.findFirst.mockResolvedValue({ id: 'user_1' });
     const promptService = {
       loadTemplate: jest.fn().mockReturnValue('System\n## Resume\n{{resume}}'),
     };
     const service = new AIService(
       prisma as never,
       providerFactory as never,
+      planAwareRouter as never,
       promptService as never,
       {} as never,
     );
@@ -360,13 +373,24 @@ describe('AIService request budgets', () => {
       getMaxRequestCost: jest.fn().mockReturnValue(0.001),
       getInputCostPerMillion: jest.fn().mockReturnValue(10),
       getOutputCostPerMillion: jest.fn().mockReturnValue(30),
+      getProviderName: jest.fn().mockReturnValue('openai'),
+    };
+    const planAwareRouter = {
+      resolve: jest.fn().mockResolvedValue({
+        boundary: 'paid',
+        maxInputBytes: 100_000,
+        maxOutputTokens: 4_096,
+        maxRequestCostUsd: 0.001,
+      }),
+    };
+    const prisma = {
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'user_1' }) },
+      $transaction: jest.fn(),
     };
     const service = new AIService(
-      {
-        user: { findFirst: jest.fn() },
-        $transaction: jest.fn(),
-      } as never,
+      prisma as never,
       providerFactory as never,
+      planAwareRouter as never,
       {
         loadTemplate: jest
           .fn()
@@ -402,6 +426,7 @@ describe('AIService quota summary', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       { now: () => new Date('2026-07-27T12:00:00.000Z') } as never,
     );
 
@@ -422,5 +447,137 @@ describe('AIService quota summary', () => {
         },
       }),
     );
+  });
+});
+
+describe('AIService plan-aware execution and quota rollback', () => {
+  function createService(route: { boundary: 'free' | 'paid' }) {
+    const prisma: any = {
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'user_1' }) },
+      usageLimit: {
+        findUnique: jest.fn().mockResolvedValue({
+          aiRequestsUsed: 0,
+          aiRequestsMax: 5,
+          resetAt: new Date('2026-08-01T00:00:00.000Z'),
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      aIRequest: { create: jest.fn().mockResolvedValue({ id: 'request_1' }) },
+      $transaction: jest.fn((callback: (transaction: unknown) => unknown) =>
+        callback(prisma),
+      ),
+    };
+    const router = {
+      resolve: jest.fn().mockResolvedValue({
+        ...route,
+        maxInputBytes: 100_000,
+        maxOutputTokens: 1_024,
+        ...(route.boundary === 'paid' ? { maxRequestCostUsd: 1 } : {}),
+      }),
+      complete: jest.fn(),
+    };
+    const providerFactory = {
+      getInputCostPerMillion: jest.fn().mockReturnValue(0.1),
+      getOutputCostPerMillion: jest.fn().mockReturnValue(0.2),
+      getProviderName: jest.fn().mockReturnValue('openai'),
+    };
+    const service = new AIService(
+      prisma as never,
+      providerFactory as never,
+      router as never,
+      { loadTemplate: jest.fn().mockReturnValue('System\n## Resume\n{{resume}}') } as never,
+      {} as never,
+    );
+    return { prisma, router, service };
+  }
+
+  it('records a successful GLM request once through the trusted Free route', async () => {
+    const { prisma, router, service } = createService({ boundary: 'free' });
+    router.complete.mockResolvedValue({
+      boundary: 'free',
+      providerName: 'glm',
+      response: { content: '{}', model: 'glm-model', tokensUsed: { input: 2, output: 3 } },
+    });
+
+    await expect(
+      service.complete(AIRequestFeature.resume_parse, 'user_1', { resume: 'synthetic' }),
+    ).resolves.toEqual({ content: '{}', model: 'glm-model' });
+
+    expect(prisma.aIRequest.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        provider: 'glm',
+        tokensUsed: 5,
+        cost: 0,
+      }),
+    });
+    expect(prisma.usageLimit.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { aiRequestsUsed: { decrement: 1 } } }),
+    );
+  });
+
+  it('releases a reserved Free allowance after a GLM failure', async () => {
+    const { prisma, router, service } = createService({ boundary: 'free' });
+    router.complete.mockRejectedValue(new Error('synthetic provider failure'));
+
+    await expect(
+      service.complete(AIRequestFeature.resume_parse, 'user_1', { resume: 'synthetic' }),
+    ).rejects.toThrow('synthetic provider failure');
+
+    expect(prisma.aIRequest.create).not.toHaveBeenCalled();
+    expect(prisma.usageLimit.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user_1',
+        resetAt: new Date('2026-08-01T00:00:00.000Z'),
+        aiRequestsUsed: { gt: 0 },
+      },
+      data: { aiRequestsUsed: { decrement: 1 } },
+    });
+  });
+
+  it('revalidates a queued boundary immediately before execution and releases its reservation on a plan change', async () => {
+    const { prisma, router, service } = createService({ boundary: 'free' });
+    router.resolve
+      .mockResolvedValueOnce({
+        boundary: 'free',
+        maxInputBytes: 100_000,
+        maxOutputTokens: 1_024,
+      })
+      .mockResolvedValueOnce({
+        boundary: 'paid',
+        maxInputBytes: 100_000,
+        maxOutputTokens: 1_024,
+        maxRequestCostUsd: 1,
+      });
+
+    await expect(
+      service.complete(
+        AIRequestFeature.resume_parse,
+        'user_1',
+        { resume: 'synthetic' },
+        'free',
+      ),
+    ).rejects.toThrow(ForbiddenException);
+
+    expect(router.complete).not.toHaveBeenCalled();
+    expect(prisma.aIRequest.create).not.toHaveBeenCalled();
+    expect(prisma.usageLimit.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user_1',
+        resetAt: new Date('2026-08-01T00:00:00.000Z'),
+        aiRequestsUsed: { gt: 0 },
+      },
+      data: { aiRequestsUsed: { decrement: 1 } },
+    });
+  });
+
+  it('does not reserve allowance or call a provider when entitlement resolution fails', async () => {
+    const { prisma, router, service } = createService({ boundary: 'free' });
+    router.resolve.mockRejectedValue(new ForbiddenException('invalid entitlement'));
+
+    await expect(
+      service.complete(AIRequestFeature.resume_parse, 'user_1', { resume: 'synthetic' }),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(router.complete).not.toHaveBeenCalled();
   });
 });

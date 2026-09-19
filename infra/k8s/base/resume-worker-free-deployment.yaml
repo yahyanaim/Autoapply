@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resume-worker-free
+  labels:
+    app: resume-worker-free
+spec:
+  replicas: 1
+  # Process queued jobs to a clean stopping point before a replacement starts.
+  # Resume jobs are idempotent, but this avoids unnecessary concurrent work.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: resume-worker-free
+  template:
+    metadata:
+      labels:
+        app: resume-worker-free
+    spec:
+      # Provider timeouts can be 120 seconds. Leave time for Worker.close() to
+      # finish the active job before Kubernetes sends SIGKILL.
+      terminationGracePeriodSeconds: 150
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: resume-worker-free
+          image: applyai-api
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 250m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          # Workers intentionally bind no HTTP listener.
+          livenessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - process.kill(1, 0)
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: APP_PROCESS_ROLE
+              value: worker
+            - name: AI_EXECUTION_ROLE
+              value: free
+            - name: FREE_AI_PROVIDER
+              value: glm
+            - name: STORAGE_DRIVER
+              value: s3
+          # This secret contains only the shared worker values, object-storage
+          # access, and GLM configuration. It must not contain paid-provider
+          # credentials or Stripe credentials.
+          envFrom:
+            - secretRef:
+                name: resume-worker-free-secrets

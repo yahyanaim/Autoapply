@@ -24,13 +24,34 @@ import {
   verifiedResumeToText,
 } from '../domain/generated-resume';
 import { analyzeResumeTruthfulness } from '../../ai/domain/fabrication-detector';
+import {
+  AiExecutionBoundary,
+  PlanAwareAiRouter,
+} from '../../ai/application/plan-aware-ai.router';
+import { serializeSafeLog } from '../../../shared/observability/safe-log';
+import { ResumeParseJobSignatureService } from '../infrastructure/queue/resume-parse-job-signature.service';
 
 export const StorageToken = Symbol('StoragePort');
-export const ResumeParseQueueToken = Symbol('ResumeParseQueue');
+export const ResumeParseFreeQueueToken = Symbol('ResumeParseFreeQueue');
+export const ResumeParsePaidQueueToken = Symbol('ResumeParsePaidQueue');
 export const ResumeParseDeadLetterQueueToken = Symbol(
   'ResumeParseDeadLetterQueue',
 );
 const QUOTA_TRANSACTION_RETRIES = 3;
+
+export interface ResumeParseJobData {
+  resumeId: string;
+  userId: string;
+  executionBoundary: AiExecutionBoundary;
+  jobId: string;
+  signature: string;
+}
+
+export type ResumeParseJobIdentity = Omit<ResumeParseJobData, 'signature'>;
+
+export function resumeParseQueueName(boundary: AiExecutionBoundary): string {
+  return `resume-parse-${boundary}`;
+}
 
 @Injectable()
 export class ResumeService {
@@ -39,10 +60,14 @@ export class ResumeService {
   constructor(
     @Inject(StorageToken)
     private readonly storageAdapter: StoragePort,
-    @Inject(ResumeParseQueueToken)
-    private readonly parseQueue: Queue,
+    @Inject(ResumeParseFreeQueueToken)
+    private readonly freeParseQueue: Queue,
+    @Inject(ResumeParsePaidQueueToken)
+    private readonly paidParseQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly resumeParser: ResumeParser,
+    private readonly planAwareRouter: PlanAwareAiRouter,
+    private readonly jobSignature: ResumeParseJobSignatureService,
   ) {}
 
   async upload(userId: string, file: Express.Multer.File) {
@@ -56,6 +81,9 @@ export class ResumeService {
         'Data-processing consent is required before uploading a resume',
       );
     }
+    // The browser does not choose the queue, plan, or provider. This trusted
+    // database lookup produces the only routing metadata stored on the job.
+    const route = await this.planAwareRouter.resolve(userId);
     const fileUrl = await this.storageAdapter.uploadFile(
       {
         buffer: file.buffer,
@@ -73,22 +101,36 @@ export class ResumeService {
         await this.storageAdapter.deleteFile(fileUrl);
       } catch (cleanupError) {
         this.logger.error(
-          `Failed to remove uncommitted resume object ${fileUrl}: ${
-            cleanupError instanceof Error
-              ? cleanupError.message
-              : String(cleanupError)
-          }`,
+          serializeSafeLog({
+            event: 'resume_upload_cleanup_failed',
+            component: 'resume',
+            action: 'resume_upload',
+            error: cleanupError,
+          }),
         );
       }
       throw error;
     }
 
     try {
-      await this.parseQueue.add(
+      const queue =
+        route.boundary === 'free'
+          ? this.freeParseQueue
+          : this.paidParseQueue;
+      const identity: ResumeParseJobIdentity = {
+        resumeId: resume.id,
+        userId,
+        executionBoundary: route.boundary,
+        jobId: `resume-parse-${route.boundary}-${resume.id}`,
+      };
+      await queue.add(
         'parse-resume',
-        { resumeId: resume.id, userId },
         {
-          jobId: `resume-parse-${resume.id}`,
+          ...identity,
+          signature: this.jobSignature.sign(identity),
+        } satisfies ResumeParseJobData,
+        {
+          jobId: identity.jobId,
           attempts: 3,
           backoff: { type: 'exponential', delay: 2_000 },
           removeOnComplete: 100,
@@ -108,7 +150,7 @@ export class ResumeService {
     return resume;
   }
 
-  async parse(resumeId: string) {
+  async parse(resumeId: string, expectedBoundary?: AiExecutionBoundary) {
     const resume = await this.prisma.resume.findUnique({
       where: { id: resumeId },
     });
@@ -154,7 +196,11 @@ export class ResumeService {
       );
     }
 
-    const parsedJson = await this.resumeParser.parse(rawText, resume.userId);
+    const parsedJson = await this.resumeParser.parse(
+      rawText,
+      resume.userId,
+      expectedBoundary,
+    );
 
     const updated = await this.prisma.resume.update({
       where: { id: resumeId },

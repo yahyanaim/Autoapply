@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import {
   AIProvider,
+  AIExecutionOptions,
   AIResponse,
   PromptTemplate,
 } from '../../domain/ai-provider.interface';
@@ -19,24 +20,33 @@ export class OpenAIProvider implements AIProvider {
   async complete(
     prompt: PromptTemplate,
     context: Record<string, unknown>,
+    options?: AIExecutionOptions,
   ): Promise<AIResponse> {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (!apiKey) throw new ServiceUnavailableException('OpenAI is not configured');
     this.client ??= new OpenAI({
       apiKey,
-      timeout: this.configService.get<number>('AI_REQUEST_TIMEOUT_MS', 30_000),
       maxRetries: 0,
     });
     const userContent = this.interpolate(prompt.userPrompt, context);
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: this.configService.get<number>('AI_MAX_OUTPUT_TOKENS', 2_048),
-      messages: [
-        { role: 'system', content: prompt.systemPrompt },
-        { role: 'user', content: userContent },
-      ],
-    });
+    const response = await this.client.chat.completions.create(
+      {
+        model: this.model,
+        max_tokens:
+          options?.maxOutputTokens ??
+          this.configService.get<number>('AI_MAX_OUTPUT_TOKENS', 2_048),
+        messages: [
+          { role: 'system', content: prompt.systemPrompt },
+          { role: 'user', content: userContent },
+        ],
+      },
+      {
+        timeout:
+          options?.timeoutMs ??
+          this.configService.get<number>('AI_REQUEST_TIMEOUT_MS', 30_000),
+      },
+    );
 
     const choice = response.choices[0];
     const usage = response.usage;

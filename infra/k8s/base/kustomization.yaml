@@ -4,3 +4,5 @@ resources:
   - api-deployment.yaml
   - api-service.yaml
   - dashboard-deployment.yaml
+  - resume-worker-free-deployment.yaml
+  - resume-worker-paid-deployment.yaml

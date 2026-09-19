@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   S3Client,
+  S3ClientConfig,
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
@@ -9,7 +10,7 @@ import {
 import { StoragePort } from '../../../../shared/ports/storage.port';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
-import { basename } from 'path';
+import { parseExternalHttpsBaseUrl } from '../../../../shared/config/external-endpoint';
 
 @Injectable()
 export class S3StorageAdapter implements StoragePort {
@@ -17,9 +18,34 @@ export class S3StorageAdapter implements StoragePort {
   private bucket: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.s3 = new S3Client({
-      region: this.configService.get('AWS_REGION', 'us-east-1'),
-    });
+    const customEndpoint = this.configService.get<string>('S3_ENDPOINT', '');
+    const accessKeyId = this.configService.get<string>('S3_ACCESS_KEY_ID', '');
+    const secretAccessKey = this.configService.get<string>(
+      'S3_SECRET_ACCESS_KEY',
+      '',
+    );
+    if (Boolean(accessKeyId) !== Boolean(secretAccessKey)) {
+      throw new Error('S3 credentials must be configured as an access-key pair');
+    }
+
+    const awsRegion = this.configService.get<string>('AWS_REGION') ?? 'us-east-1';
+    const customRegion = this.configService.get<string>('S3_REGION') ?? '';
+    const configuration: S3ClientConfig = {
+      region: customRegion || awsRegion,
+    };
+    if (customEndpoint) {
+      configuration.endpoint = parseExternalHttpsBaseUrl(
+        customEndpoint,
+        'S3_ENDPOINT',
+      ).toString();
+      configuration.forcePathStyle =
+        this.configService.get<string>('S3_FORCE_PATH_STYLE', 'false') ===
+        'true';
+    }
+    if (accessKeyId && secretAccessKey) {
+      configuration.credentials = { accessKeyId, secretAccessKey };
+    }
+    this.s3 = new S3Client(configuration);
     this.bucket = this.configService.get(
       'S3_BUCKET_RESUMES',
       'applyai-resumes',
@@ -30,11 +56,9 @@ export class S3StorageAdapter implements StoragePort {
     file: { buffer: Buffer; originalname: string; mimetype: string },
     folder: string,
   ): Promise<string> {
-    const safeName = basename(file.originalname).replace(
-      /[^a-zA-Z0-9._-]+/g,
-      '-',
-    );
-    const key = `${folder}/${randomUUID()}-${safeName || 'upload'}`;
+    // Stored object keys are deliberately opaque: uploaded filenames can carry
+    // personal data and must not become durable storage identifiers.
+    const key = `${folder}/${randomUUID()}`;
     await this.s3.send(
       new PutObjectCommand({
         Bucket: this.bucket,

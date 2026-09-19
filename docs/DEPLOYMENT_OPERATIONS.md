@@ -41,17 +41,53 @@ by the workflow. After one successful deployment, delete the obsolete
 Before changing workloads, `infra/scripts/deploy.sh` verifies:
 
 - the selected environment and deployment inputs;
-- the Kubernetes `api-secrets` object;
+- the Kubernetes `api-secrets`, `resume-worker-free-secrets`, and
+  `resume-worker-paid-secrets` objects;
 - core database, Redis, auth, MFA, storage, and Stripe secrets;
-- that `AI_PROVIDER` selects a supported provider with its matching API key;
+- that the selected paid provider has its matching credentials, the Free GLM
+  endpoint is an approved HTTPS endpoint, and all API/worker secrets share the
+  resume-job signing key;
 - positive input/output token prices;
 - credential-free HTTPS dashboard and Stripe return URLs;
 - every configured CORS value is a credential-free HTTPS origin;
 - the environment’s TLS secret;
 - successful database migration before rollout.
 
+The controlled rollout also waits for the API plus Free and paid resume-worker
+deployments. It never starts the legacy queue drainer. Follow the quarantine
+procedure in [FREE_BETA_EXECUTION.md](FREE_BETA_EXECUTION.md#legacy-resume-parse-queue-retirement)
+only as a separately approved, one-time operation.
+
 These configuration checks run before the migration job. NestJS repeats its
 schema and cross-field validation when the new API starts.
+
+## Free beta and paid execution boundaries
+
+The future beta uses one trusted product API for authentication, subscriptions,
+quotas, and dispatch. It chooses the execution boundary from the PostgreSQL
+subscription on every AI action; dashboard and extension input never selects a
+plan, provider, queue, or worker. Free calls GLM directly and never fall back
+to paid providers. Pro and Premium retain the existing paid provider fallback
+chain and never use GLM.
+
+Resume parsing is dispatched to `resume-parse-free` or `resume-parse-paid`
+with a server-generated identity signed by the dedicated
+`RESUME_QUEUE_SIGNING_KEY`. The worker verifies the signature, exact queue/job
+identity, resume ownership, and current entitlement before parsing, and
+atomically claims each attempt before calling a provider. `AIService` validates
+the trusted boundary once more immediately before execution, so a changed or
+copied job is rejected before an AI call. A valid job whose entitlement changes
+is marked failed rather than left pending. The API uses `APP_PROCESS_ROLE=api`; a worker uses
+`APP_PROCESS_ROLE=worker` and does not bind an HTTP listener.
+`AI_EXECUTION_ROLE=free` makes a Free worker GLM-only, while `paid` rejects
+Free work. See
+[FREE_BETA_EXECUTION.md](FREE_BETA_EXECUTION.md) for the exact configuration,
+R2 contract, capacity assumptions, queue controls, and deferred external work.
+
+Do not make Vercel the production host for the full API or BullMQ workers. The
+full product requires a container-capable host; the listed Oracle Free Tier
+approach is a future staging/production choice that has not been provisioned or
+verified here.
 
 ## Health and monitoring
 

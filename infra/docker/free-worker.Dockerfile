@@ -1,10 +1,11 @@
 FROM node:24-alpine AS builder
 
+RUN apk add --no-cache openssl
 RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json .npmrc ./
-COPY apps/dashboard/package.json ./apps/dashboard/package.json
+COPY apps/api/package.json ./apps/api/package.json
 COPY packages/api-client/package.json ./packages/api-client/package.json
 COPY packages/config/package.json ./packages/config/package.json
 COPY packages/design-tokens/package.json ./packages/design-tokens/package.json
@@ -12,33 +13,33 @@ COPY packages/shared-types/package.json ./packages/shared-types/package.json
 
 RUN pnpm install --frozen-lockfile
 
-COPY apps/dashboard ./apps/dashboard
+COPY apps/api ./apps/api
 COPY packages ./packages
 
-ARG NEXT_PUBLIC_API_URL=http://localhost:3001
-ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN pnpm --filter @applyai/dashboard build
+RUN pnpm --filter @applyai/api prisma:generate
+RUN pnpm --filter @applyai/api build
+RUN pnpm --filter @applyai/api deploy --prod /prod/api \
+  && cd /prod/api \
+  && ./node_modules/.bin/prisma generate --schema src/database/prisma/schema.prisma
 
 FROM node:24-alpine AS runner
 
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
+ENV APP_PROCESS_ROLE=worker
+ENV AI_EXECUTION_ROLE=free
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 appgroup \
+RUN apk add --no-cache openssl \
+  && addgroup --system --gid 1001 appgroup \
   && adduser --system --uid 1001 --ingroup appgroup appuser
 
-COPY --from=builder --chown=appuser:appgroup /app/apps/dashboard/.next/standalone ./
-COPY --from=builder --chown=appuser:appgroup /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
+COPY --from=builder --chown=appuser:appgroup /prod/api ./
 
 USER 1001
-EXPOSE 3000
 
+# The worker intentionally exposes no HTTP listener. This only verifies that
+# the process remains alive; dependency readiness is reported by the API.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:3000/').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
+  CMD ["node", "-e", "process.kill(1, 0)"]
 
-CMD ["node", "apps/dashboard/server.js"]
+CMD ["node", "dist/main.js"]

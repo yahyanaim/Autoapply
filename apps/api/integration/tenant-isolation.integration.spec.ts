@@ -5,9 +5,10 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import {
   ResumeParseDeadLetterQueueToken,
-  ResumeParseQueueToken,
+  ResumeParseFreeQueueToken,
 } from '../src/modules/resume/application/resume.service';
 import type { Queue } from 'bullmq';
+import { ResumeParseJobSignatureService } from '../src/modules/resume/infrastructure/queue/resume-parse-job-signature.service';
 
 describe('API integration: authentication and tenant isolation', () => {
   let app: INestApplication;
@@ -104,12 +105,19 @@ describe('API integration: authentication and tenant isolation', () => {
         mimeType: 'application/pdf',
       },
     });
-    const queue = app.get<Queue>(ResumeParseQueueToken);
+    const queue = app.get<Queue>(ResumeParseFreeQueueToken);
     const deadLetterQueue = app.get<Queue>(ResumeParseDeadLetterQueueToken);
+    const jobSignature = app.get(ResumeParseJobSignatureService);
     const queueJobId = `integration-resume-parse-${resume.id}`;
+    const identity = {
+      resumeId: resume.id,
+      userId: user.id,
+      executionBoundary: 'free' as const,
+      jobId: queueJobId,
+    };
     await queue.add(
       'parse-resume',
-      { resumeId: resume.id, userId: user.id },
+      { ...identity, signature: jobSignature.sign(identity) },
       {
         jobId: queueJobId,
         attempts: 2,

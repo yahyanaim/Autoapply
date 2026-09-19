@@ -1,24 +1,25 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api
+  name: resume-worker-paid
   labels:
-    app: api
+    app: resume-worker-paid
 spec:
-  replicas: 2
+  replicas: 1
+  # Process queued jobs to a clean stopping point before a replacement starts.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
-      app: api
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+      app: resume-worker-paid
   template:
     metadata:
       labels:
-        app: api
+        app: resume-worker-paid
     spec:
+      # Provider timeouts can be 120 seconds. Leave time for Worker.close() to
+      # finish the active job before Kubernetes sends SIGKILL.
+      terminationGracePeriodSeconds: 150
       securityContext:
         runAsNonRoot: true
         runAsUser: 1001
@@ -27,17 +28,13 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: api
+        - name: resume-worker-paid
           image: applyai-api
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-          ports:
-            - name: http
-              containerPort: 3001
-              protocol: TCP
           resources:
             requests:
               memory: 256Mi
@@ -45,37 +42,29 @@ spec:
             limits:
               memory: 512Mi
               cpu: 500m
+          # Workers intentionally bind no HTTP listener.
           livenessProbe:
-            httpGet:
-              path: /health
-              port: http
+            exec:
+              command:
+                - node
+                - -e
+                - process.kill(1, 0)
             initialDelaySeconds: 15
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 3
-          readinessProbe:
-            httpGet:
-              path: /health/ready
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
           env:
             - name: NODE_ENV
               value: production
-            - name: PORT
-              value: "3001"
-            - name: TRUST_PROXY_HOPS
-              value: "1"
+            - name: APP_PROCESS_ROLE
+              value: worker
+            - name: AI_EXECUTION_ROLE
+              value: paid
             - name: STORAGE_DRIVER
               value: s3
-            # Keep the public API from consuming resume queues even if a
-            # similarly named value appears in its secret.
-            - name: APP_PROCESS_ROLE
-              value: api
-            - name: AI_EXECUTION_ROLE
-              value: all
+          # This secret contains only shared worker values, object-storage
+          # access, and the paid-provider configuration. It must not contain
+          # GLM credentials or Stripe credentials.
           envFrom:
             - secretRef:
-                name: api-secrets
+                name: resume-worker-paid-secrets

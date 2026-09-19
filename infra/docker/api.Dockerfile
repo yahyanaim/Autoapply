@@ -1,7 +1,7 @@
 FROM node:24-alpine AS builder
 
 RUN apk add --no-cache openssl
-RUN corepack enable && corepack prepare pnpm@9 --activate
+RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json .npmrc ./
@@ -25,6 +25,7 @@ RUN pnpm --filter @applyai/api deploy --prod /prod/api \
 FROM node:24-alpine AS runner
 
 ENV NODE_ENV=production
+ENV APP_PROCESS_ROLE=api
 WORKDIR /app
 
 RUN apk add --no-cache openssl \
@@ -37,5 +38,8 @@ COPY --from=builder --chown=appuser:appgroup /prod/api ./
 
 USER 1001
 EXPOSE 3001
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:3001/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
 
 CMD ["node", "dist/main.js"]

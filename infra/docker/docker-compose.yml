@@ -37,6 +37,9 @@ services:
     environment:
       DATABASE_URL: postgresql://applyai:applyai_dev@postgres:5432/applyai
       REDIS_URL: redis://redis:6379
+      # Do not let an env_file value turn the public API into a worker too.
+      APP_PROCESS_ROLE: api
+      AI_EXECUTION_ROLE: all
     volumes:
       - api_uploads:/app/uploads
     depends_on:
@@ -63,6 +66,62 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # The Free worker is a separate process so it can only consume the Free
+  # queue. It shares local uploads for development; production workers use
+  # private object storage instead.
+  resume-worker-free:
+    build:
+      context: ../..
+      dockerfile: infra/docker/free-worker.Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://applyai:applyai_dev@postgres:5432/applyai
+      REDIS_URL: redis://redis:6379
+      APP_PROCESS_ROLE: worker
+      AI_EXECUTION_ROLE: free
+      FREE_AI_PROVIDER: glm
+    volumes:
+      - api_uploads:/app/uploads
+    stop_grace_period: 150s
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # The paid worker uses the same verified API artifact, but its explicit role
+  # prevents it from initializing or consuming the Free queue.
+  resume-worker-paid:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      DATABASE_URL: postgresql://applyai:applyai_dev@postgres:5432/applyai
+      REDIS_URL: redis://redis:6379
+      APP_PROCESS_ROLE: worker
+      AI_EXECUTION_ROLE: paid
+    volumes:
+      - api_uploads:/app/uploads
+    # The API image checks its HTTP listener. A worker deliberately has none,
+    # so use a process-liveness check instead.
+    healthcheck:
+      test: ["CMD", "node", "-e", "process.kill(1, 0)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    stop_grace_period: 150s
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   dashboard:
     build:

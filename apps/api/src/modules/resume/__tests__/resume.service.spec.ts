@@ -1,14 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ForbiddenException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { ResumeService, ResumeParseQueueToken, StorageToken } from '../application/resume.service';
+import {
+  ResumeParseFreeQueueToken,
+  ResumeParsePaidQueueToken,
+  ResumeService,
+  StorageToken,
+} from '../application/resume.service';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { ResumeParser } from '../infrastructure/parsers/resume-parser';
+import { PlanAwareAiRouter } from '../../ai/application/plan-aware-ai.router';
+import { ResumeParseJobSignatureService } from '../infrastructure/queue/resume-parse-job-signature.service';
 
 describe('ResumeService', () => {
   let service: ResumeService;
   let prisma: any;
   let storage: any;
-  let queue: any;
+  let freeQueue: any;
+  let paidQueue: any;
+  let planAwareRouter: any;
+  let jobSignature: any;
   let parser: any;
 
   beforeEach(async () => {
@@ -42,14 +52,22 @@ describe('ResumeService', () => {
       $transaction: jest.fn((callback: (transaction: any) => unknown) => callback(prisma)),
     };
     storage = { uploadFile: jest.fn(), downloadFile: jest.fn(), deleteFile: jest.fn() };
-    queue = { add: jest.fn() };
+    freeQueue = { add: jest.fn() };
+    paidQueue = { add: jest.fn() };
+    planAwareRouter = {
+      resolve: jest.fn().mockResolvedValue({ boundary: 'free' }),
+    };
+    jobSignature = { sign: jest.fn().mockReturnValue('a'.repeat(64)) };
     parser = { parse: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({ providers: [
       ResumeService,
       { provide: StorageToken, useValue: storage },
-      { provide: ResumeParseQueueToken, useValue: queue },
+      { provide: ResumeParseFreeQueueToken, useValue: freeQueue },
+      { provide: ResumeParsePaidQueueToken, useValue: paidQueue },
       { provide: PrismaService, useValue: prisma },
       { provide: ResumeParser, useValue: parser },
+      { provide: PlanAwareAiRouter, useValue: planAwareRouter },
+      { provide: ResumeParseJobSignatureService, useValue: jobSignature },
     ] }).compile();
     service = module.get(ResumeService);
   });
@@ -59,10 +77,48 @@ describe('ResumeService', () => {
     const created = { id: 'r1', userId: 'u1', originalFileUrl: '/uploads/resumes/r1.pdf' };
     storage.uploadFile.mockResolvedValue(created.originalFileUrl);
     prisma.resume.create.mockResolvedValue(created);
-    queue.add.mockResolvedValue({ id: 'q1' });
+    freeQueue.add.mockResolvedValue({ id: 'q1' });
 
     await expect(service.upload('u1', file)).resolves.toEqual(created);
-    expect(queue.add).toHaveBeenCalledWith('parse-resume', { resumeId: 'r1', userId: 'u1' }, expect.objectContaining({ jobId: 'resume-parse-r1', attempts: 3 }));
+    expect(freeQueue.add).toHaveBeenCalledWith(
+      'parse-resume',
+      {
+        resumeId: 'r1',
+        userId: 'u1',
+        executionBoundary: 'free',
+        jobId: 'resume-parse-free-r1',
+        signature: 'a'.repeat(64),
+      },
+      expect.objectContaining({ jobId: 'resume-parse-free-r1', attempts: 3 }),
+    );
+    expect(paidQueue.add).not.toHaveBeenCalled();
+    expect(jobSignature.sign).toHaveBeenCalledWith({
+      resumeId: 'r1',
+      userId: 'u1',
+      executionBoundary: 'free',
+      jobId: 'resume-parse-free-r1',
+    });
+  });
+
+  it('uses the trusted paid route rather than any client-selected queue', async () => {
+    const file = { buffer: Buffer.from('%PDF-content'), originalname: 'resume.pdf', mimetype: 'application/pdf', size: 12 } as Express.Multer.File;
+    const created = { id: 'r2', userId: 'u1', originalFileUrl: '/uploads/resumes/r2.pdf' };
+    storage.uploadFile.mockResolvedValue(created.originalFileUrl);
+    prisma.resume.create.mockResolvedValue(created);
+    paidQueue.add.mockResolvedValue({ id: 'q2' });
+    planAwareRouter.resolve.mockResolvedValue({ boundary: 'paid' });
+
+    await expect(service.upload('u1', file)).resolves.toEqual(created);
+
+    expect(paidQueue.add).toHaveBeenCalledWith(
+      'parse-resume',
+      expect.objectContaining({
+        executionBoundary: 'paid',
+        signature: 'a'.repeat(64),
+      }),
+      expect.objectContaining({ jobId: 'resume-parse-paid-r2' }),
+    );
+    expect(freeQueue.add).not.toHaveBeenCalled();
   });
 
   it('rejects content whose signature does not match the MIME type', async () => {
@@ -84,7 +140,7 @@ describe('ResumeService', () => {
     storage.uploadFile.mockResolvedValue('/uploads/resumes/r1.pdf');
     prisma.resume.create.mockResolvedValue({ id: 'r1' });
     prisma.resume.delete.mockResolvedValue({});
-    queue.add.mockRejectedValue(new Error('redis unavailable'));
+    freeQueue.add.mockRejectedValue(new Error('redis unavailable'));
     await expect(service.upload('u1', file)).rejects.toThrow(ServiceUnavailableException);
     expect(prisma.resume.delete).toHaveBeenCalledWith({ where: { id: 'r1' } });
     expect(storage.deleteFile).toHaveBeenCalledWith('/uploads/resumes/r1.pdf');
@@ -115,7 +171,7 @@ describe('ResumeService', () => {
     prisma.resume.update.mockResolvedValue({ id: 'r1' });
 
     const result = await service.parse('r1');
-    expect(parser.parse).toHaveBeenCalledWith('resume text', 'u1');
+    expect(parser.parse).toHaveBeenCalledWith('resume text', 'u1', undefined);
     expect(result.parsedJson).toEqual(expect.objectContaining({ skills: ['TypeScript'] }));
     expect(prisma.resume.update).toHaveBeenLastCalledWith({
       where: { id: 'r1' },

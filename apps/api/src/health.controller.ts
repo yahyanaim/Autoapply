@@ -8,11 +8,13 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { Queue } from 'bullmq';
 import { PrismaService } from './database/prisma/prisma.service';
 import {
-  ResumeParseQueueToken,
+  ResumeParseFreeQueueToken,
+  ResumeParsePaidQueueToken,
   StorageToken,
 } from './modules/resume/application/resume.service';
 import { Throttle } from '@nestjs/throttler';
 import { StoragePort } from './shared/ports/storage.port';
+import { ConfigService } from '@nestjs/config';
 
 @ApiExcludeController()
 @Controller('health')
@@ -20,8 +22,10 @@ import { StoragePort } from './shared/ports/storage.port';
 export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
-    @Inject(ResumeParseQueueToken) private readonly resumeQueue: Queue,
+    @Inject(ResumeParseFreeQueueToken) private readonly freeResumeQueue: Queue,
+    @Inject(ResumeParsePaidQueueToken) private readonly paidResumeQueue: Queue,
     @Inject(StorageToken) private readonly storage: StoragePort,
+    private readonly configService: ConfigService,
   ) {}
 
   @Get()
@@ -32,10 +36,14 @@ export class HealthController {
   @Get('ready')
   async readiness() {
     try {
-      const redis = await this.resumeQueue.client;
+      const redisClients = await Promise.all(
+        this.enabledQueues().map((queue) => queue.client),
+      );
       await Promise.all([
         this.prisma.$queryRaw`SELECT 1`,
-        redis.get('applyai:health:readiness'),
+        ...redisClients.map((redis) =>
+          redis.get('applyai:health:readiness'),
+        ),
         this.storage.checkHealth(),
       ]);
       return {
@@ -51,5 +59,15 @@ export class HealthController {
         'A required dependency is unavailable',
       );
     }
+  }
+
+  private enabledQueues(): Queue[] {
+    const executionRole = this.configService.get<string>(
+      'AI_EXECUTION_ROLE',
+      'all',
+    );
+    if (executionRole === 'free') return [this.freeResumeQueue];
+    if (executionRole === 'paid') return [this.paidResumeQueue];
+    return [this.freeResumeQueue, this.paidResumeQueue];
   }
 }

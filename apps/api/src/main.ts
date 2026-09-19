@@ -12,6 +12,7 @@ import {
   buildAllowedCorsOrigins,
   isCorsOriginAllowed,
 } from './shared/security/cors-policy';
+import { serializeSafeLog } from './shared/observability/safe-log';
 
 async function bootstrap() {
   await initializeSentryEarly();
@@ -27,6 +28,7 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
+  const processRole = config.get<string>('APP_PROCESS_ROLE', 'all');
   const isProduction = config.get('NODE_ENV') === 'production';
   const trustProxyHops = config.get<number>('TRUST_PROXY_HOPS', 0);
   if (trustProxyHops > 0) app.set('trust proxy', trustProxyHops);
@@ -94,12 +96,26 @@ async function bootstrap() {
 
   const port = config.get<number>('PORT', 3001);
   app.enableShutdownHooks();
+  if (processRole === 'worker') {
+    // The worker shares trusted modules with the API but deliberately binds no
+    // public listener. BullMQ keeps the process alive and Nest shutdown hooks
+    // drain active jobs before the container exits.
+    await app.init();
+    logger.log('Worker process initialized');
+    return;
+  }
   await app.listen(port, '0.0.0.0');
   logger.log(`Application running on port ${port}`);
 }
 
 void bootstrap().catch((error: unknown) => {
   const logger = new Logger('Bootstrap');
-  logger.error(error instanceof Error ? error.stack : String(error));
+  logger.error(
+    serializeSafeLog({
+      event: 'bootstrap_failed',
+      component: 'api',
+      error,
+    }),
+  );
   process.exitCode = 1;
 });

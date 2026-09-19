@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {
   AIProvider,
+  AIExecutionOptions,
   AIResponse,
   PromptTemplate,
 } from '../../domain/ai-provider.interface';
@@ -22,6 +23,7 @@ export class GeminiProvider implements AIProvider {
   async complete(
     prompt: PromptTemplate,
     context: Record<string, unknown>,
+    options?: AIExecutionOptions,
   ): Promise<AIResponse> {
     const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY');
     if (!apiKey) throw new ServiceUnavailableException('Google AI is not configured');
@@ -32,12 +34,16 @@ export class GeminiProvider implements AIProvider {
       model: this.model,
       systemInstruction: prompt.systemPrompt,
       generationConfig: {
-        maxOutputTokens: this.configService.get<number>('AI_MAX_OUTPUT_TOKENS', 2_048),
+        maxOutputTokens:
+          options?.maxOutputTokens ??
+          this.configService.get<number>('AI_MAX_OUTPUT_TOKENS', 2_048),
       },
     });
 
     const result = await model.generateContent(userContent, {
-      timeout: this.configService.get<number>('AI_REQUEST_TIMEOUT_MS', 30_000),
+      timeout:
+        options?.timeoutMs ??
+        this.configService.get<number>('AI_REQUEST_TIMEOUT_MS', 30_000),
     });
     const response = result.response;
 
