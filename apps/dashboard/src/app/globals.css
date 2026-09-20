@@ -217,6 +217,12 @@
   will-change: transform;
 }
 
+.career-assistant-anchor--early-beta {
+  top: 1.25rem;
+  bottom: auto;
+  transform: none !important;
+}
+
 .career-assistant-trigger {
   position: relative;
   width: 5.25rem;
@@ -570,6 +576,10 @@
     right: 0.75rem;
     bottom: 5.25rem;
     transform: none !important;
+  }
+
+  .career-assistant-anchor--early-beta {
+    top: auto;
   }
 
   .career-assistant-trigger {

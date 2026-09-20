@@ -13,6 +13,9 @@ vi.mock('@/lib/api/career-chat-client', () => ({
 const ask = vi.mocked(careerChatClient.ask);
 let container: HTMLDivElement;
 let root: Root;
+let restoreEarlyBetaEnvironment: (() => void) | undefined;
+
+type TestViewport = 'mobile' | 'tablet' | 'desktop';
 
 function requiredElement<T extends Element>(selector: string): T {
   const element = container.querySelector<T>(selector);
@@ -53,6 +56,59 @@ function openAssistant() {
   click('button[aria-label="Ask Nori about jobs in Morocco"]');
 }
 
+function renderWithEarlyBetaVisibility(
+  viewport: TestViewport,
+  isEarlyBetaVisible: boolean,
+) {
+  const earlyBeta = document.createElement('section');
+  earlyBeta.id = 'early-beta';
+  document.body.append(earlyBeta);
+
+  let visibilityCallback: IntersectionObserverCallback | undefined;
+  const originalMatchMedia = window.matchMedia;
+  const originalIntersectionObserver = window.IntersectionObserver;
+  window.matchMedia = (query) => ({
+    matches: viewport === 'mobile' && query === '(max-width: 639px)',
+    media: query,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  });
+  window.IntersectionObserver = class {
+    constructor(callback: IntersectionObserverCallback) {
+      visibilityCallback = callback;
+    }
+
+    disconnect() {}
+    observe() {}
+    root = null;
+    rootMargin = '';
+    thresholds = [];
+    takeRecords() {
+      return [];
+    }
+    unobserve() {}
+  } as unknown as typeof IntersectionObserver;
+  restoreEarlyBetaEnvironment = () => {
+    window.matchMedia = originalMatchMedia;
+    window.IntersectionObserver = originalIntersectionObserver;
+    earlyBeta.remove();
+  };
+
+  act(() => {
+    root.render(<FloatingCareerAssistant />);
+  });
+  act(() => {
+    visibilityCallback?.(
+      [{ isIntersecting: isEarlyBetaVisible } as IntersectionObserverEntry],
+      {} as IntersectionObserver,
+    );
+  });
+}
+
 beforeEach(() => {
   container = document.createElement('div');
   document.body.append(container);
@@ -62,6 +118,8 @@ afterEach(() => {
   act(() => {
     root.unmount();
   });
+  restoreEarlyBetaEnvironment?.();
+  restoreEarlyBetaEnvironment = undefined;
   container.remove();
   vi.useRealTimers();
 });
@@ -92,6 +150,46 @@ describe('FloatingCareerAssistant', () => {
       ),
     ).toBeTruthy();
   });
+
+  it('hides the launcher while the Early Beta form is visible on mobile', () => {
+    renderWithEarlyBetaVisibility('mobile', true);
+
+    expect(
+      container.querySelector('button[aria-label="Ask Nori about jobs in Morocco"]'),
+    ).toBeNull();
+  });
+
+  it.each(['tablet', 'desktop'] as const)(
+    'keeps the launcher visible and in its Early Beta safe position on %s',
+    (viewport) => {
+      renderWithEarlyBetaVisibility(viewport, true);
+
+      expect(
+        requiredElement<HTMLButtonElement>(
+          'button[aria-label="Ask Nori about jobs in Morocco"]',
+        ),
+      ).toBeTruthy();
+      expect(
+        requiredElement<HTMLDivElement>('.career-assistant-anchor').className,
+      ).toContain('career-assistant-anchor--early-beta');
+    },
+  );
+
+  it.each(['mobile', 'tablet', 'desktop'] as const)(
+    'keeps the launcher available outside the Early Beta form on %s',
+    (viewport) => {
+      renderWithEarlyBetaVisibility(viewport, false);
+
+      expect(
+        requiredElement<HTMLButtonElement>(
+          'button[aria-label="Ask Nori about jobs in Morocco"]',
+        ),
+      ).toBeTruthy();
+      expect(
+        requiredElement<HTMLDivElement>('.career-assistant-anchor').className,
+      ).not.toContain('career-assistant-anchor--early-beta');
+    },
+  );
 
   it('sends the user question to the career-chat API and renders the answer and source', async () => {
     vi.useFakeTimers();

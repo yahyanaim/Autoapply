@@ -33,11 +33,30 @@ describe("early beta registration form", () => {
     expect(view.required<HTMLInputElement>("#early-user-first-name").maxLength).toBe(80);
     expect(view.required<HTMLInputElement>("#early-user-email").maxLength).toBe(254);
     expect(view.required<HTMLTextAreaElement>("#early-user-main-problem").maxLength).toBe(500);
+    expect(view.container.textContent).toContain("Current job-search *");
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await flushUpdates();
 
     expect(view.container.textContent).toContain("Enter your first or preferred name.");
     expect(view.container.textContent).toContain("Consent is required to join the early-user list.");
+  });
+
+  it("keeps the longer supporting fields in a readable two-column layout", () => {
+    view = renderView(<EarlyUserForm />);
+
+    const countryGrid = view
+      .required<HTMLInputElement>("#early-user-country")
+      .closest(".grid");
+
+    expect(countryGrid?.className).toContain("sm:grid-cols-2");
+    expect(countryGrid?.className).not.toContain("sm:grid-cols-3");
+    expect(
+      view.required<HTMLSelectElement>("#early-user-heard-about").parentElement?.className,
+    ).toContain("sm:col-span-2");
+    expect(view.required<HTMLInputElement>("#early-user-country").placeholder).toBe("e.g. Morocco");
+    expect(view.required<HTMLTextAreaElement>("#early-user-main-problem").placeholder).toContain(
+      "finding roles",
+    );
   });
 
   it("normalizes email, disables the button while submitting, and shows the safe success state", async () => {
