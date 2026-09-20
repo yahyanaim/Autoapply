@@ -351,6 +351,98 @@ const arabicTranslations: Record<string, string> = {
   "Every suggestion remains grounded in the information you provided.":
     "يبقى كل اقتراح مبنيًا على المعلومات التي قدمتها.",
   "Workspace focus": "محور مساحة العمل",
+  "Clear answers, before you begin": "إجابات واضحة قبل أن تبدأ",
+  "Frequently asked questions": "الأسئلة الشائعة",
+  "Apply with confidence, with the limits and controls explained clearly.":
+    "قدّم بثقة، مع شرح واضح للحدود وأدوات التحكم.",
+  "What is ApplyAI?": "ما هو ApplyAI؟",
+  "ApplyAI helps job seekers find relevant jobs, understand how well they match, improve their resume truthfully, generate tailored application materials, and track their applications.":
+    "يساعد ApplyAI الباحثين عن عمل على العثور على وظائف مناسبة، وفهم مدى ملاءمتهم لها، وتحسين سيرهم الذاتية بصدق، وإنشاء مستندات تقديم مخصّصة، ومتابعة طلباتهم.",
+  "Does ApplyAI apply to jobs automatically?": "هل يقدّم ApplyAI على الوظائف تلقائيًا؟",
+  "No. ApplyAI is assistive. It helps prepare applications and fill forms, but users remain in control and must review and submit each application.":
+    "لا. ApplyAI أداة مساعدة؛ فهو يساعد على إعداد الطلبات وملء النماذج، لكن المستخدم يبقى صاحب القرار ويجب أن يراجع كل طلب ويرسله بنفسه.",
+  "How does ApplyAI match me with jobs?": "كيف يطابق ApplyAI ملفي مع الوظائف؟",
+  "ApplyAI compares the user’s verified resume profile with job requirements and shows explainable scores, verified-skill overlap, and missing keywords.":
+    "يقارن ApplyAI ملف سيرتك الذاتية الموثّق بمتطلبات الوظيفة، ويعرض درجات قابلة للتفسير، وتداخل المهارات الموثقة، والكلمات المفتاحية الناقصة.",
+  "Can ApplyAI invent experience or skills?": "هل يمكن لـ ApplyAI اختلاق خبرات أو مهارات؟",
+  "No. Resume optimization must use verified information. ApplyAI must not invent employers, degrees, dates, skills, achievements, or experience.":
+    "لا. يجب أن يعتمد تحسين السيرة الذاتية على معلومات موثقة. لا يجوز لـ ApplyAI اختلاق جهات عمل أو شهادات أو تواريخ أو مهارات أو إنجازات أو خبرات.",
+  "What is included in the Free plan?": "ما الذي تتضمنه الخطة المجانية؟",
+  "The current beta Free plan includes:": "تتضمن الخطة المجانية الحالية خلال النسخة التجريبية:",
+  "3 CV-matched job-discovery runs per month.": "3 عمليات اكتشاف وظائف مطابقة للسيرة الذاتية شهريًا.",
+  "Up to 20 ranked jobs per discovery run.": "حتى 20 وظيفة مرتبة في كل عملية اكتشاف.",
+  "Explainable scores and skill overlap.": "درجات قابلة للتفسير وتداخل المهارات.",
+  "Keyword-gap analysis.": "تحليل فجوات الكلمات المفتاحية.",
+  "Resume upload and structured PDF/DOCX parsing.": "رفع السيرة الذاتية وتحليل ملفات PDF وDOCX بشكل منظّم.",
+  "Manual application tracking.": "متابعة يدوية لطلبات التوظيف.",
+  "10 tracked applications per month.": "متابعة 10 طلبات شهريًا.",
+  "5 AI requests per month.": "5 طلبات ذكاء اصطناعي شهريًا.",
+  "1 truthful CV optimization per month.": "تحسين صادق واحد للسيرة الذاتية شهريًا.",
+  "1 stored resume.": "سيرة ذاتية واحدة محفوظة.",
+  "5 MB encrypted storage.": "5 ميغابايت من التخزين المشفّر.",
+  "Profile, consent, export, and deletion controls.":
+    "أدوات التحكم في الملف الشخصي والموافقة والتصدير والحذف.",
+  "Is ApplyAI free during the beta?": "هل ApplyAI مجاني خلال النسخة التجريبية؟",
+  "ApplyAI currently offers a beta Free plan with the limits shown above. Beta access and those limits may change as the product evolves, so the current plan page is the source of truth for available access.":
+    "يوفر ApplyAI حاليًا خطة مجانية تجريبية بالحدود الموضحة أعلاه. قد يتغير الوصول إلى النسخة التجريبية وهذه الحدود مع تطور المنتج، لذلك تبقى صفحة الخطة الحالية هي المرجع لمعرفة الوصول المتاح.",
+  "Is my resume private?": "هل سيرتي الذاتية خاصة؟",
+  "ApplyAI’s Privacy Notice describes the account, resume, and AI-processing controls currently implemented. Resume storage and provider-backed AI features require consent, and you can review consent in Settings. Read the Privacy Notice for the full details and limitations.":
+    "يشرح إشعار خصوصية ApplyAI ضوابط الحساب والسيرة الذاتية ومعالجة الذكاء الاصطناعي المتاحة حاليًا. يتطلب تخزين السيرة الذاتية وميزات الذكاء الاصطناعي المدعومة من مزودين موافقتك، ويمكنك مراجعتها في الإعدادات. اقرأ إشعار الخصوصية للتفاصيل والحدود الكاملة.",
+  "Can I delete my account and data?": "هل يمكنني حذف حسابي وبياناتي؟",
+  "Yes. Settings includes controls to download a portable JSON export, review and revoke sessions, review consent, and permanently delete your account and stored resume files. The Privacy Notice explains the applicable retention limitations.":
+    "نعم. تتضمن الإعدادات أدوات لتنزيل نسخة JSON قابلة للنقل، ومراجعة الجلسات وإلغائها، ومراجعة الموافقة، وحذف حسابك وملفات السيرة الذاتية المحفوظة نهائيًا. يشرح إشعار الخصوصية حدود الاحتفاظ المطبقة.",
+  "Read the Privacy Notice": "اقرأ إشعار الخصوصية",
+  "Early access": "وصول مبكر",
+  "Join the ApplyAI Early Beta": "انضم إلى النسخة التجريبية المبكرة من ApplyAI",
+  "Tell us only what we need to contact you about the beta. We do not ask for a CV, application materials, payment details, or account credentials here.":
+    "أخبرنا فقط بما نحتاجه للتواصل معك بشأن النسخة التجريبية. لا نطلب هنا سيرة ذاتية أو مستندات تقديم أو تفاصيل دفع أو بيانات اعتماد للحساب.",
+  "Early beta registration": "التسجيل في النسخة التجريبية المبكرة",
+  "Thank you. You are on the ApplyAI early-user list. We will contact you when the beta opens.":
+    "شكرًا لك. لقد أُضيفت إلى قائمة المستخدمين الأوائل في ApplyAI. سنتواصل معك عند فتح النسخة التجريبية.",
+  "We could not add you to the early-user list right now. Please try again later.":
+    "تعذّر إضافتك إلى قائمة المستخدمين الأوائل الآن. يُرجى المحاولة مرة أخرى لاحقًا.",
+  "First name or preferred name": "الاسم الأول أو الاسم المفضّل",
+  "Email address": "البريد الإلكتروني",
+  Country: "البلد",
+  "Current job-search": "حالة البحث الحالية عن عمل",
+  "Preferred language": "اللغة المفضلة",
+  "Current role or target role": "وظيفتك الحالية أو الوظيفة المستهدفة",
+  "How did you hear about ApplyAI?": "كيف سمعت عن ApplyAI؟",
+  "What is the main problem you want ApplyAI to solve?":
+    "ما المشكلة الرئيسية التي تريد من ApplyAI مساعدتك في حلها؟",
+  "e.g. Amira": "مثال: أميرة",
+  "you@example.com": "you@example.com",
+  "e.g. Morocco": "مثال: المغرب",
+  "e.g. Product designer": "مثال: مصمم منتجات",
+  "For example, finding roles that fit my experience.":
+    "مثال: العثور على وظائف تناسب خبرتي.",
+  "Select one": "اختر واحدًا",
+  "Select an option": "اختر خيارًا",
+  "Actively searching": "أبحث بنشاط",
+  "Open to opportunities": "منفتح على الفرص",
+  "Preparing to search": "أستعد للبحث",
+  Other: "أخرى",
+  Search: "بحث",
+  "Social media": "وسائل التواصل الاجتماعي",
+  "Friend or colleague": "صديق أو زميل",
+  Website: "الموقع الإلكتروني",
+  "I agree that ApplyAI may contact me about the Early Beta. I understand this does not guarantee an invitation or immediate access.":
+    "أوافق على أن يتواصل معي ApplyAI بشأن النسخة التجريبية المبكرة. وأفهم أن ذلك لا يضمن دعوة أو وصولًا فوريًا.",
+  "Joining the list…": "جارٍ الانضمام إلى القائمة…",
+  "Enter your first or preferred name.": "أدخل اسمك الأول أو المفضّل.",
+  "Name is too long.": "الاسم طويل جدًا.",
+  "Email address is too long.": "البريد الإلكتروني طويل جدًا.",
+  "Enter a valid email address.": "أدخل بريدًا إلكترونيًا صالحًا.",
+  "Enter your country.": "أدخل بلدك.",
+  "Country is too long.": "اسم البلد طويل جدًا.",
+  "Consent is required to join the early-user list.":
+    "الموافقة مطلوبة للانضمام إلى قائمة المستخدمين الأوائل.",
+  "Select your current job-search status.": "اختر حالة بحثك الحالية عن عمل.",
+  "Select your preferred language.": "اختر لغتك المفضلة.",
+  "Must be 120 characters or fewer.": "يجب ألا يتجاوز 120 حرفًا.",
+  "Must be 200 characters or fewer.": "يجب ألا يتجاوز 200 حرف.",
+  "Must be 500 characters or fewer.": "يجب ألا يتجاوز 500 حرف.",
+  "Invalid submission.": "إرسال غير صالح.",
 };
 
 export function translateLanding(locale: LandingLocale, text: string): string {

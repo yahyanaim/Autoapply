@@ -40,4 +40,17 @@ describe("landing FAQ", () => {
     triggers[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
     expect(document.activeElement).toBe(triggers[2]);
   });
+
+  it("renders the FAQ content and Early Beta call to action in Arabic", () => {
+    view = renderView(<FaqSection locale="ar" />);
+    const triggers = Array.from(view.container.querySelectorAll<HTMLButtonElement>("button"));
+
+    expect(view.container.textContent).toContain("الأسئلة الشائعة");
+    expect(triggers[0].textContent).toBe("ما هو ApplyAI؟");
+    click(triggers[0]);
+    expect(view.container.textContent).toContain("يساعد ApplyAI الباحثين عن عمل");
+    expect(view.required<HTMLAnchorElement>('a[href="#early-beta"]').textContent).toBe(
+      "انضم إلى النسخة التجريبية المبكرة من ApplyAI",
+    );
+  });
 });

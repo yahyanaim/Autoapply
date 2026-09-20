@@ -8,9 +8,12 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/Button";
+import { translateLanding, type LandingLocale } from "@/lib/landing-i18n";
 import { LANDING_FAQ_ITEMS } from "./faq-data";
 
-export function FaqSection() {
+export function FaqSection({ locale = "en" }: { locale?: LandingLocale }) {
+  const t = (text: string) => translateLanding(locale, text);
+
   return (
     <section
       id="faq"
@@ -20,16 +23,16 @@ export function FaqSection() {
       <div className="section-shell">
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
-            Clear answers, before you begin
+            {t("Clear answers, before you begin")}
           </p>
           <h2
             id="faq-heading"
             className="mt-4 text-4xl font-medium leading-[1.02] tracking-[-0.045em] sm:text-5xl"
           >
-            Frequently asked questions
+            {t("Frequently asked questions")}
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
-            Apply with confidence, with the limits and controls explained clearly.
+            {t("Apply with confidence, with the limits and controls explained clearly.")}
           </p>
         </div>
 
@@ -41,18 +44,18 @@ export function FaqSection() {
           {LANDING_FAQ_ITEMS.map((item) => (
             <AccordionItem key={item.id} value={item.id} className="last:border-b-0">
               <AccordionTrigger className="gap-6 text-start text-base font-semibold leading-6 text-gray-900 hover:text-primary-700 sm:text-lg">
-                {item.question}
+                {t(item.question)}
               </AccordionTrigger>
               <AccordionContent className="pe-8 text-start text-sm leading-6 text-gray-600 sm:text-base">
                 {item.paragraphs.map((paragraph) => (
                   <p key={paragraph} className="mt-0 first:mt-0">
-                    {paragraph}
+                    {t(paragraph)}
                   </p>
                 ))}
                 {item.items && (
                   <ul className="mt-4 space-y-2 border-s-2 border-primary-200 ps-4">
                     {item.items.map((feature) => (
-                      <li key={feature}>{feature}</li>
+                      <li key={feature}>{t(feature)}</li>
                     ))}
                   </ul>
                 )}
@@ -61,7 +64,7 @@ export function FaqSection() {
                     href="/privacy"
                     className="mt-4 inline-flex font-semibold text-primary-700 underline-offset-4 hover:underline"
                   >
-                    Read the Privacy Notice
+                    {t("Read the Privacy Notice")}
                   </Link>
                 )}
               </AccordionContent>
@@ -71,7 +74,7 @@ export function FaqSection() {
 
         <div className="mt-9 flex justify-center">
           <Button asChild size="lg" className="rounded-xl px-7">
-            <Link href="#early-beta">Join the ApplyAI Early Beta</Link>
+            <Link href="#early-beta">{t("Join the ApplyAI Early Beta")}</Link>
           </Button>
         </div>
       </div>

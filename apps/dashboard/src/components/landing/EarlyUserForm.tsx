@@ -7,6 +7,7 @@ import {
   EARLY_USER_PREFERRED_LANGUAGES,
   parseEarlyUserSubmission,
 } from "@/lib/early-users/submission";
+import { translateLanding, type LandingLocale } from "@/lib/landing-i18n";
 
 type FieldName =
   | "firstName"
@@ -65,7 +66,7 @@ const languageLabels: Record<(typeof EARLY_USER_PREFERRED_LANGUAGES)[number], st
   other: "Other",
 };
 
-export function EarlyUserForm() {
+export function EarlyUserForm({ locale = "en" }: { locale?: LandingLocale }) {
   const [values, setValues] = useState<FormValues>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
   const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">(
@@ -87,7 +88,11 @@ export function EarlyUserForm() {
       for (const issue of parsed.error.issues) {
         const field = issue.path[0];
         if (typeof field === "string" && !nextErrors[field as FieldName]) {
-          nextErrors[field as FieldName] = issue.message;
+          nextErrors[field as FieldName] = translateValidationMessage(
+            locale,
+            field as FieldName,
+            issue.message,
+          );
         }
       }
       setErrors(nextErrors);
@@ -121,21 +126,26 @@ export function EarlyUserForm() {
         role="status"
         className="rounded-2xl border border-success-200 bg-success-50 p-6 text-center text-sm leading-6 text-success-800 sm:p-8 sm:text-base"
       >
-        {SUCCESS_MESSAGE}
+        {translateLanding(locale, SUCCESS_MESSAGE)}
       </div>
     );
   }
 
   return (
-    <form noValidate onSubmit={submit} className="space-y-5" aria-label="Early beta registration">
+    <form
+      noValidate
+      onSubmit={submit}
+      className="space-y-5"
+      aria-label={translateLanding(locale, "Early beta registration")}
+    >
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="First name or preferred name" error={errors.firstName} required>
+        <Field label={translateLanding(locale, "First name or preferred name")} error={errors.firstName} required>
           <input
             id="early-user-first-name"
             name="firstName"
             autoComplete="given-name"
             maxLength={80}
-            placeholder="e.g. Amira"
+            placeholder={translateLanding(locale, "e.g. Amira")}
             value={values.firstName}
             onChange={(event) => updateValue("firstName", event.target.value)}
             aria-invalid={Boolean(errors.firstName)}
@@ -143,7 +153,7 @@ export function EarlyUserForm() {
             className={inputClass(errors.firstName)}
           />
         </Field>
-        <Field label="Email address" error={errors.email} required>
+        <Field label={translateLanding(locale, "Email address")} error={errors.email} required>
           <input
             id="early-user-email"
             name="email"
@@ -151,7 +161,7 @@ export function EarlyUserForm() {
             inputMode="email"
             autoComplete="email"
             maxLength={254}
-            placeholder="you@example.com"
+            placeholder={translateLanding(locale, "you@example.com")}
             value={values.email}
             onChange={(event) => updateValue("email", event.target.value)}
             aria-invalid={Boolean(errors.email)}
@@ -162,13 +172,13 @@ export function EarlyUserForm() {
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Country" error={errors.country} required>
+        <Field label={translateLanding(locale, "Country")} error={errors.country} required>
           <input
             id="early-user-country"
             name="country"
             autoComplete="country-name"
             maxLength={80}
-            placeholder="e.g. Morocco"
+            placeholder={translateLanding(locale, "e.g. Morocco")}
             value={values.country}
             onChange={(event) => updateValue("country", event.target.value)}
             aria-invalid={Boolean(errors.country)}
@@ -179,33 +189,35 @@ export function EarlyUserForm() {
         <SelectField
           id="early-user-job-search-status"
           name="jobSearchStatus"
-          label="Current job-search"
+          label={translateLanding(locale, "Current job-search")}
           value={values.jobSearchStatus}
           error={errors.jobSearchStatus}
           onChange={(value) => updateValue("jobSearchStatus", value)}
+          emptyLabel={translateLanding(locale, "Select one")}
           options={EARLY_USER_JOB_SEARCH_STATUSES.map((value) => ({
             value,
-            label: jobSearchLabels[value],
+            label: translateLanding(locale, jobSearchLabels[value]),
           }))}
         />
         <SelectField
           id="early-user-preferred-language"
           name="preferredLanguage"
-          label="Preferred language"
+          label={translateLanding(locale, "Preferred language")}
           value={values.preferredLanguage}
           error={errors.preferredLanguage}
           onChange={(value) => updateValue("preferredLanguage", value)}
+          emptyLabel={translateLanding(locale, "Select one")}
           options={EARLY_USER_PREFERRED_LANGUAGES.map((value) => ({
             value,
-            label: languageLabels[value],
+            label: translateLanding(locale, languageLabels[value]),
           }))}
         />
-        <Field label="Current role or target role" error={errors.targetRole}>
+        <Field label={translateLanding(locale, "Current role or target role")} error={errors.targetRole}>
           <input
             id="early-user-target-role"
             name="targetRole"
             maxLength={120}
-            placeholder="e.g. Product designer"
+            placeholder={translateLanding(locale, "e.g. Product designer")}
             value={values.targetRole}
             onChange={(event) => updateValue("targetRole", event.target.value)}
             aria-invalid={Boolean(errors.targetRole)}
@@ -216,28 +228,32 @@ export function EarlyUserForm() {
         <SelectField
           id="early-user-heard-about"
           name="heardAbout"
-          label="How did you hear about ApplyAI?"
+          label={translateLanding(locale, "How did you hear about ApplyAI?")}
           value={values.heardAbout}
           error={errors.heardAbout}
           onChange={(value) => updateValue("heardAbout", value)}
           optional
           className="sm:col-span-2"
+          emptyLabel={translateLanding(locale, "Select an option")}
           options={[
-            { value: "search", label: "Search" },
-            { value: "social", label: "Social media" },
-            { value: "friend", label: "Friend or colleague" },
-            { value: "other", label: "Other" },
+            { value: "search", label: translateLanding(locale, "Search") },
+            { value: "social", label: translateLanding(locale, "Social media") },
+            { value: "friend", label: translateLanding(locale, "Friend or colleague") },
+            { value: "other", label: translateLanding(locale, "Other") },
           ]}
         />
       </div>
 
-      <Field label="What is the main problem you want ApplyAI to solve?" error={errors.mainProblem}>
+      <Field
+        label={translateLanding(locale, "What is the main problem you want ApplyAI to solve?")}
+        error={errors.mainProblem}
+      >
         <textarea
           id="early-user-main-problem"
           name="mainProblem"
           rows={4}
           maxLength={500}
-          placeholder="For example, finding roles that fit my experience."
+          placeholder={translateLanding(locale, "For example, finding roles that fit my experience.")}
           value={values.mainProblem}
           onChange={(event) => updateValue("mainProblem", event.target.value)}
           aria-invalid={Boolean(errors.mainProblem)}
@@ -247,7 +263,7 @@ export function EarlyUserForm() {
       </Field>
 
       <div className="sr-only" aria-hidden="true">
-        <label htmlFor="early-user-website">Website</label>
+        <label htmlFor="early-user-website">{translateLanding(locale, "Website")}</label>
         <input
           id="early-user-website"
           name="website"
@@ -276,7 +292,10 @@ export function EarlyUserForm() {
             className="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
           <span>
-            I agree that ApplyAI may contact me about the Early Beta. I understand this does not guarantee an invitation or immediate access.
+            {translateLanding(
+              locale,
+              "I agree that ApplyAI may contact me about the Early Beta. I understand this does not guarantee an invitation or immediate access.",
+            )}
           </span>
         </label>
         {errors.consent && <FieldError id="early-user-consent-error" message={errors.consent} />}
@@ -284,12 +303,14 @@ export function EarlyUserForm() {
 
       {status === "error" && (
         <p role="alert" className="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700">
-          {GENERIC_ERROR_MESSAGE}
+          {translateLanding(locale, GENERIC_ERROR_MESSAGE)}
         </p>
       )}
 
       <Button type="submit" size="lg" className="w-full rounded-xl sm:w-auto" disabled={status === "submitting"}>
-        {status === "submitting" ? "Joining the list…" : "Join the ApplyAI Early Beta"}
+        {status === "submitting"
+          ? translateLanding(locale, "Joining the list…")
+          : translateLanding(locale, "Join the ApplyAI Early Beta")}
       </Button>
     </form>
   );
@@ -331,6 +352,7 @@ function SelectField({
   options,
   optional = false,
   className,
+  emptyLabel,
 }: {
   id: string;
   name: string;
@@ -341,6 +363,7 @@ function SelectField({
   options: readonly { value: string; label: string }[];
   optional?: boolean;
   className?: string;
+  emptyLabel?: string;
 }) {
   return (
     <Field label={label} error={error} required={!optional} className={className}>
@@ -353,7 +376,7 @@ function SelectField({
         aria-describedby={error ? `${id}-error` : undefined}
         className={inputClass(error)}
       >
-        <option value="">{optional ? "Select an option" : "Select one"}</option>
+        <option value="">{emptyLabel ?? (optional ? "Select an option" : "Select one")}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -362,6 +385,19 @@ function SelectField({
       </select>
     </Field>
   );
+}
+
+function translateValidationMessage(
+  locale: LandingLocale,
+  field: FieldName,
+  fallback: string,
+): string {
+  const messages: Partial<Record<FieldName, string>> = {
+    jobSearchStatus: "Select your current job-search status.",
+    preferredLanguage: "Select your preferred language.",
+  };
+
+  return translateLanding(locale, messages[field] ?? fallback);
 }
 
 function FieldError({ id, message }: { id: string; message: string }) {
