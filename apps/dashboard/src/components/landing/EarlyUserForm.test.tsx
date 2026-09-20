@@ -59,6 +59,23 @@ describe("early beta registration form", () => {
     );
   });
 
+  it("renders the Early Beta form and client validation in Arabic", async () => {
+    view = renderView(<EarlyUserForm locale="ar" />);
+    const form = view.required<HTMLFormElement>('form[aria-label="التسجيل في النسخة التجريبية المبكرة"]');
+
+    expect(view.container.textContent).toContain("الاسم الأول أو الاسم المفضّل");
+    expect(view.container.textContent).toContain("حالة البحث الحالية عن عمل");
+    expect(view.required<HTMLInputElement>("#early-user-country").placeholder).toBe("مثال: المغرب");
+    expect(view.required<HTMLButtonElement>('button[type="submit"]').textContent).toContain(
+      "انضم إلى النسخة التجريبية المبكرة من ApplyAI",
+    );
+
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await flushUpdates();
+    expect(view.container.textContent).toContain("أدخل اسمك الأول أو المفضّل.");
+    expect(view.container.textContent).toContain("الموافقة مطلوبة للانضمام إلى قائمة المستخدمين الأوائل.");
+  });
+
   it("normalizes email, disables the button while submitting, and shows the safe success state", async () => {
     let resolveResponse: ((response: Response) => void) | undefined;
     const fetchMock = vi.fn(

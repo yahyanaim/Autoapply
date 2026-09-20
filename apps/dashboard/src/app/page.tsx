@@ -1590,7 +1590,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <FaqSection />
+        <FaqSection locale={locale} />
 
         <section
           id="early-beta"
@@ -1601,16 +1601,18 @@ export default function HomePage() {
             <div className="mx-auto grid max-w-5xl gap-10 rounded-[28px] border border-black/[0.07] bg-white p-6 shadow-[0_22px_70px_rgba(35,28,21,0.08)] lg:grid-cols-[0.82fr_1.18fr] lg:p-10">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
-                  Early access
+                  {t("Early access")}
                 </p>
                 <h2
                   id="early-beta-heading"
                   className="mt-4 text-4xl font-medium leading-[1.02] tracking-[-0.045em] sm:text-5xl"
                 >
-                  Join the ApplyAI Early Beta
+                  {t("Join the ApplyAI Early Beta")}
                 </h2>
                 <p className="mt-5 max-w-md text-sm leading-6 text-gray-600 sm:text-base">
-                  Tell us only what we need to contact you about the beta. We do not ask for a CV, application materials, payment details, or account credentials here.
+                  {t(
+                    "Tell us only what we need to contact you about the beta. We do not ask for a CV, application materials, payment details, or account credentials here.",
+                  )}
                 </p>
                 <figure className="relative mt-8 aspect-[4/3] overflow-hidden rounded-2xl border border-black/[0.07] bg-[#ece7df] shadow-[0_16px_40px_rgba(35,28,21,0.08)]">
                   <Image
@@ -1622,7 +1624,7 @@ export default function HomePage() {
                   />
                 </figure>
               </div>
-              <EarlyUserForm />
+              <EarlyUserForm locale={locale} />
             </div>
           </div>
         </section>
