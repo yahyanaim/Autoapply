@@ -1612,6 +1612,15 @@ export default function HomePage() {
                 <p className="mt-5 max-w-md text-sm leading-6 text-gray-600 sm:text-base">
                   Tell us only what we need to contact you about the beta. We do not ask for a CV, application materials, payment details, or account credentials here.
                 </p>
+                <figure className="relative mt-8 aspect-[4/3] overflow-hidden rounded-2xl border border-black/[0.07] bg-[#ece7df] shadow-[0_16px_40px_rgba(35,28,21,0.08)]">
+                  <Image
+                    src="/images/applyai-team-casablanca.jpg"
+                    alt={t("A team collaborating around a laptop in a bright office")}
+                    fill
+                    sizes="(max-width: 1023px) calc(100vw - 4rem), 410px"
+                    className="object-cover"
+                  />
+                </figure>
               </div>
               <EarlyUserForm />
             </div>

@@ -51,6 +51,9 @@ const QUICK_PROMPTS = [
 
 export function FloatingCareerAssistant() {
   const [open, setOpen] = useState(false);
+  const [isEarlyBetaVisible, setIsEarlyBetaVisible] = useState(false);
+  const [hideLauncherForEarlyBeta, setHideLauncherForEarlyBeta] =
+    useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
   const [answering, setAnswering] = useState(false);
@@ -121,6 +124,38 @@ export function FloatingCareerAssistant() {
       }
     };
   }, [open]);
+
+  useEffect(() => {
+    const earlyBeta = document.getElementById('early-beta');
+    const mobile = window.matchMedia('(max-width: 639px)');
+    let observer: IntersectionObserver | undefined;
+
+    const updateObservation = () => {
+      observer?.disconnect();
+      setIsEarlyBetaVisible(false);
+      setHideLauncherForEarlyBeta(false);
+
+      if (!earlyBeta || !window.IntersectionObserver) return;
+
+      observer = new window.IntersectionObserver(
+        ([entry]) => {
+          const isVisible = entry?.isIntersecting ?? false;
+          setIsEarlyBetaVisible(isVisible);
+          setHideLauncherForEarlyBeta(isVisible && mobile.matches);
+        },
+        { threshold: 0.1 },
+      );
+      observer.observe(earlyBeta);
+    };
+
+    updateObservation();
+    mobile.addEventListener('change', updateObservation);
+
+    return () => {
+      observer?.disconnect();
+      mobile.removeEventListener('change', updateObservation);
+    };
+  }, []);
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -366,31 +401,35 @@ export function FloatingCareerAssistant() {
         </section>
       )}
 
-      <div
-        className="career-assistant-anchor"
-        style={{
-          transform: `translate3d(${flight.x}px, ${flight.y}px, 0) rotate(${flight.rotate}deg)`,
-        }}
-      >
-        {!open && !flight.active && (
-          <span className="career-assistant-callout">
-            Ask Nori about jobs in Morocco
-          </span>
-        )}
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="career-assistant-trigger"
-          aria-label={
-            open
-              ? 'Close Nori career assistant'
-              : 'Ask Nori about jobs in Morocco'
-          }
-          aria-expanded={open}
+      {(!hideLauncherForEarlyBeta || open) && (
+        <div
+          className={`career-assistant-anchor ${
+            isEarlyBetaVisible ? 'career-assistant-anchor--early-beta' : ''
+          }`}
+          style={{
+            transform: `translate3d(${flight.x}px, ${flight.y}px, 0) rotate(${flight.rotate}deg)`,
+          }}
         >
-          <NoriMascot thinking={answering} />
-        </button>
-      </div>
+          {!open && !flight.active && (
+            <span className="career-assistant-callout">
+              Ask Nori about jobs in Morocco
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="career-assistant-trigger"
+            aria-label={
+              open
+                ? 'Close Nori career assistant'
+                : 'Ask Nori about jobs in Morocco'
+            }
+            aria-expanded={open}
+          >
+            <NoriMascot thinking={answering} />
+          </button>
+        </div>
+      )}
     </>
   );
 }

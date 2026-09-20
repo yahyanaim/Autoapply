@@ -135,6 +135,7 @@ export function EarlyUserForm() {
             name="firstName"
             autoComplete="given-name"
             maxLength={80}
+            placeholder="e.g. Amira"
             value={values.firstName}
             onChange={(event) => updateValue("firstName", event.target.value)}
             aria-invalid={Boolean(errors.firstName)}
@@ -150,6 +151,7 @@ export function EarlyUserForm() {
             inputMode="email"
             autoComplete="email"
             maxLength={254}
+            placeholder="you@example.com"
             value={values.email}
             onChange={(event) => updateValue("email", event.target.value)}
             aria-invalid={Boolean(errors.email)}
@@ -159,13 +161,14 @@ export function EarlyUserForm() {
         </Field>
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Country" error={errors.country} required>
           <input
             id="early-user-country"
             name="country"
             autoComplete="country-name"
             maxLength={80}
+            placeholder="e.g. Morocco"
             value={values.country}
             onChange={(event) => updateValue("country", event.target.value)}
             aria-invalid={Boolean(errors.country)}
@@ -176,7 +179,7 @@ export function EarlyUserForm() {
         <SelectField
           id="early-user-job-search-status"
           name="jobSearchStatus"
-          label="Current job-search status"
+          label="Current job-search"
           value={values.jobSearchStatus}
           error={errors.jobSearchStatus}
           onChange={(value) => updateValue("jobSearchStatus", value)}
@@ -197,14 +200,12 @@ export function EarlyUserForm() {
             label: languageLabels[value],
           }))}
         />
-      </div>
-
-      <div className="grid gap-5 sm:grid-cols-2">
         <Field label="Current role or target role" error={errors.targetRole}>
           <input
             id="early-user-target-role"
             name="targetRole"
             maxLength={120}
+            placeholder="e.g. Product designer"
             value={values.targetRole}
             onChange={(event) => updateValue("targetRole", event.target.value)}
             aria-invalid={Boolean(errors.targetRole)}
@@ -220,6 +221,7 @@ export function EarlyUserForm() {
           error={errors.heardAbout}
           onChange={(value) => updateValue("heardAbout", value)}
           optional
+          className="sm:col-span-2"
           options={[
             { value: "search", label: "Search" },
             { value: "social", label: "Social media" },
@@ -235,6 +237,7 @@ export function EarlyUserForm() {
           name="mainProblem"
           rows={4}
           maxLength={500}
+          placeholder="For example, finding roles that fit my experience."
           value={values.mainProblem}
           onChange={(event) => updateValue("mainProblem", event.target.value)}
           aria-invalid={Boolean(errors.mainProblem)}
@@ -296,16 +299,18 @@ function Field({
   label,
   error,
   required = false,
+  className,
   children,
 }: {
   label: string;
   error?: string;
   required?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   const id = isValidElement<{ id?: string }>(children) ? children.props.id : undefined;
   return (
-    <div className="space-y-1.5">
+    <div className={`space-y-1.5 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-sm font-medium text-gray-700">
         {label}
         {required && <span aria-hidden="true"> *</span>}
@@ -325,6 +330,7 @@ function SelectField({
   onChange,
   options,
   optional = false,
+  className,
 }: {
   id: string;
   name: string;
@@ -334,9 +340,10 @@ function SelectField({
   onChange: (value: string) => void;
   options: readonly { value: string; label: string }[];
   optional?: boolean;
+  className?: string;
 }) {
   return (
-    <Field label={label} error={error} required={!optional}>
+    <Field label={label} error={error} required={!optional} className={className}>
       <select
         id={id}
         name={name}
@@ -366,7 +373,7 @@ function FieldError({ id, message }: { id: string; message: string }) {
 }
 
 function inputClass(error?: string): string {
-  return `flex h-11 w-full rounded-lg border bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50 ${
+  return `flex h-11 min-w-0 w-full rounded-lg border bg-white px-3 text-sm shadow-sm outline-none transition placeholder:text-gray-400 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-50 ${
     error
       ? "border-danger-500 focus-visible:border-danger-500 focus-visible:ring-danger-500/15"
       : "border-input"
