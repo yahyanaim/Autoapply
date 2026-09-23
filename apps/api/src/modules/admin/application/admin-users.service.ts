@@ -67,7 +67,7 @@ export class AdminUsersService {
     });
     const hasNextPage = rows.length > limit;
     const page = rows.slice(0, limit);
-    const last = page.at(-1);
+    const last = page.length > 0 ? page[page.length - 1] : undefined;
     return {
       users: page.map((user) => this.toSafeUser(user)),
       limit,
@@ -119,7 +119,7 @@ export class AdminUsersService {
 
     const hasNextPage = result.sessions.length > limit;
     const page = result.sessions.slice(0, limit);
-    const last = page.at(-1);
+    const last = page.length > 0 ? page[page.length - 1] : undefined;
     return {
       sessions: page.map((session) => ({
         id: session.id,
