@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { apiClient, SessionUser } from '@/lib/api/api-client';
+import { adminApiClient } from '@/lib/api/admin-api-client';
 
 interface AuthState {
   user: SessionUser | null;
@@ -29,10 +30,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isInitializing: true });
     try {
       const session = await apiClient.refresh();
+      adminApiClient.setToken(session.accessToken);
       const user = await apiClient.get<SessionUser>('/auth/profile');
       set({ user: { ...session.user, ...user }, isAuthenticated: true });
     } catch {
       apiClient.setToken(null);
+      adminApiClient.setToken(null);
       set({ user: null, isAuthenticated: false });
     } finally {
       set({ isInitialized: true, isInitializing: false });
@@ -41,6 +44,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async (email, password, mfaCode) => {
     const result = await apiClient.login(email, password, mfaCode);
+    adminApiClient.setToken(result.accessToken);
     set({ user: result.user, isAuthenticated: true, isInitialized: true });
   },
 
@@ -51,6 +55,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       password,
       acceptDataProcessing,
     );
+    adminApiClient.setToken(result.accessToken);
     set({
       user: { ...result.user, profile: { fullName: name } },
       isAuthenticated: true,
@@ -62,6 +67,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await apiClient.logout();
     } finally {
+      adminApiClient.setToken(null);
       set({ user: null, isAuthenticated: false, isInitialized: true });
     }
   },
@@ -70,5 +76,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 }));
 
 apiClient.onSessionExpired(() => {
+  adminApiClient.setToken(null);
   useAuthStore.setState({ user: null, isAuthenticated: false, isInitialized: true });
 });

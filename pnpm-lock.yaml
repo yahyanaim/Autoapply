@@ -357,6 +357,9 @@ importers:
 
   packages/api-client:
     dependencies:
+      '@applyai/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
       axios:
         specifier: ^1.7.0
         version: 1.18.1

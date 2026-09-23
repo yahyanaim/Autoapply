@@ -54,7 +54,7 @@
 
   [lang="ar"] {
     font-family:
-      var(--font-ibm-plex-arabic), "IBM Plex Sans Arabic", Arial, sans-serif;
+      "IBM Plex Sans Arabic", Tahoma, Arial, sans-serif;
   }
 
   ::selection {

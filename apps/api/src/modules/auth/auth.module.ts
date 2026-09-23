@@ -10,6 +10,7 @@ import { GitHubStrategy } from './infrastructure/github.strategy';
 import { AuthController } from './interface/auth.controller';
 import { RolesGuard } from './interface/guards/roles.guard';
 import { MfaService } from './infrastructure/mfa.service';
+import { AuthMfaVerificationService } from './application/auth-mfa-verification.service';
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import {
   GitHubOAuthGuard,
@@ -44,6 +45,7 @@ import { BetaModule } from '../beta/beta.module';
     AuthService,
     PasswordService,
     MfaService,
+    AuthMfaVerificationService,
     JwtStrategy,
     GoogleOAuthGuard,
     GitHubOAuthGuard,
@@ -70,6 +72,6 @@ import { BetaModule } from '../beta/beta.module';
     RolesGuard,
   ],
   controllers: [AuthController],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, AuthMfaVerificationService, JwtModule],
 })
 export class AuthModule {}

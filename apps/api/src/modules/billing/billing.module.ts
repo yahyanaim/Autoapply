@@ -5,11 +5,22 @@ import { BillingController } from './interface/billing.controller';
 import { StripeAdapter } from './infrastructure/stripe/stripe.adapter';
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import { PlanEntitlementGuard } from './interface/guards/plan-entitlement.guard';
+import { BillingUsageReadService } from './application/billing-usage-read.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
-  providers: [BillingService, StripeAdapter, PlanEntitlementGuard],
+  providers: [
+    BillingService,
+    BillingUsageReadService,
+    StripeAdapter,
+    PlanEntitlementGuard,
+  ],
   controllers: [BillingController],
-  exports: [BillingService, StripeAdapter, PlanEntitlementGuard],
+  exports: [
+    BillingService,
+    BillingUsageReadService,
+    StripeAdapter,
+    PlanEntitlementGuard,
+  ],
 })
 export class BillingModule {}

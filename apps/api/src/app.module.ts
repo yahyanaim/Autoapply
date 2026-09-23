@@ -97,6 +97,7 @@ function sentryModuleImports(): DynamicModule[] {
         SENTRY_ENVIRONMENT: Joi.string().max(64).allow('').default(''),
         SENTRY_RELEASE: Joi.string().max(64).allow('').default(''),
         BETA_MODE: Joi.boolean().default(false),
+        ADMIN_CONSOLE_ENABLED: Joi.boolean().default(false),
         BETA_MAX_REGISTRATIONS: Joi.number()
           .integer()
           .min(1)

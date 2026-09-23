@@ -1,6 +1,28 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { ApiError } from './errors';
 import type {
+  AdminConsoleReactivateUserRequest,
+  AdminConsoleStepUpRequest,
+  AdminConsoleStepUpResponse,
+  AdminConsoleSuspendUserRequest,
+  AdminConsoleUserMutationResponse,
+  AdminConsoleRevokeUserSessionRequest,
+  AdminConsoleRevokeUserSessionResponse,
+  AdminConsoleRevokeUserSessionsRequest,
+  AdminConsoleRevokeUserSessionsResponse,
+  AdminConsoleUserDetail,
+  AdminConsoleUsersRequest,
+  AdminConsoleUsersResponse,
+  AdminConsoleUserSessionsRequest,
+  AdminConsoleUserSessionsResponse,
+  AdminConsoleSessionsRequest,
+  AdminConsoleSessionsResponse,
+  AdminConsoleUserUsageLimitsResponse,
+  AdminConsoleActivityLogsRequest,
+  AdminConsoleActivityLogsResponse,
+  AdminConsoleOverviewResponse,
+} from '@applyai/shared-types';
+import type {
   AuthLoginRequest,
   AuthLoginResponse,
   AuthRegisterRequest,
@@ -347,6 +369,132 @@ export class ApiClient {
 
     metrics: async (): Promise<AdminMetricsResponse> => {
       const res = await this.http.get<AdminMetricsResponse>('/admin/metrics');
+      return res.data;
+    },
+  };
+
+  adminConsole = {
+    overview: async (): Promise<AdminConsoleOverviewResponse> => {
+      const res = await this.http.get<AdminConsoleOverviewResponse>(
+        '/admin/console/overview',
+      );
+      return res.data;
+    },
+
+    activityLogs: async (
+      params: AdminConsoleActivityLogsRequest = {},
+    ): Promise<AdminConsoleActivityLogsResponse> => {
+      const res = await this.http.get<AdminConsoleActivityLogsResponse>(
+        '/admin/console/activity-logs',
+        { params },
+      );
+      return res.data;
+    },
+
+    sessions: async (
+      params: AdminConsoleSessionsRequest = {},
+    ): Promise<AdminConsoleSessionsResponse> => {
+      const res = await this.http.get<AdminConsoleSessionsResponse>(
+        '/admin/console/sessions',
+        { params },
+      );
+      return res.data;
+    },
+
+    users: async (
+      params: AdminConsoleUsersRequest = {},
+    ): Promise<AdminConsoleUsersResponse> => {
+      const res = await this.http.get<AdminConsoleUsersResponse>(
+        '/admin/console/users',
+        { params },
+      );
+      return res.data;
+    },
+
+    user: async (userId: string): Promise<AdminConsoleUserDetail> => {
+      const res = await this.http.get<AdminConsoleUserDetail>(
+        `/admin/console/users/${encodeURIComponent(userId)}`,
+      );
+      return res.data;
+    },
+
+    userSessions: async (
+      userId: string,
+      params: AdminConsoleUserSessionsRequest = {},
+    ): Promise<AdminConsoleUserSessionsResponse> => {
+      const res = await this.http.get<AdminConsoleUserSessionsResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/sessions`,
+        { params },
+      );
+      return res.data;
+    },
+
+    userUsageLimits: async (
+      userId: string,
+    ): Promise<AdminConsoleUserUsageLimitsResponse> => {
+      const res = await this.http.get<AdminConsoleUserUsageLimitsResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/usage-limits`,
+      );
+      return res.data;
+    },
+
+    issueStepUp: async (
+      data: AdminConsoleStepUpRequest,
+    ): Promise<AdminConsoleStepUpResponse> => {
+      const res = await this.http.post<AdminConsoleStepUpResponse>(
+        '/admin/console/step-up',
+        data,
+      );
+      return res.data;
+    },
+
+    suspendUser: async (
+      userId: string,
+      data: AdminConsoleSuspendUserRequest,
+    ): Promise<AdminConsoleUserMutationResponse> => {
+      const { stepUpProof, ...payload } = data;
+      const res = await this.http.post<AdminConsoleUserMutationResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/suspend`,
+        payload,
+        { headers: { 'X-Admin-Step-Up-Proof': stepUpProof } },
+      );
+      return res.data;
+    },
+
+    reactivateUser: async (
+      userId: string,
+      data: AdminConsoleReactivateUserRequest,
+    ): Promise<AdminConsoleUserMutationResponse> => {
+      const res = await this.http.post<AdminConsoleUserMutationResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/reactivate`,
+        undefined,
+        { headers: { 'X-Admin-Step-Up-Proof': data.stepUpProof } },
+      );
+      return res.data;
+    },
+
+    revokeUserSession: async (
+      userId: string,
+      sessionId: string,
+      data: AdminConsoleRevokeUserSessionRequest,
+    ): Promise<AdminConsoleRevokeUserSessionResponse> => {
+      const res = await this.http.post<AdminConsoleRevokeUserSessionResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}/revoke`,
+        undefined,
+        { headers: { 'X-Admin-Step-Up-Proof': data.stepUpProof } },
+      );
+      return res.data;
+    },
+
+    revokeUserSessions: async (
+      userId: string,
+      data: AdminConsoleRevokeUserSessionsRequest,
+    ): Promise<AdminConsoleRevokeUserSessionsResponse> => {
+      const res = await this.http.post<AdminConsoleRevokeUserSessionsResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/sessions/revoke-all`,
+        undefined,
+        { headers: { 'X-Admin-Step-Up-Proof': data.stepUpProof } },
+      );
       return res.data;
     },
   };

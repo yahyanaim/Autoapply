@@ -28,6 +28,7 @@ describe('JwtStrategy session enforcement', () => {
         id: 'user_1',
         email: 'person@example.com',
         role: 'user',
+        status: 'active',
       },
     });
 
@@ -71,6 +72,35 @@ describe('JwtStrategy session enforcement', () => {
     expect(prisma.session.findUnique).not.toHaveBeenCalled();
   });
 
+  it('re-checks user status and revokes a suspended user session', async () => {
+    prisma.session.updateMany.mockResolvedValue({ count: 1 });
+    prisma.session.findUnique.mockResolvedValue({
+      id: 'session_1',
+      userId: 'user_1',
+      clientType: 'web',
+      user: {
+        id: 'user_1',
+        email: 'person@example.com',
+        role: 'user',
+        status: 'suspended',
+        subscription: null,
+      },
+    });
+    prisma.session.deleteMany.mockResolvedValue({ count: 1 });
+
+    await expect(
+      strategy.validate({
+        sub: 'user_1',
+        sid: 'session_1',
+        iat: 1,
+        exp: 2,
+      }),
+    ).rejects.toThrow('Session is no longer active');
+    expect(prisma.session.deleteMany).toHaveBeenCalledWith({
+      where: { id: 'session_1' },
+    });
+  });
+
   it('revokes an extension session after a downgrade to Free', async () => {
     prisma.session.updateMany.mockResolvedValue({ count: 1 });
     prisma.session.findUnique.mockResolvedValue({
@@ -81,6 +111,7 @@ describe('JwtStrategy session enforcement', () => {
         id: 'user_1',
         email: 'person@example.com',
         role: 'user',
+        status: 'active',
         subscription: { plan: 'free', status: 'active' },
       },
     });
