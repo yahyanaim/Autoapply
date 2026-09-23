@@ -75,6 +75,10 @@ export function AdminActivityLogsPage() {
 
   const data = logs.data;
   if (!data) return null;
+  const nextCursor =
+    typeof data.nextCursor === 'string' && data.nextCursor.trim().length > 0
+      ? data.nextCursor
+      : undefined;
 
   return (
     <section className="space-y-5">
@@ -137,12 +141,12 @@ export function AdminActivityLogsPage() {
           setCursor(previous);
         }}>Previous</Button>
         <p className="text-xs text-gray-500">Cursor pagination</p>
-        <Button type="button" variant="outline" size="sm" disabled={!data.nextCursor} onClick={() => {
-          if (data.nextCursor) {
+        {nextCursor ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => {
             setHistory((items) => [...items, cursor]);
-            setCursor(data.nextCursor);
-          }
-        }}>Next</Button>
+            setCursor(nextCursor);
+          }}>Next</Button>
+        ) : null}
       </div>
     </section>
   );

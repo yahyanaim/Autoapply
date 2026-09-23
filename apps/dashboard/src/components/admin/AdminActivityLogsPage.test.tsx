@@ -103,13 +103,22 @@ describe('AdminActivityLogsPage', () => {
       ? { events: [{ ...safeEvent, id: 'audit-2', action: 'admin.session.revoke' }], limit: 20, nextCursor: null }
       : { events: [safeEvent], limit: 20, nextCursor: 'next-cursor' });
     const rendered = view(<AdminActivityLogsPage />);
-    await settle();
+    await vi.waitFor(() => expect(buttonWithText(rendered.container, 'Next')).toBeTruthy());
     click(buttonWithText(rendered.container, 'Next'));
-    await settle();
-    await settle();
+    await vi.waitFor(() => {
+      expect(activityLogs).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'next-cursor', limit: 20 }));
+      expect(rendered.container.textContent).toContain('admin · session · revoke');
+    });
+    expect(Array.from(rendered.container.querySelectorAll('button')).some((button) => button.textContent === 'Next')).toBe(false);
+    expect(rendered.container.textContent).not.toContain('next-cursor');
 
-    expect(activityLogs).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: 'next-cursor', limit: 20 }));
-    expect(rendered.container.textContent).toContain('admin · session · revoke');
+    const previous = buttonWithText(rendered.container, 'Previous') as HTMLButtonElement;
+    expect(previous.disabled).toBe(false);
+    click(previous);
+    await vi.waitFor(() => {
+      expect(activityLogs).toHaveBeenLastCalledWith({ limit: 20 });
+      expect(rendered.container.textContent).toContain('admin · user · suspend');
+    });
     expect(rendered.container.textContent).not.toContain('next-cursor');
     rendered.cleanup();
   });
