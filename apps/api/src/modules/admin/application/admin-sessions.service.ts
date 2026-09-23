@@ -70,7 +70,7 @@ export class AdminSessionsService {
     });
     const hasNextPage = rows.length > limit;
     const page = rows.slice(0, limit);
-    const last = page.at(-1);
+    const last = page.length > 0 ? page[page.length - 1] : undefined;
     return {
       sessions: page.map((session) => ({
         userId: session.userId,
