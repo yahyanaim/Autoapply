@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@applyai/api-client": ["../../packages/api-client/src/index.ts"],
+      "@applyai/shared-types": ["../../packages/shared-types/src/index.ts"]
     },
     "baseUrl": "."
   },

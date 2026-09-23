@@ -12,6 +12,7 @@ import {
   SessionClientType,
   SubscriptionPlan,
   SubscriptionStatus,
+  UserStatus,
 } from '@prisma/client';
 
 @Injectable()
@@ -59,6 +60,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     });
 
     if (!session || session.userId !== payload.sub) {
+      throw new UnauthorizedException('Session is no longer active');
+    }
+    if (session.user.status !== UserStatus.active) {
+      await this.prisma.session.deleteMany({ where: { id: session.id } });
       throw new UnauthorizedException('Session is no longer active');
     }
     if (

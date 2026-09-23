@@ -1,6 +1,18 @@
 export { ApiClient } from './client';
 export { ApiError } from './errors';
 export type {
+  AdminConsoleReactivateUserRequest,
+  AdminConsoleStepUpRequest,
+  AdminConsoleStepUpResponse,
+  AdminConsoleSuspendUserRequest,
+  AdminConsoleUserAction,
+  AdminConsoleUserMutationResponse,
+  AdminConsoleOverviewResponse,
+  AdminConsoleUserSummary,
+  AdminConsoleUsersRequest,
+  AdminConsoleUsersResponse,
+} from '@applyai/shared-types';
+export type {
   AuthLoginRequest,
   AuthLoginResponse,
   AuthRegisterRequest,

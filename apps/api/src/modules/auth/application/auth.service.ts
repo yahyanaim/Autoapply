@@ -22,6 +22,7 @@ import {
   SubscriptionPlan,
   SubscriptionStatus,
   UserRole,
+  UserStatus,
 } from '@prisma/client';
 import { MfaService } from '../infrastructure/mfa.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
@@ -33,6 +34,78 @@ export interface SessionMetadata {
   userAgent?: string;
   ipAddress?: string;
 }
+
+export interface AuthAdminUserTransaction {
+  user: Pick<
+    Prisma.TransactionClient['user'],
+    'findUnique' | 'count' | 'updateMany'
+  >;
+  session: Pick<Prisma.TransactionClient['session'], 'deleteMany'>;
+}
+
+export interface AuthAdminUserMutation<T> {
+  value: T;
+  before: Readonly<Record<string, unknown>>;
+  after: Readonly<Record<string, unknown>>;
+}
+
+export interface AuthAdminSessionTransaction {
+  user: Pick<Prisma.TransactionClient['user'], 'findUnique'>;
+  session: Pick<
+    Prisma.TransactionClient['session'],
+    'findUnique' | 'deleteMany'
+  >;
+}
+
+export interface AuthAdminSessionMutation {
+  value: { userId: string; sessionId: string; status: 'revoked' };
+  before: Readonly<Record<string, unknown>>;
+  after: Readonly<Record<string, unknown>>;
+}
+
+export interface AuthAdminSessionBulkMutation {
+  value: { userId: string; revokedSessionCount: number };
+  before: Readonly<Record<string, unknown>>;
+  after: Readonly<Record<string, unknown>>;
+}
+
+export interface AuthAdminUsersQuery {
+  limit: number;
+  cursor?: { createdAt: Date; id: string };
+  search?: string;
+  role?: UserRole;
+  status?: UserStatus;
+  plan?: SubscriptionPlan;
+}
+
+export interface AuthAdminUserSessionsQuery {
+  userId: string;
+  limit: number;
+  cursor?: { createdAt: Date; id: string };
+}
+
+export interface AuthAdminSessionsQuery {
+  limit: number;
+  cursor?: { createdAt: Date; id: string };
+  clientType?: SessionClientType;
+  status?: 'active' | 'expired';
+  createdFrom?: Date;
+  createdTo?: Date;
+  lastUsedFrom?: Date;
+  lastUsedTo?: Date;
+}
+
+const ADMIN_USER_SELECT = {
+  id: true,
+  email: true,
+  role: true,
+  status: true,
+  isEmailVerified: true,
+  suspendedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  subscription: { select: { plan: true } },
+} satisfies Prisma.UserSelect;
 
 class RefreshTokenReuseDetectedError extends Error {
   constructor() {
@@ -163,6 +236,10 @@ export class AuthService {
         'unknown_account',
         sessionMetadata,
       );
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (user.status === UserStatus.suspended) {
+      await this.passwordService.verifyDummy(password);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -392,6 +469,10 @@ export class AuthService {
     });
     let user = linkedAccount?.user;
 
+    if (user?.status === UserStatus.suspended) {
+      throw new UnauthorizedException('Unable to sign in');
+    }
+
     if (!user) {
       const sameEmailUser = await this.prisma.user.findUnique({
         where: { email: profile.email },
@@ -611,6 +692,71 @@ export class AuthService {
     }
   }
 
+  /**
+   * Administrative single-session revocation. The owning-user check and the
+   * delete share the caller's transaction, so Admin never reads Session or
+   * refresh-token data directly. RefreshTokenHistory deliberately has no
+   * Session foreign key and remains available as replay-detection evidence.
+   */
+  async revokeAdminSessionInTransaction(
+    transaction: AuthAdminSessionTransaction,
+    userId: string,
+    sessionId: string,
+  ): Promise<AuthAdminSessionMutation> {
+    const session = await transaction.session.findUnique({
+      where: { id: sessionId },
+      select: { id: true, userId: true },
+    });
+    if (!session || session.userId !== userId) {
+      throw new NotFoundException('Session not found');
+    }
+
+    const revoked = await transaction.session.deleteMany({
+      where: { id: sessionId, userId },
+    });
+    if (revoked.count !== 1) {
+      throw new NotFoundException('Session not found');
+    }
+
+    return {
+      value: { userId, sessionId, status: 'revoked' },
+      before: { enabled: true },
+      after: { enabled: false },
+    };
+  }
+
+  /**
+   * Administrative bulk revocation shares the caller's transaction with
+   * proof consumption and auditing. Auth owns both target validation and the
+   * session-table mutation; refresh-token replay history intentionally stays
+   * intact after a live Session is deleted.
+   */
+  async revokeAdminOtherSessionsInTransaction(
+    transaction: AuthAdminSessionTransaction,
+    userId: string,
+    excludedSessionId?: string,
+  ): Promise<AuthAdminSessionBulkMutation> {
+    const user = await transaction.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const revoked = await transaction.session.deleteMany({
+      where: {
+        userId,
+        ...(excludedSessionId ? { id: { not: excludedSessionId } } : {}),
+      },
+    });
+    return {
+      value: { userId, revokedSessionCount: revoked.count },
+      before: { enabled: true },
+      after: { enabled: false },
+    };
+  }
+
   async revokeOtherSessions(
     userId: string,
     currentSessionId: string,
@@ -619,6 +765,250 @@ export class AuthService {
       where: { userId, id: { not: currentSessionId } },
     });
     return revoked.count;
+  }
+
+  /** Sanitized, bounded query for the Admin Console; credentials and content are never selected. */
+  listAdminUsers(query: AuthAdminUsersQuery) {
+    return this.prisma.user.findMany({
+      where: {
+        ...(query.search
+          ? { email: { contains: query.search, mode: Prisma.QueryMode.insensitive } }
+          : {}),
+        ...(query.role ? { role: query.role } : {}),
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.plan ? { subscription: { is: { plan: query.plan } } } : {}),
+        ...(query.cursor
+          ? {
+              OR: [
+                { createdAt: { lt: query.cursor.createdAt } },
+                {
+                  createdAt: query.cursor.createdAt,
+                  id: { lt: query.cursor.id },
+                },
+              ],
+            }
+          : {}),
+      },
+      select: ADMIN_USER_SELECT,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+    });
+  }
+
+  getAdminUser(userId: string) {
+    return this.prisma.user.findUnique({
+      where: { id: userId },
+      select: ADMIN_USER_SELECT,
+    });
+  }
+
+  /** One Auth-owned aggregate count for the Admin Console overview. */
+  countSuspendedUsersForAdmin() {
+    return this.prisma.user.count({
+      where: { status: UserStatus.suspended },
+    });
+  }
+
+  /** One bounded Auth-owned query; token, MFA, IP, and user-agent fields are not selected. */
+  listAdminUserSessions(query: AuthAdminUserSessionsQuery) {
+    const now = this.clock.now();
+    return this.prisma.user.findUnique({
+      where: { id: query.userId },
+      select: {
+        id: true,
+        sessions: {
+          where: {
+            expiresAt: { gt: now },
+            absoluteExpiresAt: { gt: now },
+            lastUsedAt: {
+              gt: new Date(now.getTime() - this.getSessionIdleTimeoutMs()),
+            },
+            ...(query.cursor
+              ? {
+                  OR: [
+                    { createdAt: { lt: query.cursor.createdAt } },
+                    {
+                      createdAt: query.cursor.createdAt,
+                      id: { lt: query.cursor.id },
+                    },
+                  ],
+                }
+              : {}),
+          },
+          select: {
+            id: true,
+            clientType: true,
+            createdAt: true,
+            lastUsedAt: true,
+            expiresAt: true,
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: query.limit + 1,
+        },
+      },
+    });
+  }
+
+  /** One bounded global session query with a strict non-sensitive projection. */
+  listAdminSessions(query: AuthAdminSessionsQuery) {
+    const now = this.clock.now();
+    const idleCutoff = new Date(now.getTime() - this.getSessionIdleTimeoutMs());
+    const active: Prisma.SessionWhereInput = {
+      expiresAt: { gt: now },
+      absoluteExpiresAt: { gt: now },
+      lastUsedAt: { gt: idleCutoff },
+    };
+    const filters: Prisma.SessionWhereInput[] = [];
+    if (query.cursor) {
+      filters.push({
+        OR: [
+          { createdAt: { lt: query.cursor.createdAt } },
+          {
+            createdAt: query.cursor.createdAt,
+            id: { lt: query.cursor.id },
+          },
+        ],
+      });
+    }
+    if (query.status === 'active') filters.push(active);
+    if (query.status === 'expired') {
+      filters.push({
+        OR: [
+          { expiresAt: { lte: now } },
+          { absoluteExpiresAt: { lte: now } },
+          { lastUsedAt: { lte: idleCutoff } },
+        ],
+      });
+    }
+    if (query.createdFrom || query.createdTo) {
+      filters.push({
+        createdAt: {
+          ...(query.createdFrom ? { gte: query.createdFrom } : {}),
+          ...(query.createdTo ? { lte: query.createdTo } : {}),
+        },
+      });
+    }
+    if (query.lastUsedFrom || query.lastUsedTo) {
+      filters.push({
+        lastUsedAt: {
+          ...(query.lastUsedFrom ? { gte: query.lastUsedFrom } : {}),
+          ...(query.lastUsedTo ? { lte: query.lastUsedTo } : {}),
+        },
+      });
+    }
+
+    return this.prisma.session.findMany({
+      where: {
+        ...(query.clientType ? { clientType: query.clientType } : {}),
+        ...(filters.length ? { AND: filters } : {}),
+      },
+      select: {
+        userId: true,
+        id: true,
+        clientType: true,
+        createdAt: true,
+        lastUsedAt: true,
+        expiresAt: true,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+    });
+  }
+
+  /** Administrative suspension is distinct from failed-login lockout. */
+  async suspendUser(actorUserId: string, targetUserId: string, reason: string) {
+    return this.prisma.$transaction(async (transaction) => {
+      const mutation = await this.suspendUserInTransaction(
+        transaction,
+        actorUserId,
+        targetUserId,
+        reason,
+      );
+      await transaction.activityLog.create({ data: { userId: targetUserId, actorUserId, type: ActivityType.admin_user_suspend, action: 'admin.user.suspend', targetType: 'user', targetId: targetUserId, after: { status: 'suspended' } } });
+      return mutation.value;
+    });
+  }
+
+  async suspendUserInTransaction(
+    transaction: AuthAdminUserTransaction,
+    actorUserId: string,
+    targetUserId: string,
+    reason: string,
+  ): Promise<AuthAdminUserMutation<{
+    userId: string;
+    status: UserStatus;
+    suspendedAt: Date;
+  }>> {
+    if (actorUserId === targetUserId) {
+      throw new ForbiddenException('Administrators cannot suspend themselves');
+    }
+    const now = this.clock.now();
+      const target = await transaction.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, role: true, status: true },
+      });
+      if (!target) throw new NotFoundException('User not found');
+      if (target.status === UserStatus.suspended) {
+        throw new ConflictException('User is already suspended');
+      }
+      if (target.role === UserRole.platform_admin) {
+        const remaining = await transaction.user.count({
+          where: { role: UserRole.platform_admin, status: UserStatus.active, id: { not: targetUserId } },
+        });
+        if (remaining === 0) throw new ForbiddenException('The last platform administrator cannot be suspended');
+      }
+      const updated = await transaction.user.updateMany({
+        where: { id: targetUserId, status: UserStatus.active },
+        data: { status: UserStatus.suspended, suspendedAt: now, suspendedByUserId: actorUserId, suspensionReason: reason.slice(0, 500) },
+      });
+      if (updated.count !== 1) throw new ConflictException('User suspension conflicted');
+      // Active refresh-token hashes live on Session rows, so this atomically
+      // revokes both access sessions and active refresh tokens. Rotated-token
+      // history remains intact as replay-detection evidence.
+      await transaction.session.deleteMany({ where: { userId: targetUserId } });
+      return {
+        value: {
+          userId: targetUserId,
+          status: UserStatus.suspended,
+          suspendedAt: now,
+        },
+        before: { status: target.status },
+        after: { status: UserStatus.suspended, suspendedAt: now },
+      };
+  }
+
+  async reactivateUser(actorUserId: string, targetUserId: string) {
+    return this.prisma.$transaction(async (transaction) => {
+      const mutation = await this.reactivateUserInTransaction(
+        transaction,
+        actorUserId,
+        targetUserId,
+      );
+      await transaction.activityLog.create({ data: { userId: targetUserId, actorUserId, type: ActivityType.admin_user_reactivate, action: 'admin.user.reactivate', targetType: 'user', targetId: targetUserId, after: { status: 'active' } } });
+      return mutation.value;
+    });
+  }
+
+  async reactivateUserInTransaction(
+    transaction: AuthAdminUserTransaction,
+    actorUserId: string,
+    targetUserId: string,
+  ): Promise<
+    AuthAdminUserMutation<{ userId: string; status: UserStatus }>
+  > {
+    if (actorUserId === targetUserId) {
+      throw new ForbiddenException('Administrators cannot reactivate themselves');
+    }
+      const updated = await transaction.user.updateMany({
+        where: { id: targetUserId, status: UserStatus.suspended },
+        data: { status: UserStatus.active, suspendedAt: null, suspendedByUserId: null, suspensionReason: null },
+      });
+      if (updated.count === 0) throw new ConflictException('User is not suspended');
+      return {
+        value: { userId: targetUserId, status: UserStatus.active },
+        before: { status: UserStatus.suspended },
+        after: { status: UserStatus.active, suspendedAt: null },
+      };
   }
 
   async getProfile(userId: string) {

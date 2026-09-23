@@ -13,7 +13,7 @@ import {
 import { createHmac } from 'crypto';
 import { MfaService } from '../infrastructure/mfa.service';
 import { NotificationService } from '../../notification/application/notification.service';
-import { Prisma } from '@prisma/client';
+import { Prisma, SubscriptionPlan, UserRole, UserStatus } from '@prisma/client';
 import { BetaRegistrationGateService } from '../../beta/application/beta-registration-gate.service';
 
 describe('AuthService', () => {
@@ -29,6 +29,8 @@ describe('AuthService', () => {
     prismaMock = {
       user: {
         findUnique: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -132,6 +134,146 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
+  });
+
+  describe('Admin Console user reads', () => {
+    it('counts only explicitly suspended users in one Auth-owned aggregate query', async () => {
+      prismaMock.user.count.mockResolvedValue(7);
+
+      await expect(service.countSuspendedUsersForAdmin()).resolves.toBe(7);
+
+      expect(prismaMock.user.count).toHaveBeenCalledTimes(1);
+      expect(prismaMock.user.count).toHaveBeenCalledWith({
+        where: { status: UserStatus.suspended },
+      });
+      expect(prismaMock.user.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.session.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.usageLimit.create).not.toHaveBeenCalled();
+    });
+
+    it('uses one bounded projected query with deterministic cursor ordering', async () => {
+      prismaMock.user.findMany.mockResolvedValue([]);
+      const cursor = {
+        createdAt: new Date('2026-09-21T00:00:00.000Z'),
+        id: 'user-2',
+      };
+
+      await service.listAdminUsers({
+        limit: 20,
+        cursor,
+        search: 'user@example.com',
+        role: UserRole.user,
+        status: UserStatus.active,
+        plan: SubscriptionPlan.pro,
+      });
+
+      expect(prismaMock.user.findMany).toHaveBeenCalledTimes(1);
+      const query = prismaMock.user.findMany.mock.calls[0][0];
+      expect(query.take).toBe(21);
+      expect(query.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+      expect(query.where).toEqual(expect.objectContaining({
+        email: { contains: 'user@example.com', mode: 'insensitive' },
+        role: UserRole.user,
+        status: UserStatus.active,
+        subscription: { is: { plan: SubscriptionPlan.pro } },
+      }));
+      expect(query.select).toEqual(expect.objectContaining({
+        id: true,
+        email: true,
+        subscription: { select: { plan: true } },
+      }));
+      expect(query.select).not.toHaveProperty('passwordHash');
+      expect(query.select).not.toHaveProperty('mfaSecretEncrypted');
+      expect(query.select).not.toHaveProperty('sessions');
+      expect(query.select).not.toHaveProperty('resumes');
+      expect(prismaMock.subscription.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('reads one bounded sanitized session page without N+1 queries', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({ id: 'user-1', sessions: [] });
+      const cursor = {
+        createdAt: new Date('2026-09-21T00:00:00.000Z'),
+        id: 'session-2',
+      };
+
+      await service.listAdminUserSessions({
+        userId: 'user-1',
+        limit: 20,
+        cursor,
+      });
+
+      expect(prismaMock.user.findUnique).toHaveBeenCalledTimes(1);
+      const query = prismaMock.user.findUnique.mock.calls[0][0];
+      const sessions = query.select.sessions;
+      expect(sessions.take).toBe(21);
+      expect(sessions.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+      expect(sessions.select).toEqual({
+        id: true,
+        clientType: true,
+        createdAt: true,
+        lastUsedAt: true,
+        expiresAt: true,
+      });
+      expect(sessions.select).not.toHaveProperty('token');
+      expect(sessions.select).not.toHaveProperty('ipAddress');
+      expect(sessions.select).not.toHaveProperty('mfaVerifiedAt');
+      expect(sessions.select).not.toHaveProperty('userAgent');
+      expect(prismaMock.session.findMany).not.toHaveBeenCalled();
+    });
+
+    it('uses one projected global session query for active and expired filters', async () => {
+      prismaMock.session.findMany.mockResolvedValue([]);
+
+      await service.listAdminSessions({
+        limit: 20,
+        clientType: 'web' as never,
+        status: 'active',
+        createdFrom: new Date('2026-09-01T00:00:00.000Z'),
+        lastUsedTo: new Date('2026-09-30T00:00:00.000Z'),
+      });
+
+      expect(prismaMock.session.findMany).toHaveBeenCalledTimes(1);
+      const activeQuery = prismaMock.session.findMany.mock.calls[0][0];
+      expect(activeQuery.take).toBe(21);
+      expect(activeQuery.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+      expect(activeQuery.select).toEqual({
+        userId: true,
+        id: true,
+        clientType: true,
+        createdAt: true,
+        lastUsedAt: true,
+        expiresAt: true,
+      });
+      expect(activeQuery.select).not.toHaveProperty('token');
+      expect(activeQuery.select).not.toHaveProperty('ipAddress');
+      expect(activeQuery.select).not.toHaveProperty('mfaVerifiedAt');
+      expect(activeQuery.select).not.toHaveProperty('userAgent');
+      expect(activeQuery.where.AND).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            expiresAt: { gt: expect.any(Date) },
+            absoluteExpiresAt: { gt: expect.any(Date) },
+            lastUsedAt: { gt: expect.any(Date) },
+          }),
+        ]),
+      );
+
+      prismaMock.session.findMany.mockClear();
+      await service.listAdminSessions({ limit: 20, status: 'expired' });
+      expect(prismaMock.session.findMany).toHaveBeenCalledTimes(1);
+      const expiredQuery = prismaMock.session.findMany.mock.calls[0][0];
+      expect(expiredQuery.where.AND).toEqual(
+        expect.arrayContaining([
+          {
+            OR: [
+              { expiresAt: { lte: expect.any(Date) } },
+              { absoluteExpiresAt: { lte: expect.any(Date) } },
+              { lastUsedAt: { lte: expect.any(Date) } },
+            ],
+          },
+        ]),
+      );
+    });
   });
 
   describe('register', () => {
@@ -276,9 +418,48 @@ describe('AuthService', () => {
       expect(betaRegistrationGateMock.claimSlot).not.toHaveBeenCalled();
       expect(prismaMock.user.create).not.toHaveBeenCalled();
     });
+
+    it('does not create an OAuth session for a suspended user', async () => {
+      prismaMock.oAuthAccount.findUnique.mockResolvedValue({
+        user: {
+          id: 'suspended-user',
+          email: 'suspended@example.com',
+          role: UserRole.user,
+          status: UserStatus.suspended,
+        },
+      });
+
+      await expect(
+        service.validateOAuthUser({
+          email: 'suspended@example.com',
+          provider: 'google' as never,
+          providerId: 'google-suspended',
+        }),
+      ).rejects.toThrow('Unable to sign in');
+
+      expect(prismaMock.session.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('login', () => {
+    it('does not create a password session for a suspended user', async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        id: 'suspended-user',
+        email: 'suspended@example.com',
+        passwordHash: 'hashed-password',
+        status: UserStatus.suspended,
+        lockedUntil: null,
+      });
+
+      await expect(
+        service.login('suspended@example.com', 'SecurePass123!@'),
+      ).rejects.toThrow('Invalid credentials');
+
+      expect(passwordServiceMock.verifyDummy).toHaveBeenCalled();
+      expect(passwordServiceMock.verify).not.toHaveBeenCalled();
+      expect(prismaMock.session.create).not.toHaveBeenCalled();
+    });
+
     it('should login successfully with valid credentials', async () => {
       const email = 'test@example.com';
       const password = 'SecurePass123!@';
@@ -851,6 +1032,264 @@ describe('AuthService', () => {
       expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({
         where: { userId: 'user_123', id: { not: 'current-session' } },
       });
+    });
+
+    it('revokes one owned admin-targeted session in the supplied transaction while preserving replay history', async () => {
+      const transaction = {
+        user: { findUnique: jest.fn() },
+        session: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'session-id',
+            userId: 'user_123',
+          }),
+          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        refreshTokenHistory: { deleteMany: jest.fn(), create: jest.fn() },
+      };
+
+      await expect(
+        service.revokeAdminSessionInTransaction(
+          transaction,
+          'user_123',
+          'session-id',
+        ),
+      ).resolves.toEqual({
+        value: { userId: 'user_123', sessionId: 'session-id', status: 'revoked' },
+        before: { enabled: true },
+        after: { enabled: false },
+      });
+      expect(transaction.session.findUnique).toHaveBeenCalledWith({
+        where: { id: 'session-id' },
+        select: { id: true, userId: true },
+      });
+      expect(transaction.session.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'session-id', userId: 'user_123' },
+      });
+      expect(transaction.refreshTokenHistory.deleteMany).not.toHaveBeenCalled();
+      expect(transaction.refreshTokenHistory.create).not.toHaveBeenCalled();
+    });
+
+    it('keeps existing safe not-found semantics for missing, wrong-owner, or already-revoked sessions', async () => {
+      const transaction = {
+        user: { findUnique: jest.fn() },
+        session: {
+          findUnique: jest.fn()
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({ id: 'session-id', userId: 'other-user' })
+            .mockResolvedValueOnce({ id: 'session-id', userId: 'user_123' }),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+
+      await expect(
+        service.revokeAdminSessionInTransaction(transaction, 'user_123', 'session-id'),
+      ).rejects.toThrow('Session not found');
+      await expect(
+        service.revokeAdminSessionInTransaction(transaction, 'user_123', 'session-id'),
+      ).rejects.toThrow('Session not found');
+      await expect(
+        service.revokeAdminSessionInTransaction(transaction, 'user_123', 'session-id'),
+      ).rejects.toThrow('Session not found');
+      expect(transaction.session.deleteMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('revokes all target sessions in the supplied transaction while preserving an optional current session and replay history', async () => {
+      const transaction = {
+        user: { findUnique: jest.fn().mockResolvedValue({ id: 'user_123' }) },
+        session: {
+          findUnique: jest.fn(),
+          deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+        },
+        refreshTokenHistory: { deleteMany: jest.fn(), create: jest.fn() },
+      };
+
+      await expect(
+        service.revokeAdminOtherSessionsInTransaction(
+          transaction,
+          'user_123',
+          'current-session',
+        ),
+      ).resolves.toEqual({
+        value: { userId: 'user_123', revokedSessionCount: 2 },
+        before: { enabled: true },
+        after: { enabled: false },
+      });
+      expect(transaction.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'user_123' },
+        select: { id: true },
+      });
+      expect(transaction.session.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'user_123', id: { not: 'current-session' } },
+      });
+      expect(transaction.refreshTokenHistory.deleteMany).not.toHaveBeenCalled();
+      expect(transaction.refreshTokenHistory.create).not.toHaveBeenCalled();
+    });
+
+    it('keeps safe missing-user behavior and permits a deterministic zero bulk result', async () => {
+      const transaction = {
+        user: { findUnique: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'user_123' }) },
+        session: {
+          findUnique: jest.fn(),
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+      };
+      await expect(
+        service.revokeAdminOtherSessionsInTransaction(transaction, 'missing-user'),
+      ).rejects.toThrow('User not found');
+      await expect(
+        service.revokeAdminOtherSessionsInTransaction(transaction, 'user_123'),
+      ).resolves.toMatchObject({ value: { userId: 'user_123', revokedSessionCount: 0 } });
+      expect(transaction.session.deleteMany).toHaveBeenLastCalledWith({
+        where: { userId: 'user_123' },
+      });
+    });
+  });
+
+  describe('transaction-aware administrative user commands', () => {
+    it('uses the supplied transaction and revokes sessions with their active refresh tokens', async () => {
+      const transaction = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'target-user',
+            role: UserRole.user,
+            status: UserStatus.active,
+          }),
+          count: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        session: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+        },
+      };
+
+      const mutation = await service.suspendUserInTransaction(
+        transaction,
+        'admin-user',
+        'target-user',
+        'policy violation',
+      );
+
+      expect(transaction.user.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'target-user', status: UserStatus.active } }),
+      );
+      expect(transaction.user.updateMany.mock.calls[0][0].data).not.toHaveProperty(
+        'lockedUntil',
+      );
+      expect(transaction.session.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'target-user' },
+      });
+      expect(prismaMock.user.updateMany).not.toHaveBeenCalled();
+      expect(mutation).toEqual(expect.objectContaining({
+        value: expect.objectContaining({
+          userId: 'target-user',
+          status: UserStatus.suspended,
+        }),
+        before: { status: UserStatus.active },
+        after: expect.objectContaining({ status: UserStatus.suspended }),
+      }));
+    });
+
+    it('preserves self-action and last-platform-admin protections', async () => {
+      const transaction = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'target-admin',
+            role: UserRole.platform_admin,
+            status: UserStatus.active,
+          }),
+          count: jest.fn().mockResolvedValue(0),
+          updateMany: jest.fn(),
+        },
+        session: { deleteMany: jest.fn() },
+      };
+
+      await expect(
+        service.suspendUserInTransaction(
+          transaction,
+          'same-admin',
+          'same-admin',
+          'reason',
+        ),
+      ).rejects.toThrow('Administrators cannot suspend themselves');
+      await expect(
+        service.suspendUserInTransaction(
+          transaction,
+          'actor-admin',
+          'target-admin',
+          'reason',
+        ),
+      ).rejects.toThrow('last platform administrator');
+      expect(transaction.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('reactivates only a suspended user without recreating sessions or tokens', async () => {
+      const transaction = {
+        user: {
+          findUnique: jest.fn(),
+          count: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        },
+        session: {
+          deleteMany: jest.fn(),
+          create: jest.fn(),
+        },
+        refreshTokenHistory: {
+          create: jest.fn(),
+        },
+      };
+
+      const mutation = await service.reactivateUserInTransaction(
+        transaction,
+        'admin-user',
+        'target-user',
+      );
+
+      expect(transaction.user.updateMany).toHaveBeenCalledWith({
+        where: { id: 'target-user', status: UserStatus.suspended },
+        data: {
+          status: UserStatus.active,
+          suspendedAt: null,
+          suspendedByUserId: null,
+          suspensionReason: null,
+        },
+      });
+      expect(transaction.user.updateMany.mock.calls[0][0].data).not.toHaveProperty(
+        'lockedUntil',
+      );
+      expect(transaction.session.create).not.toHaveBeenCalled();
+      expect(transaction.session.deleteMany).not.toHaveBeenCalled();
+      expect(transaction.refreshTokenHistory.create).not.toHaveBeenCalled();
+      expect(mutation).toEqual({
+        value: { userId: 'target-user', status: UserStatus.active },
+        before: { status: UserStatus.suspended },
+        after: { status: UserStatus.active, suspendedAt: null },
+      });
+    });
+
+    it('rejects already-active and self-reactivation attempts', async () => {
+      const transaction = {
+        user: {
+          findUnique: jest.fn(),
+          count: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        session: { deleteMany: jest.fn() },
+      };
+
+      await expect(
+        service.reactivateUserInTransaction(
+          transaction,
+          'admin-user',
+          'active-user',
+        ),
+      ).rejects.toThrow('User is not suspended');
+      await expect(
+        service.reactivateUserInTransaction(
+          transaction,
+          'same-admin',
+          'same-admin',
+        ),
+      ).rejects.toThrow('Administrators cannot reactivate themselves');
     });
   });
 });

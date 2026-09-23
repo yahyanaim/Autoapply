@@ -205,6 +205,12 @@ importers:
 
   apps/dashboard:
     dependencies:
+      '@applyai/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+      '@applyai/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       '@hookform/resolvers':
         specifier: ^3.9.0
         version: 3.10.0(react-hook-form@7.82.0(react@19.2.8))
@@ -357,6 +363,9 @@ importers:
 
   packages/api-client:
     dependencies:
+      '@applyai/shared-types':
+        specifier: workspace:*
+        version: link:../shared-types
       axios:
         specifier: ^1.7.0
         version: 1.18.1

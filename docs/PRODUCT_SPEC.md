@@ -417,6 +417,25 @@ Use these directly for Match Score badges (success/warning/danger by score band)
 - AI Interview Coach (text mode)
 - Notification system (email + browser)
 
+### Admin Console beta scope decision
+
+The beta Admin Console includes sanitized users list/detail reads, per-user and
+global session reads, usage-limit reads, Activity Logs, step-up MFA,
+suspend/reactivate, single-session and per-user bulk-session revocation, the
+suspended-user overview count, and the Dashboard shell, Users, User Detail,
+Activity Log, and Overview pages.
+
+**Active Incidents are deferred.** The repository has no authoritative
+incident read source or status definition.
+
+**Quota Override is deferred.** The current plan-derived `UsageLimit` model
+does not define allowed quota categories; replace-limit versus additive-
+allowance semantics; current-period scope; unlimited-plan behavior;
+reconciliation for used, remaining, and reserved amounts; expiry behavior;
+self-target policy; or an owning Billing/Entitlement command. Admin must not
+write `UsageLimit` directly. Do not represent either deferred capability as
+implemented or partially implemented.
+
 **V2 (Phase 3, ~+8–12 weeks)**
 
 - AI Career Advisor

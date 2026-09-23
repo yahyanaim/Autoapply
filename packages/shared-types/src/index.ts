@@ -11,3 +11,4 @@ export * from './dto/resume';
 export * from './dto/job';
 export * from './dto/application';
 export * from './dto/ai';
+export * from './dto/admin';

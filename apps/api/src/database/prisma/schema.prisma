@@ -13,6 +13,11 @@ enum UserRole {
   platform_admin
 }
 
+enum UserStatus {
+  active
+  suspended
+}
+
 enum ApplicationStatus {
   draft
   submitted
@@ -122,6 +127,11 @@ enum ActivityType {
   subscription_change
   payment
   access_denied
+  admin_activity_log_read
+  admin_user_suspend
+  admin_user_reactivate
+  admin_session_revoke
+  admin_session_revoke_all
   queue_job
 }
 
@@ -130,6 +140,10 @@ model User {
   email                   String    @unique
   passwordHash            String?
   role                    UserRole  @default(user)
+  status                  UserStatus @default(active)
+  suspendedAt             DateTime?
+  suspendedByUserId       String?
+  suspensionReason        String?
   isEmailVerified         Boolean   @default(false)
   dataProcessingConsentAt DateTime?
   privacyPolicyVersion    String?
@@ -158,6 +172,7 @@ model User {
   idempotencyRecords    IdempotencyRecord[]
 
   @@index([email])
+  @@index([status, createdAt])
   @@map("users")
 }
 
@@ -531,6 +546,13 @@ model ActivityLog {
   metadata  Json?
   ipAddress String?
   userAgent String?
+  actorUserId String?
+  targetType String?
+  targetId String?
+  action String?
+  before Json?
+  after Json?
+  correlationId String?
   createdAt DateTime     @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -538,6 +560,8 @@ model ActivityLog {
   @@index([userId])
   @@index([type])
   @@index([createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([targetType, targetId, createdAt])
   @@map("activity_logs")
 }
 
@@ -595,4 +619,38 @@ model IdempotencyRecord {
   @@unique([userId, key])
   @@index([expiresAt])
   @@map("idempotency_records")
+}
+
+model AdminStepUpMfaProof {
+  id          String   @id @default(cuid())
+  proofHash   String   @unique
+  actorUserId String
+  sessionId   String
+  action      String
+  targetType  String
+  targetId    String
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([actorUserId, sessionId, action, targetType, targetId, expiresAt])
+  @@map("admin_step_up_mfa_proofs")
+}
+
+model AdminStepUpMfaAttempt {
+  id              String   @id @default(cuid())
+  actorUserId     String
+  sessionId       String
+  action          String
+  targetType      String
+  targetId        String
+  failedAttempts  Int      @default(0)
+  windowStartedAt DateTime
+  lockedUntil     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([actorUserId, sessionId, action, targetType, targetId])
+  @@index([lockedUntil])
+  @@map("admin_step_up_mfa_attempts")
 }

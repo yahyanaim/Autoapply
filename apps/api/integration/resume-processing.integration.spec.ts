@@ -118,23 +118,26 @@ describe('API integration: successful resume processing', () => {
       },
     );
 
-    const persisted = await waitFor(async () => {
+    const { persisted, completedActivity } = await waitFor(async () => {
       const current = await prisma.resume.findUnique({
         where: { id: resume.id },
       });
-      return current?.parseStatus === ResumeParseStatus.ready
-        ? current
-        : undefined;
-    });
-    const completedActivity = await prisma.activityLog.findFirst({
-      where: {
-        userId: user.id,
-        type: 'queue_job',
-        metadata: {
-          path: ['event'],
-          equals: 'resume_parse_completed',
+      if (current?.parseStatus !== ResumeParseStatus.ready) {
+        return undefined;
+      }
+      const activity = await prisma.activityLog.findFirst({
+        where: {
+          userId: user.id,
+          type: 'queue_job',
+          metadata: {
+            path: ['event'],
+            equals: 'resume_parse_completed',
+          },
         },
-      },
+      });
+      return activity
+        ? { persisted: current, completedActivity: activity }
+        : undefined;
     });
 
     expect(parser.parse).toHaveBeenCalledWith(

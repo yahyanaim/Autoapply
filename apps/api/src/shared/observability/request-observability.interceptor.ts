@@ -111,8 +111,12 @@ export class RequestObservabilityInterceptor implements NestInterceptor {
         data: {
           userId,
           type: ActivityType.access_denied,
-          ipAddress: request.ip,
-          userAgent: request.get('user-agent'),
+          // Denial telemetry retains only the safe request ID and status
+          // category below. The repository has no approved masked or hashed
+          // network identifier representation, so raw network metadata is
+          // deliberately omitted.
+          ipAddress: undefined,
+          userAgent: undefined,
           metadata: metadata as Prisma.InputJsonValue,
         },
       });

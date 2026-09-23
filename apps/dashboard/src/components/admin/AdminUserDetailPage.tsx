@@ -1,0 +1,26 @@
+'use client';
+
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { adminApiClient } from '@/lib/api/admin-api-client';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import type { AdminConsoleUsageCategory } from '@applyai/shared-types';
+
+export function AdminUserDetailPage({ userId }: { userId: string }) {
+  const user = useQuery({ queryKey: ['admin-console', 'user', userId], queryFn: () => adminApiClient.adminConsole.user(userId) });
+  const sessions = useQuery({ queryKey: ['admin-console', 'user-sessions', userId], queryFn: () => adminApiClient.adminConsole.userSessions(userId, { limit: 20 }), enabled: user.isSuccess });
+  const usage = useQuery({ queryKey: ['admin-console', 'usage', userId], queryFn: () => adminApiClient.adminConsole.userUsageLimits(userId), enabled: user.isSuccess });
+  if (user.isLoading) return <DetailSkeleton />;
+  if (user.isError) return <DetailState title="Could not load user" retry={() => void user.refetch()} />;
+  if (!user.data) return null;
+  const detail = user.data;
+  return <section className="space-y-6"><Link href="/admin/console/users" className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-950"><ArrowLeft className="h-4 w-4" />Back to users</Link><header className="border border-stone-200 bg-white p-5"><div className="flex flex-wrap justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-700">User detail</p><h1 className="mt-1 break-all text-xl font-semibold tracking-tight">{detail.email}</h1><p className="mt-1 font-mono text-xs text-gray-400">{detail.id}</p></div><div className="flex gap-2"><Badge variant={detail.status === 'active' ? 'success' : 'danger'}>{detail.status}</Badge><Badge variant="outline">{detail.plan ?? 'No plan'}</Badge></div></div><dl className="mt-5 grid gap-4 border-t border-stone-100 pt-4 text-sm sm:grid-cols-3"><Info label="Role" value={detail.role.replace('_', ' ')} /><Info label="Email verified" value={detail.isEmailVerified ? 'Yes' : 'No'} /><Info label="Joined" value={new Date(detail.createdAt).toLocaleDateString()} /></dl></header>
+    <section><h2 className="mb-3 text-base font-semibold">Sessions</h2>{sessions.isLoading ? <DetailSkeleton /> : sessions.isError ? <DetailState title="Could not load sessions" retry={() => void sessions.refetch()} /> : sessions.data?.sessions.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[620px] text-left text-sm"><thead className="border-b bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Client</th><th className="px-4 py-3">Created</th><th className="px-4 py-3">Last used</th><th className="px-4 py-3">Expires</th><th className="px-4 py-3">Current</th></tr></thead><tbody className="divide-y divide-stone-100">{sessions.data.sessions.map((session) => <tr key={session.id}><td className="px-4 py-3 capitalize">{session.clientType}</td><td className="px-4 py-3">{new Date(session.createdAt).toLocaleString()}</td><td className="px-4 py-3">{new Date(session.lastUsedAt).toLocaleString()}</td><td className="px-4 py-3">{new Date(session.expiresAt).toLocaleString()}</td><td className="px-4 py-3">{session.current ? <Badge variant="info">Current</Badge> : '—'}</td></tr>)}</tbody></table></div> : <DetailState title="No active sessions" />}</section>
+    <section><h2 className="mb-3 text-base font-semibold">Usage limits</h2>{usage.isLoading ? <DetailSkeleton /> : usage.isError ? <DetailState title="Could not load usage limits" retry={() => void usage.refetch()} /> : usage.data ? <div className="border border-stone-200 bg-white"><div className="flex flex-wrap justify-between gap-3 border-b border-stone-100 px-4 py-3 text-sm"><span className="capitalize text-gray-700">{usage.data.plan} plan</span><span className="text-gray-500">Resets {new Date(usage.data.resetAt).toLocaleDateString()}</span></div><dl className="grid divide-y divide-stone-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">{(Object.entries(usage.data.usage) as [string, AdminConsoleUsageCategory][]).map(([name, value]) => <div key={name} className="flex items-center justify-between gap-3 px-4 py-3 text-sm"><dt className="capitalize text-gray-700">{name.replace(/([A-Z])/g, ' $1')}</dt><dd className="font-medium tabular-nums">{value.unlimited ? 'Unlimited' : `${value.used} / ${value.limit} · ${value.remaining} remaining`}</dd></div>)}</dl></div> : null}</section>
+  </section>;
+}
+function Info({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt><dd className="mt-1 capitalize text-gray-800">{value}</dd></div>; }
+function DetailState({ title, retry }: { title: string; retry?: () => void }) { return <div className="border border-stone-200 bg-white p-5"><p className="text-sm font-medium">{title}</p>{retry ? <Button variant="outline" size="sm" className="mt-3" onClick={retry}>Retry</Button> : null}</div>; }
+function DetailSkeleton() { return <div aria-label="Loading user detail" className="h-40 animate-pulse border border-stone-200 bg-white" />; }

@@ -4,6 +4,21 @@ export enum UserRole {
   platform_admin = 'platform_admin',
 }
 
+export enum UserStatus {
+  active = 'active',
+  suspended = 'suspended',
+}
+
+export enum SessionClientType {
+  web = 'web',
+  extension = 'extension',
+}
+
+export enum AdminSessionStatus {
+  active = 'active',
+  expired = 'expired',
+}
+
 export enum ApplicationStatus {
   draft = 'draft',
   submitted = 'submitted',
