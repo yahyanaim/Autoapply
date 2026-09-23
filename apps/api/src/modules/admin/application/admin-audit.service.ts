@@ -178,7 +178,7 @@ export class AdminAuditService {
     });
     const hasNextPage = rows.length > limit;
     const page = rows.slice(0, limit);
-    const last = page.at(-1);
+    const last = page.length > 0 ? page[page.length - 1] : undefined;
 
     return {
       events: page.map((row) => this.toSafeEntry(row)),
