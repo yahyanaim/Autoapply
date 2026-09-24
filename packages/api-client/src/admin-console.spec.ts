@@ -48,6 +48,13 @@ const activityLogs: Promise<AdminConsoleActivityLogsResponse> =
     createdFrom: '2026-09-01T00:00:00.000Z',
   });
 const overview: Promise<AdminConsoleOverviewResponse> = client.adminConsole.overview();
+const jobs = client.adminConsole.jobs({ limit: 20, eligibility: 'eligible' });
+const job = client.adminConsole.job('ckz8dc7m40000qwertyuiop12');
+const resumeFailures = client.adminConsole.resumeFailures({ limit: 20 });
+const resumeFailure = client.adminConsole.resumeFailure('ckz8dc7m40000qwertyuiop12');
+const betaGate = client.adminConsole.betaGate();
+const notifications = client.adminConsole.notifications({ limit: 20 });
+const applications = client.adminConsole.applications({});
 const proof: Promise<AdminConsoleStepUpResponse> =
   client.adminConsole.issueStepUp({
     code: '123456',
@@ -82,6 +89,13 @@ void globalSessions;
 void usageLimits;
 void activityLogs;
 void overview;
+void jobs;
+void job;
+void resumeFailures;
+void resumeFailure;
+void betaGate;
+void notifications;
+void applications;
 void proof;
 void suspended;
 void reactivated;

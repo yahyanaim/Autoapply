@@ -4,6 +4,10 @@ import {
   SubscriptionPlan,
   UserRole,
   UserStatus,
+  ApplicationStatus,
+  NotificationChannel,
+  NotificationStatus,
+  RemoteType,
 } from '../enums';
 
 export type AdminConsoleUserAction =
@@ -200,4 +204,111 @@ export interface AdminConsoleUserMutationResponse {
   userId: string;
   status: UserStatus;
   suspendedAt?: string | null;
+}
+
+export type AdminConsoleJobEligibility = 'eligible' | 'stale';
+
+export interface AdminConsoleJobsRequest {
+  cursor?: string;
+  limit?: number;
+  search?: string;
+  source?: string;
+  eligibility?: AdminConsoleJobEligibility;
+}
+
+export interface AdminConsoleJobSummary {
+  id: string;
+  title: string;
+  company: string | null;
+  source: string | null;
+  location: string | null;
+  remoteType: RemoteType | null;
+  lastObservedAt: string;
+  eligible: boolean;
+  createdAt: string;
+}
+
+export interface AdminConsoleJobsResponse {
+  jobs: AdminConsoleJobSummary[];
+  limit: number;
+  nextCursor: string | null;
+}
+
+export interface AdminConsoleJobDetail extends AdminConsoleJobSummary {
+  salaryMin: number | null;
+  salaryMax: number | null;
+  skills: string[];
+  updatedAt: string;
+}
+
+export interface AdminConsoleResumeFailuresRequest {
+  cursor?: string;
+  limit?: number;
+}
+
+export interface AdminConsoleResumeFailure {
+  resumeId: string;
+  status: 'failed';
+  failureCategory: 'processing_failed';
+  mimeType: string | null;
+  executionCount: number;
+  lastAttempt: number | null;
+  lastAttemptAt: string | null;
+  createdAt: string;
+  failedAt: string;
+}
+
+export interface AdminConsoleResumeFailuresResponse {
+  failures: AdminConsoleResumeFailure[];
+  limit: number;
+  nextCursor: string | null;
+}
+
+export interface AdminConsoleBetaGateResponse {
+  enabled: boolean;
+  registrationCount: number;
+  capacity: number;
+  remainingSlots: number;
+  status: 'disabled' | 'open' | 'full';
+  updatedAt: string;
+}
+
+export interface AdminConsoleNotificationsRequest {
+  cursor?: string;
+  limit?: number;
+  createdFrom?: string;
+  createdTo?: string;
+}
+
+export interface AdminConsoleNotificationFailure {
+  id: string;
+  channel: NotificationChannel;
+  status: NotificationStatus.failed;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+export interface AdminConsoleNotificationsResponse {
+  period: { from: string; to: string };
+  rollup: {
+    total: number;
+    pending: number;
+    sent: number;
+    failed: number;
+    read: number;
+  };
+  failures: AdminConsoleNotificationFailure[];
+  limit: number;
+  nextCursor: string | null;
+}
+
+export interface AdminConsoleApplicationsRequest {
+  createdFrom?: string;
+  createdTo?: string;
+}
+
+export interface AdminConsoleApplicationsResponse {
+  period: { from: string; to: string };
+  total: number;
+  byStatus: Record<ApplicationStatus, number>;
 }

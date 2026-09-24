@@ -5,11 +5,12 @@ import { PrismaModule } from '../../database/prisma/prisma.module';
 import { AIModule } from '../ai/ai.module';
 import { BillingModule } from '../billing/billing.module';
 import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
+import { ApplicationOperationsReadService } from './application/application-operations-read.service';
 
 @Module({
   imports: [PrismaModule, AIModule, BillingModule, IdempotencyModule],
-  providers: [ApplicationTrackerService],
+  providers: [ApplicationTrackerService, ApplicationOperationsReadService],
   controllers: [ApplicationTrackerController],
-  exports: [ApplicationTrackerService],
+  exports: [ApplicationTrackerService, ApplicationOperationsReadService],
 })
 export class ApplicationModule {}

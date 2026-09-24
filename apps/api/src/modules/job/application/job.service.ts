@@ -104,6 +104,114 @@ export class JobService {
     return job;
   }
 
+  async listForAdmin(input: {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+    source?: string;
+    eligibility?: 'eligible' | 'stale';
+  }) {
+    const limit = Math.min(Math.max(input.limit ?? 20, 1), 100);
+    const now = this.clock.now();
+    const minimumObservedAt = new Date(
+      now.getTime() - this.maximumPublicJobAgeHours() * 60 * 60 * 1_000,
+    );
+    const cursor = input.cursor ? this.decodeAdminCursor(input.cursor) : undefined;
+    const search = input.search?.trim();
+    const source = input.source?.trim();
+    const jobs = await this.prisma.job.findMany({
+      where: {
+        ...(search
+          ? {
+              OR: [
+                { title: { contains: search, mode: 'insensitive' as const } },
+                { company: { name: { contains: search, mode: 'insensitive' as const } } },
+              ],
+            }
+          : {}),
+        ...(source ? { source: { equals: source, mode: 'insensitive' as const } } : {}),
+        ...(input.eligibility === 'eligible'
+          ? { scrapedAt: { gte: minimumObservedAt } }
+          : input.eligibility === 'stale'
+            ? { scrapedAt: { lt: minimumObservedAt } }
+            : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+      select: {
+        id: true,
+        title: true,
+        source: true,
+        location: true,
+        remoteType: true,
+        scrapedAt: true,
+        createdAt: true,
+        company: { select: { name: true } },
+      },
+    });
+    const page = jobs.slice(0, limit);
+    const last = page.length > 0 ? page[page.length - 1] : undefined;
+    return {
+      jobs: page.map((job) => ({
+        id: job.id,
+        title: job.title,
+        company: job.company?.name ?? null,
+        source: job.source,
+        location: job.location,
+        remoteType: job.remoteType,
+        lastObservedAt: job.scrapedAt.toISOString(),
+        eligible: job.scrapedAt >= minimumObservedAt,
+        createdAt: job.createdAt.toISOString(),
+      })),
+      limit,
+      nextCursor:
+        jobs.length > limit && last
+          ? this.encodeAdminCursor(last.createdAt, last.id)
+          : null,
+    };
+  }
+
+  async getForAdmin(id: string) {
+    const job = await this.prisma.job.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        title: true,
+        source: true,
+        location: true,
+        remoteType: true,
+        salaryMin: true,
+        salaryMax: true,
+        scrapedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        company: { select: { name: true } },
+        skills: { select: { name: true }, take: 50, orderBy: { name: 'asc' } },
+      },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+    const minimumObservedAt = new Date(
+      this.clock.now().getTime() -
+        this.maximumPublicJobAgeHours() * 60 * 60 * 1_000,
+    );
+    return {
+      id: job.id,
+      title: job.title,
+      company: job.company?.name ?? null,
+      source: job.source,
+      location: job.location,
+      remoteType: job.remoteType,
+      salaryMin: job.salaryMin,
+      salaryMax: job.salaryMax,
+      skills: job.skills.map(({ name }) => name),
+      lastObservedAt: job.scrapedAt.toISOString(),
+      eligible: job.scrapedAt >= minimumObservedAt,
+      createdAt: job.createdAt.toISOString(),
+      updatedAt: job.updatedAt.toISOString(),
+    };
+  }
+
   async ingestJob(data: {
     title: string;
     source: string;
@@ -172,6 +280,31 @@ export class JobService {
       return parsed.toString();
     } catch {
       throw new BadRequestException('Job source URL must be a valid HTTPS URL');
+    }
+  }
+
+  private encodeAdminCursor(createdAt: Date, id: string): string {
+    return Buffer.from(JSON.stringify({ createdAt: createdAt.toISOString(), id }))
+      .toString('base64url');
+  }
+
+  private decodeAdminCursor(value: string): { createdAt: Date; id: string } {
+    try {
+      const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as {
+        createdAt?: unknown;
+        id?: unknown;
+      };
+      const createdAt = new Date(String(parsed.createdAt));
+      if (
+        typeof parsed.id !== 'string' ||
+        !parsed.id ||
+        !Number.isFinite(createdAt.getTime())
+      ) {
+        throw new Error('invalid');
+      }
+      return { createdAt, id: parsed.id };
+    } catch {
+      throw new BadRequestException('Invalid jobs cursor');
     }
   }
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell, BriefcaseBusiness, ChartNoAxesCombined, FileWarning, FileText, Gauge, ShieldCheck, Users } from 'lucide-react';
+import { Bell, BriefcaseBusiness, ChartNoAxesCombined, ClipboardList, FileWarning, FileText, Gauge, ShieldCheck, Users } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
@@ -10,10 +10,11 @@ const navigation = [
   { label: 'Users', href: '/admin/console/users', icon: Users, enabled: true },
   { label: 'Activity Log', href: '/admin/console/activity-logs', icon: FileText, enabled: true },
   { label: 'Billing', href: '/admin/console/billing', icon: ChartNoAxesCombined, enabled: false },
-  { label: 'Jobs', href: '/admin/console/jobs', icon: BriefcaseBusiness, enabled: false },
-  { label: 'Resume Failures', href: '/admin/console/resume-failures', icon: FileWarning, enabled: false },
-  { label: 'Beta Gate', href: '/admin/console/beta-gate', icon: ShieldCheck, enabled: false },
-  { label: 'Notifications', href: '/admin/console/notifications', icon: Bell, enabled: false },
+  { label: 'Jobs', href: '/admin/console/jobs', icon: BriefcaseBusiness, enabled: true },
+  { label: 'Resume Failures', href: '/admin/console/resume-failures', icon: FileWarning, enabled: true },
+  { label: 'Beta Gate', href: '/admin/console/beta-gate', icon: ShieldCheck, enabled: true },
+  { label: 'Notifications', href: '/admin/console/notifications', icon: Bell, enabled: true },
+  { label: 'Applications', href: '/admin/console/applications', icon: ClipboardList, enabled: true },
 ];
 
 export function isAdminConsoleEnabled() {
