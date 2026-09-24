@@ -17,6 +17,40 @@ import { ResumeParseDispatcher } from '../src/modules/resume/infrastructure/queu
 import { ResumeParseJobSignatureService } from '../src/modules/resume/infrastructure/queue/resume-parse-job-signature.service';
 
 const runId = `admin-resume-requeue-${process.pid}-${Date.now()}`;
+const LOOPBACK_REDIS_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+function requireLoopbackRedisUrl(value: string | undefined): URL {
+  let redis: URL;
+  try {
+    redis = new URL(value ?? '');
+  } catch {
+    throw new Error('Integration tests require an isolated loopback REDIS_URL');
+  }
+  const hostname = redis.hostname.replace(/^\[|\]$/g, '');
+  if (redis.protocol !== 'redis:' || !LOOPBACK_REDIS_HOSTS.has(hostname)) {
+    throw new Error('Integration tests require an isolated loopback REDIS_URL');
+  }
+  return redis;
+}
+
+describe('Admin resume requeue Redis URL validation', () => {
+  it.each([
+    'redis://localhost:6379',
+    'redis://127.0.0.1:6380',
+    'redis://[::1]:6379',
+  ])(
+    'accepts the loopback integration URL %s',
+    (redisUrl) => {
+      expect(requireLoopbackRedisUrl(redisUrl)).toBeInstanceOf(URL);
+    },
+  );
+
+  it('rejects a non-loopback Redis host', () => {
+    expect(() =>
+      requireLoopbackRedisUrl('redis://cache.example.test:6379'),
+    ).toThrow('Integration tests require an isolated loopback REDIS_URL');
+  });
+});
 
 describe('Resume-owned Admin requeue PostgreSQL and Redis integration', () => {
   let prisma: PrismaService;
@@ -32,18 +66,13 @@ describe('Resume-owned Admin requeue PostgreSQL and Redis integration', () => {
         'Integration tests require an isolated DATABASE_URL containing "test"',
       );
     }
-    if (!process.env.REDIS_URL?.includes('127.0.0.1')) {
-      throw new Error(
-        'Integration tests require an isolated loopback REDIS_URL',
-      );
-    }
+    const redis = requireLoopbackRedisUrl(process.env.REDIS_URL);
     prisma = new PrismaService();
     await prisma.$connect();
     command = new ResumeRequeueCommandService(prisma);
 
-    const redis = new URL(process.env.REDIS_URL);
     const connection = {
-      host: redis.hostname,
+      host: redis.hostname.replace(/^\[|\]$/g, ''),
       port: Number(redis.port || 6379),
       username: redis.username || undefined,
       password: redis.password || undefined,
