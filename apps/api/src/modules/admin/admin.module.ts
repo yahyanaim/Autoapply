@@ -23,6 +23,7 @@ import { NotificationModule } from '../notification/notification.module';
 import { ApplicationModule } from '../application-tracker/application-tracker.module';
 import { AdminOperationsService } from './application/admin-operations.service';
 import { AdminConsoleOperationsController } from './interface/admin-console-operations.controller';
+import { AdminJobsService } from './application/admin-jobs.service';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { AdminConsoleOperationsController } from './interface/admin-console-oper
     AdminConsoleEnabledGuard,
     AdminSessionsService,
     AdminOperationsService,
+    AdminJobsService,
   ],
   controllers: [
     AdminController,

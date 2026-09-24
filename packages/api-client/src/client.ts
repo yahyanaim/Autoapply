@@ -24,6 +24,8 @@ import type {
   AdminConsoleJobsRequest,
   AdminConsoleJobsResponse,
   AdminConsoleJobDetail,
+  AdminConsoleDeactivateJobRequest,
+  AdminConsoleDeactivateJobResponse,
   AdminConsoleResumeFailuresRequest,
   AdminConsoleResumeFailuresResponse,
   AdminConsoleResumeFailure,
@@ -398,6 +400,19 @@ export class ApiClient {
     job: async (jobId: string): Promise<AdminConsoleJobDetail> => {
       const res = await this.http.get<AdminConsoleJobDetail>(
         `/admin/console/jobs/${encodeURIComponent(jobId)}`,
+      );
+      return res.data;
+    },
+
+    deactivateJob: async (
+      jobId: string,
+      data: AdminConsoleDeactivateJobRequest,
+    ): Promise<AdminConsoleDeactivateJobResponse> => {
+      const { stepUpProof, ...payload } = data;
+      const res = await this.http.post<AdminConsoleDeactivateJobResponse>(
+        `/admin/console/jobs/${encodeURIComponent(jobId)}/deactivate`,
+        payload,
+        { headers: { 'X-Admin-Step-Up-Proof': stepUpProof } },
       );
       return res.data;
     },

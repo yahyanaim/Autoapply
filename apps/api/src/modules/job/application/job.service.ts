@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { JobSearchFilter } from '../domain/job-search-filter';
-import { Prisma } from '@prisma/client';
+import { JobDeactivationReason, JobStatus, Prisma } from '@prisma/client';
 import {
   accessibleFreshJobWhere,
   visibleJobSources,
@@ -77,7 +77,12 @@ export class JobService {
       this.prisma.job.count({ where }),
     ]);
 
-    return { jobs, total, page, limit };
+    return {
+      jobs: jobs.map((job) => this.withoutAdminProvenance(job)),
+      total,
+      page,
+      limit,
+    };
   }
 
   async getJob(id: string, userId?: string) {
@@ -101,7 +106,7 @@ export class JobService {
       include: { company: true, skills: true },
     });
     if (!job) throw new NotFoundException('Job not found');
-    return job;
+    return this.withoutAdminProvenance(job);
   }
 
   async listForAdmin(input: {
@@ -131,9 +136,26 @@ export class JobService {
           : {}),
         ...(source ? { source: { equals: source, mode: 'insensitive' as const } } : {}),
         ...(input.eligibility === 'eligible'
-          ? { scrapedAt: { gte: minimumObservedAt } }
+          ? {
+              AND: [
+                { status: JobStatus.active },
+                { scrapedAt: { gte: minimumObservedAt } },
+              ],
+            }
           : input.eligibility === 'stale'
-            ? { scrapedAt: { lt: minimumObservedAt } }
+            ? {
+                AND: [
+                  {
+                    OR: [
+                      { status: JobStatus.deactivated },
+                      {
+                        status: JobStatus.active,
+                        scrapedAt: { lt: minimumObservedAt },
+                      },
+                    ],
+                  },
+                ],
+              }
             : {}),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -145,6 +167,7 @@ export class JobService {
         source: true,
         location: true,
         remoteType: true,
+        status: true,
         scrapedAt: true,
         createdAt: true,
         company: { select: { name: true } },
@@ -160,8 +183,10 @@ export class JobService {
         source: job.source,
         location: job.location,
         remoteType: job.remoteType,
+        status: job.status,
         lastObservedAt: job.scrapedAt.toISOString(),
-        eligible: job.scrapedAt >= minimumObservedAt,
+        eligible:
+          job.status === JobStatus.active && job.scrapedAt >= minimumObservedAt,
         createdAt: job.createdAt.toISOString(),
       })),
       limit,
@@ -181,6 +206,9 @@ export class JobService {
         source: true,
         location: true,
         remoteType: true,
+        status: true,
+        deactivatedAt: true,
+        deactivationReason: true,
         salaryMin: true,
         salaryMax: true,
         scrapedAt: true,
@@ -202,13 +230,77 @@ export class JobService {
       source: job.source,
       location: job.location,
       remoteType: job.remoteType,
+      status: job.status,
+      deactivatedAt: job.deactivatedAt?.toISOString() ?? null,
+      deactivationReason: job.deactivationReason,
       salaryMin: job.salaryMin,
       salaryMax: job.salaryMax,
       skills: job.skills.map(({ name }) => name),
       lastObservedAt: job.scrapedAt.toISOString(),
-      eligible: job.scrapedAt >= minimumObservedAt,
+      eligible:
+        job.status === JobStatus.active && job.scrapedAt >= minimumObservedAt,
       createdAt: job.createdAt.toISOString(),
       updatedAt: job.updatedAt.toISOString(),
+    };
+  }
+
+  async deactivateInTransaction(
+    transaction: Prisma.TransactionClient,
+    actorUserId: string,
+    jobId: string,
+    reason: JobDeactivationReason,
+  ) {
+    const deactivatedAt = this.clock.now();
+    const changed = await transaction.job.updateMany({
+      where: { id: jobId, status: JobStatus.active },
+      data: {
+        status: JobStatus.deactivated,
+        deactivatedAt,
+        deactivatedByUserId: actorUserId,
+        deactivationReason: reason,
+      },
+    });
+
+    if (changed.count === 1) {
+      return {
+        value: {
+          jobId,
+          status: JobStatus.deactivated,
+          deactivatedAt,
+          reason,
+        },
+        before: { status: JobStatus.active },
+        after: {
+          status: JobStatus.deactivated,
+          deactivatedAt: deactivatedAt.toISOString(),
+          reason,
+        },
+      };
+    }
+
+    const existing = await transaction.job.findUnique({
+      where: { id: jobId },
+      select: {
+        status: true,
+        deactivatedAt: true,
+        deactivationReason: true,
+      },
+    });
+    if (!existing) throw new NotFoundException('Job not found');
+
+    return {
+      value: {
+        jobId,
+        status: JobStatus.deactivated,
+        deactivatedAt: existing.deactivatedAt!,
+        reason: existing.deactivationReason!,
+      },
+      before: { status: JobStatus.deactivated },
+      after: {
+        status: JobStatus.deactivated,
+        deactivatedAt: existing.deactivatedAt?.toISOString() ?? null,
+        reason: existing.deactivationReason,
+      },
     };
   }
 
@@ -262,6 +354,41 @@ export class JobService {
       // does not rank a currently available job as stale.
       update: { ...jobData, scrapedAt: this.clock.now() },
     });
+  }
+
+  async captureJob(data: {
+    title: string;
+    source: string;
+    sourceUrl: string;
+    description?: string;
+    location?: string;
+    companyName?: string;
+    capturedByUserId: string;
+  }) {
+    const job = await this.ingestJob(data);
+    if (job.status === JobStatus.deactivated) {
+      throw new NotFoundException('Job not found');
+    }
+    return this.withoutAdminProvenance(job);
+  }
+
+  private withoutAdminProvenance<
+    T extends {
+      deactivatedAt: Date | null;
+      deactivatedByUserId: string | null;
+      deactivationReason: JobDeactivationReason | null;
+    },
+  >(job: T): Omit<
+    T,
+    'deactivatedAt' | 'deactivatedByUserId' | 'deactivationReason'
+  > {
+    const {
+      deactivatedAt: _deactivatedAt,
+      deactivatedByUserId: _deactivatedByUserId,
+      deactivationReason: _deactivationReason,
+      ...safeJob
+    } = job;
+    return safeJob;
   }
 
   private maximumPublicJobAgeHours(): number {

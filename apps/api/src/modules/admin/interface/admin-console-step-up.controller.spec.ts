@@ -172,6 +172,27 @@ describe('AdminConsoleStepUpController', () => {
     await app.close();
   });
 
+  it('issues a proof only for the approved job-deactivation binding', async () => {
+    const app = await createApp();
+    await request(app.getHttpServer())
+      .post('/admin/console/step-up')
+      .send({
+        ...validRequest,
+        action: 'admin.job.deactivate',
+        targetType: 'job',
+      })
+      .expect(200);
+    expect(stepUpMfa.issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'admin.job.deactivate',
+        targetType: 'job',
+        targetId,
+      }),
+      '123456',
+    );
+    await app.close();
+  });
+
   it.each([
     [{ ...validRequest, action: 'admin.user.delete' }],
     [{ ...validRequest, targetType: 'organization' }],
@@ -181,6 +202,7 @@ describe('AdminConsoleStepUpController', () => {
     [{ ...validRequest, actorUserId: 'attacker', sessionId: 'attacker-session' }],
     { ...validSessionRequest, targetType: 'user' },
     { ...validRequest, targetType: 'session', targetId: validSessionRequest.targetId },
+    { ...validRequest, action: 'admin.job.deactivate', targetType: 'user' },
   ])('rejects unsupported, malformed, or client-supplied binding input', async (body) => {
     const app = await createApp();
     await request(app.getHttpServer())

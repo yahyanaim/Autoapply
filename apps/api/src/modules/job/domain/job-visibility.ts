@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { JobStatus, Prisma } from '@prisma/client';
 
 /**
  * Returns the listings a user may use for a new job-search action.
@@ -17,12 +17,13 @@ export function visibleJobSources(
     now.getTime() - maxAgeHours * 60 * 60 * 1_000,
   );
   const publicListing: Prisma.JobWhereInput = {
+    status: JobStatus.active,
     capturedByUserId: null,
     scrapedAt: { gte: minimumPublicListingDate },
   };
 
   return userId
-    ? [publicListing, { capturedByUserId: userId }]
+    ? [publicListing, { capturedByUserId: userId, status: JobStatus.active }]
     : [publicListing];
 }
 

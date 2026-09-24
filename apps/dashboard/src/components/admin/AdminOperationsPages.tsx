@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AdminConsoleApplicationsRequest,
   AdminConsoleJobsRequest,
   AdminConsoleNotificationsRequest,
 } from '@applyai/shared-types';
+import { JobDeactivationReason } from '@applyai/shared-types';
 import { adminApiClient } from '@/lib/api/admin-api-client';
 import { Button } from '@/components/ui/Button';
 
@@ -34,14 +35,39 @@ export function AdminJobsPage() {
   const [eligibility, setEligibility] = useState<'' | 'eligible' | 'stale'>('');
   const [cursor, setCursor] = useState<string>();
   const [history, setHistory] = useState<Array<string | undefined>>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>();
+  const [reason, setReason] = useState<JobDeactivationReason>(
+    JobDeactivationReason.invalid_listing,
+  );
+  const [code, setCode] = useState('');
+  const queryClient = useQueryClient();
   useEffect(() => { setCursor(undefined); setHistory([]); }, [search, eligibility]);
   const params = useMemo<AdminConsoleJobsRequest>(() => ({ limit: PAGE_SIZE, ...(cursor ? { cursor } : {}), ...(search.trim() ? { search: search.trim() } : {}), ...(eligibility ? { eligibility } : {}) }), [cursor, eligibility, search]);
   const query = useQuery({ queryKey: ['admin-console', 'jobs', params], queryFn: () => adminApiClient.adminConsole.jobs(params) });
+  const deactivate = useMutation({
+    mutationFn: async (jobId: string) => {
+      const issued = await adminApiClient.adminConsole.issueStepUp({
+        code,
+        action: 'admin.job.deactivate',
+        targetType: 'job',
+        targetId: jobId,
+      });
+      return adminApiClient.adminConsole.deactivateJob(jobId, {
+        reason,
+        stepUpProof: issued.proof,
+      });
+    },
+    onSuccess: async () => {
+      setCode('');
+      setSelectedJobId(undefined);
+      await queryClient.invalidateQueries({ queryKey: ['admin-console', 'jobs'] });
+    },
+  });
   if (query.isLoading) return <Loading label="Loading jobs" />;
   if (query.isError) return <State title="Could not load jobs" detail="The operational jobs projection is unavailable." retry={() => void query.refetch()} />;
   const data = query.data;
   if (!data) return null;
-  return <section className="space-y-5"><Header title="Jobs Moderation" detail="Observed job records and freshness eligibility. Deactivation is unavailable." /><div className="flex flex-wrap gap-3 border border-stone-200 bg-white p-3"><input aria-label="Search jobs" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title or company" className="h-9 min-w-64 rounded-md border border-stone-300 px-3 text-sm" /><select aria-label="Filter job eligibility" value={eligibility} onChange={(event) => setEligibility(event.target.value as typeof eligibility)} className="h-9 rounded-md border border-stone-300 px-3 text-sm"><option value="">All eligibility</option><option value="eligible">Eligible</option><option value="stale">Stale</option></select></div>{data.jobs.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Job</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Last observed</th><th className="px-4 py-3">Eligibility</th></tr></thead><tbody className="divide-y divide-stone-100">{data.jobs.map((job) => <tr key={job.id}><td className="px-4 py-3"><p className="font-medium">{job.title}</p><p className="text-xs text-gray-500">{job.company ?? 'Unknown company'} · {job.location ?? 'Unspecified'}</p></td><td className="px-4 py-3">{job.source ?? '—'}</td><td className="px-4 py-3 whitespace-nowrap">{new Date(job.lastObservedAt).toLocaleString()}</td><td className="px-4 py-3"><span className={job.eligible ? 'rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-800' : 'rounded-full bg-stone-100 px-2 py-1 text-xs text-gray-600'}>{job.eligible ? 'Eligible' : 'Stale'}</span></td></tr>)}</tbody></table></div> : <State title="No jobs found" detail="No jobs match the approved filters." />}<Pagination cursor={cursor} setCursor={setCursor} history={history} setHistory={setHistory} nextCursor={data.nextCursor} /></section>;
+  return <section className="space-y-5"><Header title="Jobs Moderation" detail="Observed job records, discovery eligibility, and durable administrative deactivation." /><div className="flex flex-wrap gap-3 border border-stone-200 bg-white p-3"><input aria-label="Search jobs" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title or company" className="h-9 min-w-64 rounded-md border border-stone-300 px-3 text-sm" /><select aria-label="Filter job eligibility" value={eligibility} onChange={(event) => setEligibility(event.target.value as typeof eligibility)} className="h-9 rounded-md border border-stone-300 px-3 text-sm"><option value="">All eligibility</option><option value="eligible">Eligible</option><option value="stale">Stale or deactivated</option></select></div>{data.jobs.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[860px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Job</th><th className="px-4 py-3">Source</th><th className="px-4 py-3">Last observed</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-stone-100">{data.jobs.map((job) => <tr key={job.id}><td className="px-4 py-3"><p className="font-medium">{job.title}</p><p className="text-xs text-gray-500">{job.company ?? 'Unknown company'} · {job.location ?? 'Unspecified'}</p></td><td className="px-4 py-3">{job.source ?? '—'}</td><td className="px-4 py-3 whitespace-nowrap">{new Date(job.lastObservedAt).toLocaleString()}</td><td className="px-4 py-3"><span className={job.status === 'active' && job.eligible ? 'rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-800' : 'rounded-full bg-stone-100 px-2 py-1 text-xs text-gray-600'}>{job.status === 'deactivated' ? 'Deactivated' : job.eligible ? 'Eligible' : 'Stale'}</span></td><td className="px-4 py-3">{job.status === 'active' ? <Button variant="outline" size="sm" onClick={() => { setSelectedJobId(job.id); setCode(''); deactivate.reset(); }}>Deactivate</Button> : <span className="text-xs text-gray-500">Historical only</span>}</td></tr>)}</tbody></table></div> : <State title="No jobs found" detail="No jobs match the approved filters." />}{selectedJobId ? <form className="grid gap-3 border border-orange-200 bg-orange-50 p-4 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end" onSubmit={(event) => { event.preventDefault(); deactivate.mutate(selectedJobId); }}><label className="grid gap-1 text-xs font-medium text-gray-700">Reason<select aria-label="Deactivation reason" value={reason} onChange={(event) => setReason(event.target.value as JobDeactivationReason)} className="h-9 rounded-md border border-stone-300 bg-white px-3 text-sm"><option value="provider_removed">Provider removed</option><option value="invalid_listing">Invalid listing</option><option value="duplicate">Duplicate</option><option value="policy_violation">Policy violation</option><option value="security_risk">Security risk</option><option value="other">Other</option></select></label><label className="grid gap-1 text-xs font-medium text-gray-700">Authenticator code<input aria-label="Authenticator code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="h-9 rounded-md border border-stone-300 bg-white px-3 text-sm" /></label><Button type="submit" size="sm" disabled={code.length !== 6 || deactivate.isPending}>{deactivate.isPending ? 'Deactivating…' : 'Confirm deactivation'}</Button><Button type="button" variant="outline" size="sm" onClick={() => setSelectedJobId(undefined)}>Cancel</Button>{deactivate.isError ? <p role="alert" className="text-sm text-red-700 sm:col-span-4">Job deactivation failed. Verify the step-up code and retry.</p> : null}</form> : null}<Pagination cursor={cursor} setCursor={setCursor} history={history} setHistory={setHistory} nextCursor={data.nextCursor} /></section>;
 }
 
 export function AdminResumeFailuresPage() {

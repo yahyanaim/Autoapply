@@ -14,6 +14,8 @@ import { AdminConsoleActivityLogsController } from './interface/admin-console-ac
 import { AdminConsoleStepUpController } from './interface/admin-console-step-up.controller';
 import { AdminOverviewService } from './application/admin-overview.service';
 import { AdminConsoleOverviewController } from './interface/admin-console-overview.controller';
+import { AdminJobsService } from './application/admin-jobs.service';
+import { JobService } from '../job/application/job.service';
 
 describe('AdminModule', () => {
   it('registers and compiles the mutation foundation without circular dependencies', async () => {
@@ -36,6 +38,7 @@ describe('AdminModule', () => {
         AdminUsersService,
         AdminSessionsService,
         AdminOverviewService,
+        AdminJobsService,
       ]),
     );
 
@@ -47,10 +50,12 @@ describe('AdminModule', () => {
         AdminUsersService,
         AdminSessionsService,
         AdminOverviewService,
+        AdminJobsService,
         { provide: PrismaService, useValue: {} },
         { provide: AuthMfaVerificationService, useValue: {} },
         { provide: AuthService, useValue: {} },
         { provide: BillingUsageReadService, useValue: {} },
+        { provide: JobService, useValue: {} },
       ],
     })
       .compile();

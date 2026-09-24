@@ -88,6 +88,20 @@ export enum RemoteType {
   onsite = 'onsite',
 }
 
+export enum JobStatus {
+  active = 'active',
+  deactivated = 'deactivated',
+}
+
+export enum JobDeactivationReason {
+  provider_removed = 'provider_removed',
+  invalid_listing = 'invalid_listing',
+  duplicate = 'duplicate',
+  policy_violation = 'policy_violation',
+  security_risk = 'security_risk',
+  other = 'other',
+}
+
 export enum OAuthProvider {
   google = 'google',
   github = 'github',

@@ -9,11 +9,13 @@ import type {
   AdminConsoleUserMutationResponse,
   AdminConsoleRevokeUserSessionResponse,
   AdminConsoleRevokeUserSessionsResponse,
+  AdminConsoleDeactivateJobResponse,
   AdminConsoleUserSummary,
   AdminConsoleUsersResponse,
 } from '@applyai/shared-types';
 import {
   AdminSessionStatus,
+  JobDeactivationReason,
   SessionClientType,
   UserStatus,
 } from '@applyai/shared-types';
@@ -50,6 +52,11 @@ const activityLogs: Promise<AdminConsoleActivityLogsResponse> =
 const overview: Promise<AdminConsoleOverviewResponse> = client.adminConsole.overview();
 const jobs = client.adminConsole.jobs({ limit: 20, eligibility: 'eligible' });
 const job = client.adminConsole.job('ckz8dc7m40000qwertyuiop12');
+const deactivatedJob: Promise<AdminConsoleDeactivateJobResponse> =
+  client.adminConsole.deactivateJob('ckz8dc7m40000qwertyuiop12', {
+    reason: JobDeactivationReason.invalid_listing,
+    stepUpProof: 'proof',
+  });
 const resumeFailures = client.adminConsole.resumeFailures({ limit: 20 });
 const resumeFailure = client.adminConsole.resumeFailure('ckz8dc7m40000qwertyuiop12');
 const betaGate = client.adminConsole.betaGate();
@@ -91,6 +98,7 @@ void activityLogs;
 void overview;
 void jobs;
 void job;
+void deactivatedJob;
 void resumeFailures;
 void resumeFailure;
 void betaGate;

@@ -1,10 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ApplicationTrackerService } from '../application/application-tracker.service';
 import { PrismaService } from '../../../database/prisma/prisma.service';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import {
   ApplicationPreparationStatus,
   ApplicationStatus,
+  JobStatus,
 } from '@prisma/client';
 import { AIService } from '../../ai/application/ai.service';
 
@@ -103,9 +108,10 @@ describe('ApplicationTrackerService', () => {
           OR: [
             {
               capturedByUserId: null,
+              status: JobStatus.active,
               scrapedAt: { gte: expect.any(Date) },
             },
-            { capturedByUserId: 'u1' },
+            { capturedByUserId: 'u1', status: JobStatus.active },
           ],
         },
       });
@@ -125,6 +131,45 @@ describe('ApplicationTrackerService', () => {
         expect.any(Object),
       );
     });
+
+    it('re-checks deactivation inside the write transaction before preparation', async () => {
+      prismaMock.job.findFirst
+        .mockResolvedValueOnce({ id: 'j1' })
+        .mockResolvedValueOnce(null);
+      prismaMock.resume.findFirst.mockResolvedValue({
+        id: 'r1',
+        userId: 'u1',
+        parseStatus: 'ready',
+        parsedJson: { skills: [] },
+      });
+
+      await expect(service.prepare('u1', 'j1', 'r1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.application.create).not.toHaveBeenCalled();
+      expect(aiServiceMock.analyzeJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deactivated job policy', () => {
+    it('rejects regeneration before changing historical application state', async () => {
+      prismaMock.application.findFirst.mockResolvedValue({
+        id: 'a1',
+        userId: 'u1',
+        jobId: 'j1',
+        status: ApplicationStatus.draft,
+        sourceResumeId: 'r1',
+        job: { status: JobStatus.deactivated },
+      });
+
+      await expect(
+        service.regenerate('u1', 'a1', 'all' as never),
+      ).rejects.toThrow(ConflictException);
+      expect(prismaMock.application.update).not.toHaveBeenCalled();
+      expect(aiServiceMock.analyzeJob).not.toHaveBeenCalled();
+      expect(aiServiceMock.optimizeResume).not.toHaveBeenCalled();
+      expect(aiServiceMock.generateCoverLetter).not.toHaveBeenCalled();
+    });
   });
 
   describe('create', () => {
@@ -142,10 +187,11 @@ describe('ApplicationTrackerService', () => {
           id: 'j1',
           OR: [
             {
+              status: JobStatus.active,
               capturedByUserId: null,
               scrapedAt: { gte: expect.any(Date) },
             },
-            { capturedByUserId: 'u1' },
+            { capturedByUserId: 'u1', status: JobStatus.active },
           ],
         },
       });
@@ -156,6 +202,18 @@ describe('ApplicationTrackerService', () => {
       await expect(service.create('u1', 'nonexistent')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('re-checks deactivation inside the write transaction before creation', async () => {
+      prismaMock.job.findFirst
+        .mockResolvedValueOnce({ id: 'j1' })
+        .mockResolvedValueOnce(null);
+
+      await expect(service.create('u1', 'j1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.application.create).not.toHaveBeenCalled();
+      expect(prismaMock.usageLimit.updateMany).not.toHaveBeenCalled();
     });
 
     it('rejects generated materials that belong to a different job', async () => {

@@ -8,6 +8,8 @@ export type {
   AdminConsoleUserAction,
   AdminConsoleUserMutationResponse,
   AdminConsoleOverviewResponse,
+  AdminConsoleDeactivateJobRequest,
+  AdminConsoleDeactivateJobResponse,
   AdminConsoleUserSummary,
   AdminConsoleUsersRequest,
   AdminConsoleUsersResponse,

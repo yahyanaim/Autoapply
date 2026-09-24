@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   ApplicationPreparationStatus,
   ApplicationStatus,
+  JobStatus,
   Prisma,
   ResumeParseStatus,
 } from '@prisma/client';
@@ -108,6 +109,11 @@ export class ApplicationTrackerService {
 
     try {
       return await this.prisma.$transaction(async (transaction) => {
+        const stillEligible = await transaction.job.findFirst({
+          where: this.accessibleJobWhere(userId, jobId),
+          select: { id: true },
+        });
+        if (!stillEligible) throw new NotFoundException('Job not found');
         const application = await transaction.application.create({
           data: {
             userId,
@@ -182,6 +188,11 @@ export class ApplicationTrackerService {
     let applicationId: string | undefined;
     try {
       const created = await this.prisma.$transaction(async (transaction) => {
+        const stillEligible = await transaction.job.findFirst({
+          where: this.accessibleJobWhere(userId, jobId),
+          select: { id: true },
+        });
+        if (!stillEligible) throw new NotFoundException('Job not found');
         const application = await transaction.application.create({
           data: {
             userId,
@@ -266,6 +277,9 @@ export class ApplicationTrackerService {
 
   async regenerate(userId: string, id: string, target: RegenerationTarget) {
     const application = await this.getOwnedPackage(userId, id);
+    if (application.job.status !== JobStatus.active) {
+      throw new ConflictException('Job is deactivated');
+    }
     if (!application.sourceResumeId) {
       throw new BadRequestException('The source resume is unavailable');
     }
@@ -746,6 +760,7 @@ export class ApplicationTrackerService {
     const application = await this.prisma.application.findFirst({
       where: { id, userId },
       include: {
+        job: { select: { status: true } },
         sourceResume: true,
         resumeVersion: true,
         coverLetter: true,
