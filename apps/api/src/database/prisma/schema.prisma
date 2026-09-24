@@ -97,6 +97,20 @@ enum RemoteType {
   onsite
 }
 
+enum JobStatus {
+  active
+  deactivated
+}
+
+enum JobDeactivationReason {
+  provider_removed
+  invalid_listing
+  duplicate
+  policy_violation
+  security_risk
+  other
+}
+
 enum OAuthProvider {
   google
   github
@@ -132,6 +146,7 @@ enum ActivityType {
   admin_user_reactivate
   admin_session_revoke
   admin_session_revoke_all
+  admin_job_deactivate
   queue_job
 }
 
@@ -168,6 +183,7 @@ model User {
   oauthAccounts         OAuthAccount[]
   extensionAuthHandoffs ExtensionAuthHandoff[]
   capturedJobs          Job[]                  @relation("CapturedJobs")
+  deactivatedJobs       Job[]                  @relation("DeactivatedJobs")
   refreshTokenHistory   RefreshTokenHistory[]
   idempotencyRecords    IdempotencyRecord[]
 
@@ -358,18 +374,25 @@ model Job {
   remoteType       RemoteType?
   salaryMin        Int?
   salaryMax        Int?
+  status               JobStatus @default(active)
+  deactivatedAt        DateTime?
+  deactivatedByUserId  String?
+  deactivationReason   JobDeactivationReason?
   scrapedAt        DateTime    @default(now())
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
 
   company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
   capturedBy     User?           @relation("CapturedJobs", fields: [capturedByUserId], references: [id], onDelete: Cascade)
+  deactivatedBy  User?           @relation("DeactivatedJobs", fields: [deactivatedByUserId], references: [id], onDelete: SetNull)
   applications   Application[]
   resumeVersions ResumeVersion[]
   skills         Skill[]         @relation("JobSkills")
 
   @@index([companyId])
   @@index([capturedByUserId])
+  @@index([deactivatedByUserId])
+  @@index([status, scrapedAt])
   @@index([sourceUrl])
   @@map("jobs")
 }

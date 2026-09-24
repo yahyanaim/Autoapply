@@ -73,7 +73,7 @@ export class JobController {
   @ApiResponse({ status: 201, description: 'Job captured and normalized' })
   async capture(@CurrentUser('id') userId: string, @Body() dto: CaptureJobDto) {
     const hostname = new URL(dto.sourceUrl).hostname.replace(/^www\./, '');
-    return this.jobService.ingestJob({
+    return this.jobService.captureJob({
       title: dto.title,
       description: dto.description,
       sourceUrl: dto.sourceUrl,

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ResumeParseStatus } from '@prisma/client';
+import { JobStatus, ResumeParseStatus } from '@prisma/client';
 import {
   JobDiscoveryService,
   parseConfiguredSources,
@@ -133,10 +133,11 @@ describe('JobDiscoveryService', () => {
             {
               OR: [
                 expect.objectContaining({
+                  status: JobStatus.active,
                   capturedByUserId: null,
                   scrapedAt: { gte: expect.any(Date) },
                 }),
-                { capturedByUserId: 'user-1' },
+                { capturedByUserId: 'user-1', status: JobStatus.active },
               ],
             },
           ]),

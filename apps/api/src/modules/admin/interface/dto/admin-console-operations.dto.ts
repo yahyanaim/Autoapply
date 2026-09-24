@@ -16,6 +16,8 @@ import {
   NotificationChannel,
   NotificationStatus,
   RemoteType,
+  JobDeactivationReason,
+  JobStatus,
 } from '@prisma/client';
 
 const CUID = /^c[a-z0-9]{24}$/;
@@ -74,6 +76,7 @@ export class AdminConsoleJobResponseDto {
   @ApiProperty({ nullable: true }) source!: string | null;
   @ApiProperty({ nullable: true }) location!: string | null;
   @ApiProperty({ enum: RemoteType, nullable: true }) remoteType!: RemoteType | null;
+  @ApiProperty({ enum: JobStatus }) status!: JobStatus;
   @ApiProperty() lastObservedAt!: string;
   @ApiProperty() eligible!: boolean;
   @ApiProperty() createdAt!: string;
@@ -89,7 +92,25 @@ export class AdminConsoleJobDetailResponseDto extends AdminConsoleJobResponseDto
   @ApiProperty({ nullable: true }) salaryMin!: number | null;
   @ApiProperty({ nullable: true }) salaryMax!: number | null;
   @ApiProperty({ type: [String] }) skills!: string[];
+  @ApiProperty({ format: 'date-time', nullable: true }) deactivatedAt!: string | null;
+  @ApiProperty({ enum: JobDeactivationReason, nullable: true })
+  deactivationReason!: JobDeactivationReason | null;
   @ApiProperty() updatedAt!: string;
+}
+
+export class AdminConsoleDeactivateJobDto {
+  @ApiProperty({ enum: JobDeactivationReason })
+  @IsEnum(JobDeactivationReason)
+  reason!: JobDeactivationReason;
+}
+
+export class AdminConsoleDeactivateJobResponseDto {
+  @ApiProperty() jobId!: string;
+  @ApiProperty({ enum: [JobStatus.deactivated] })
+  status!: JobStatus;
+  @ApiProperty({ format: 'date-time' }) deactivatedAt!: string;
+  @ApiProperty({ enum: JobDeactivationReason })
+  reason!: JobDeactivationReason;
 }
 
 export class AdminConsoleResumeFailuresQueryDto extends CursorQueryDto {}

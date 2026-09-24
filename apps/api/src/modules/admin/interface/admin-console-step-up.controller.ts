@@ -49,11 +49,13 @@ export class AdminConsoleStepUpController {
     @CurrentUser('sessionId') sessionId: string,
     @Body() input: AdminConsoleStepUpRequestDto,
   ) {
-    const sessionAction = input.action === AdminConsoleStepUpActionDto.revokeSession;
-    if (
-      (sessionAction && input.targetType !== 'session') ||
-      (!sessionAction && input.targetType !== 'user')
-    ) {
+    const expectedTargetType =
+      input.action === AdminConsoleStepUpActionDto.revokeSession
+        ? 'session'
+        : input.action === AdminConsoleStepUpActionDto.deactivateJob
+          ? 'job'
+          : 'user';
+    if (input.targetType !== expectedTargetType) {
       throw new BadRequestException('Invalid step-up target binding');
     }
     const issued = await this.stepUpMfa.issue(

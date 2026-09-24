@@ -5,7 +5,7 @@ import {
   NotFoundException,
   PayloadTooLargeException,
 } from '@nestjs/common';
-import { AIRequestFeature } from '@prisma/client';
+import { AIRequestFeature, JobStatus } from '@prisma/client';
 import { AIService } from '../application/ai.service';
 import { calculateMatchScore } from '../domain/match-score';
 
@@ -82,10 +82,11 @@ describe('AIService resume ownership and readiness', () => {
         id: 'job_1',
         OR: [
           {
+            status: JobStatus.active,
             capturedByUserId: null,
             scrapedAt: { gte: expect.any(Date) },
           },
-          { capturedByUserId: 'user_1' },
+          { capturedByUserId: 'user_1', status: JobStatus.active },
         ],
       },
     });

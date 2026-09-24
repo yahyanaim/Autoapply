@@ -8,13 +8,16 @@ import {
   NotificationChannel,
   NotificationStatus,
   RemoteType,
+  JobStatus,
+  JobDeactivationReason,
 } from '../enums';
 
 export type AdminConsoleUserAction =
   | 'admin.user.suspend'
   | 'admin.user.reactivate'
   | 'admin.session.revoke'
-  | 'admin.session.revoke_all';
+  | 'admin.session.revoke_all'
+  | 'admin.job.deactivate';
 
 /** Deliberately excludes credentials, MFA material, tokens, CVs, and billing data. */
 export interface AdminConsoleUserSummary {
@@ -163,7 +166,7 @@ export interface AdminConsoleOverviewResponse {
 export interface AdminConsoleStepUpRequest {
   code: string;
   action: AdminConsoleUserAction;
-  targetType: 'user' | 'session';
+  targetType: 'user' | 'session' | 'job';
   targetId: string;
 }
 
@@ -223,6 +226,7 @@ export interface AdminConsoleJobSummary {
   source: string | null;
   location: string | null;
   remoteType: RemoteType | null;
+  status: JobStatus;
   lastObservedAt: string;
   eligible: boolean;
   createdAt: string;
@@ -238,7 +242,21 @@ export interface AdminConsoleJobDetail extends AdminConsoleJobSummary {
   salaryMin: number | null;
   salaryMax: number | null;
   skills: string[];
+  deactivatedAt: string | null;
+  deactivationReason: JobDeactivationReason | null;
   updatedAt: string;
+}
+
+export interface AdminConsoleDeactivateJobRequest {
+  reason: JobDeactivationReason;
+  stepUpProof: string;
+}
+
+export interface AdminConsoleDeactivateJobResponse {
+  jobId: string;
+  status: JobStatus.deactivated;
+  deactivatedAt: string;
+  reason: JobDeactivationReason;
 }
 
 export interface AdminConsoleResumeFailuresRequest {

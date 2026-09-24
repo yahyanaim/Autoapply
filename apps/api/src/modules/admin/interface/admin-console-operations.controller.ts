@@ -1,11 +1,32 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { Roles } from '../../auth/interface/decorators/roles.decorator';
 import { RolesGuard } from '../../auth/interface/guards/roles.guard';
 import { AdminOperationsService } from '../application/admin-operations.service';
+import { AdminJobsService } from '../application/admin-jobs.service';
+import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
+import { RequestContextService } from '../../../shared/observability/request-context.service';
 import { AdminConsoleEnabledGuard } from './guards/admin-console-enabled.guard';
 import {
   AdminConsoleApplicationsQueryDto,
@@ -13,6 +34,8 @@ import {
   AdminConsoleBetaGateResponseDto,
   AdminConsoleIdParamDto,
   AdminConsoleJobDetailResponseDto,
+  AdminConsoleDeactivateJobDto,
+  AdminConsoleDeactivateJobResponseDto,
   AdminConsoleJobsQueryDto,
   AdminConsoleJobsResponseDto,
   AdminConsoleNotificationsQueryDto,
@@ -32,7 +55,11 @@ import {
 @ApiResponse({ status: 401, description: 'Authentication required' })
 @ApiResponse({ status: 403, description: 'Admin Console access denied' })
 export class AdminConsoleOperationsController {
-  constructor(private readonly operations: AdminOperationsService) {}
+  constructor(
+    private readonly operations: AdminOperationsService,
+    private readonly adminJobs: AdminJobsService,
+    private readonly requestContext: RequestContextService,
+  ) {}
 
   @Get('jobs')
   @ApiOperation({ summary: 'List sanitized operational jobs' })
@@ -48,6 +75,50 @@ export class AdminConsoleOperationsController {
   @ApiResponse({ status: 404, description: 'Job not found' })
   getJob(@Param() params: AdminConsoleIdParamDto) {
     return this.operations.getJob(params.id);
+  }
+
+  @Post('jobs/:id/deactivate')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Deactivate one job with a bound step-up proof' })
+  @ApiParam({ name: 'id', description: 'Prisma CUID job identifier' })
+  @ApiHeader({
+    name: 'X-Admin-Step-Up-Proof',
+    required: true,
+    description: 'Single-use proof bound to this actor, session, action, and job',
+  })
+  @ApiBody({ type: AdminConsoleDeactivateJobDto })
+  @ApiResponse({ status: 200, type: AdminConsoleDeactivateJobResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid deactivation request or proof' })
+  @ApiResponse({ status: 401, description: 'Step-up proof is invalid' })
+  @ApiResponse({ status: 403, description: 'Admin Console access denied' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  async deactivateJob(
+    @Param() params: AdminConsoleIdParamDto,
+    @Headers('x-admin-step-up-proof') stepUpProof: string | undefined,
+    @CurrentUser('id') actorUserId: string,
+    @CurrentUser('sessionId') sessionId: string,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('mfaVerified') mfaVerified: boolean,
+    @Body() input: AdminConsoleDeactivateJobDto,
+  ) {
+    const mutation = await this.adminJobs.deactivate({
+      context: {
+        actorUserId,
+        sessionId,
+        role,
+        mfaVerified,
+        correlationId: this.requestContext.getRequestId(),
+      },
+      jobId: params.id,
+      reason: input.reason,
+      stepUpProof: stepUpProof ?? '',
+    });
+    return {
+      jobId: mutation.jobId,
+      status: mutation.status,
+      deactivatedAt: mutation.deactivatedAt.toISOString(),
+      reason: mutation.reason,
+    };
   }
 
   @Get('resume-failures')

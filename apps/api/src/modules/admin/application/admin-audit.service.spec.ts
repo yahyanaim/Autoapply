@@ -182,6 +182,7 @@ describe('AdminAuditService', () => {
     ['admin.user.reactivate', 'admin_user_reactivate'],
     ['admin.session.revoke', 'admin_session_revoke'],
     ['admin.session.revoke_all', 'admin_session_revoke_all'],
+    ['admin.job.deactivate', 'admin_job_deactivate'],
   ] as const)('uses a non-denial type for successful %s events', async (action, type) => {
     await service.write(transaction as never, {
       actorUserId: 'admin-1',
@@ -196,6 +197,47 @@ describe('AdminAuditService', () => {
     const persisted = activityLog.create.mock.calls[0][0].data;
     expect(persisted.type).toBe(type);
     expect(persisted.type).not.toBe('access_denied');
+  });
+
+  it('writes a redacted job-deactivation event without request or credential data', async () => {
+    await service.write(transaction as never, {
+      actorUserId: 'admin-1',
+      targetType: 'job',
+      targetId: 'job-1',
+      action: 'admin.job.deactivate',
+      correlationId: 'request_12345678',
+      ipAddress: '192.0.2.1',
+      userAgent: 'private-agent',
+      before: { status: 'active', proof: 'raw-proof' },
+      after: {
+        status: 'deactivated',
+        reason: 'security_risk',
+        deactivatedAt: '2026-09-24T10:00:00.000Z',
+        token: 'raw-token',
+        requestBody: { secret: 'private' },
+      },
+    });
+
+    const persisted = activityLog.create.mock.calls[0][0].data;
+    expect(persisted).toEqual(
+      expect.objectContaining({
+        type: 'admin_job_deactivate',
+        action: 'admin.job.deactivate',
+        targetType: 'job',
+        targetId: 'job-1',
+        before: { status: 'active' },
+        after: {
+          status: 'deactivated',
+          reason: 'security_risk',
+          deactivatedAt: '2026-09-24T10:00:00.000Z',
+        },
+        ipAddress: undefined,
+        userAgent: undefined,
+      }),
+    );
+    expect(JSON.stringify(persisted)).not.toMatch(
+      /raw-proof|raw-token|private-agent|192\.0\.2\.1|requestBody|secret/i,
+    );
   });
 
   it('fails closed for an unmapped action without writing an access-denied audit row', async () => {

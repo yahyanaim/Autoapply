@@ -8,6 +8,8 @@ const SAFE_AUDIT_FIELDS = new Set([
   'plan',
   'enabled',
   'suspendedAt',
+  'deactivatedAt',
+  'reason',
 ]);
 const SAFE_AUDIT_ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
   status: new Set([
@@ -19,9 +21,18 @@ const SAFE_AUDIT_ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
     'canceled',
     'enabled',
     'disabled',
+    'deactivated',
   ]),
   role: new Set(['user', 'org_admin', 'platform_admin']),
   plan: new Set(['free', 'pro', 'premium']),
+  reason: new Set([
+    'provider_removed',
+    'invalid_listing',
+    'duplicate',
+    'policy_violation',
+    'security_risk',
+    'other',
+  ]),
 };
 const SAFE_IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/;
 const SAFE_CORRELATION_ID = /^[A-Za-z0-9_-]{8,128}$/;
@@ -31,6 +42,7 @@ const ADMIN_ACTION_TYPES: Readonly<Record<string, ActivityType>> = {
   'admin.user.reactivate': ActivityType.admin_user_reactivate,
   'admin.session.revoke': ActivityType.admin_session_revoke,
   'admin.session.revoke_all': ActivityType.admin_session_revoke_all,
+  'admin.job.deactivate': ActivityType.admin_job_deactivate,
 };
 
 export type AdminAuditSnapshot = Readonly<Record<string, unknown>>;
@@ -73,6 +85,8 @@ export interface AdminAuditSafeSnapshot {
   plan?: string;
   enabled?: boolean;
   suspendedAt?: string | null;
+  deactivatedAt?: string | null;
+  reason?: string;
 }
 
 export interface AdminAuditLogEntry {

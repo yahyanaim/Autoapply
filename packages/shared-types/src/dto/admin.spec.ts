@@ -10,6 +10,7 @@ import type {
   AdminConsoleRevokeUserSessionsResponse,
   AdminConsoleJobSummary,
   AdminConsoleJobDetail,
+  AdminConsoleDeactivateJobResponse,
   AdminConsoleResumeFailure,
   AdminConsoleBetaGateResponse,
   AdminConsoleNotificationFailure,
@@ -118,6 +119,7 @@ void bulkRevocation;
 
 declare const operationalJob: AdminConsoleJobSummary;
 operationalJob.lastObservedAt satisfies string;
+operationalJob.status satisfies 'active' | 'deactivated';
 // @ts-expect-error Job operations must never expose descriptions or captured-user data.
 operationalJob.description;
 // @ts-expect-error Job operations must never expose captured-user data.
@@ -126,6 +128,14 @@ operationalJob.capturedByUserId;
 declare const operationalJobDetail: AdminConsoleJobDetail;
 // @ts-expect-error Admin job details must never expose captured source URLs.
 operationalJobDetail.sourceUrl;
+
+declare const deactivatedJob: AdminConsoleDeactivateJobResponse;
+deactivatedJob.status satisfies 'deactivated';
+deactivatedJob.reason satisfies string;
+// @ts-expect-error Deactivation responses must never expose actor identity.
+deactivatedJob.deactivatedByUserId;
+// @ts-expect-error Deactivation responses must never expose captured URLs.
+deactivatedJob.sourceUrl;
 
 declare const resumeFailure: AdminConsoleResumeFailure;
 resumeFailure.failureCategory satisfies 'processing_failed';
