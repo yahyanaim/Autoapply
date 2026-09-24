@@ -78,6 +78,16 @@ describe('ResumeRequeueCommandService', () => {
         reason: 'provider_recovered',
       },
     });
+    expect(transaction.resume.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          parseExecutions: expect.objectContaining({
+            where: { generation: 0 },
+            take: 1,
+          }),
+        }),
+      }),
+    );
     expect(transaction.resumeParseExecution.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         resumeId: 'resume-1',
@@ -223,7 +233,19 @@ describe('ResumeRequeueCommandService', () => {
     );
   });
 
-  it('maps a database uniqueness race to deterministic owning-service resolution', async () => {
+  it('routes a successor created by a concurrent winner through durable conflict resolution', async () => {
+    transaction.resumeParseExecution.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'execution-1' });
+
+    await expect(
+      service.requestRequeueInTransaction(transaction as never, input),
+    ).rejects.toBeInstanceOf(ResumeRequeuePersistenceConflict);
+    expect(transaction.resume.findUnique).not.toHaveBeenCalled();
+    expect(transaction.resumeParseExecution.create).not.toHaveBeenCalled();
+  });
+
+  it('resolves a concurrent winner through durable uniqueness without re-evaluating its successor', async () => {
     transaction.resumeParseExecution.create.mockRejectedValue({ code: 'P2002' });
     await expect(
       service.requestRequeueInTransaction(transaction as never, input),
@@ -241,5 +263,23 @@ describe('ResumeRequeueCommandService', () => {
       status: 'requeue_requested',
       requestedAt,
     });
+  });
+
+  it('returns a safe conflict when a different idempotency key loses the successor race', async () => {
+    transaction.resumeParseExecution.create.mockRejectedValue({ code: 'P2002' });
+    await expect(
+      service.requestRequeueInTransaction(transaction as never, {
+        ...input,
+        idempotencyKey: 'different-requeue-request-0002',
+      }),
+    ).rejects.toBeInstanceOf(ResumeRequeuePersistenceConflict);
+
+    prisma.resumeParseExecution.findUnique.mockResolvedValue(null);
+    await expect(
+      service.resolveIdempotentResult({
+        ...input,
+        idempotencyKey: 'different-requeue-request-0002',
+      }),
+    ).rejects.toEqual(new ConflictException('Resume requeue request conflicted'));
   });
 });

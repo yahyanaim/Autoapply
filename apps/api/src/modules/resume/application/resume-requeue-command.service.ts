@@ -84,6 +84,22 @@ export class ResumeRequeueCommandService {
       throw new ResumeRequeueReplay();
     }
 
+    const existingSuccessor = await transaction.resumeParseExecution.findUnique({
+      where: {
+        resumeId_generation: {
+          resumeId: input.resumeId,
+          generation: MAX_ADMIN_GENERATION,
+        },
+      },
+      select: { id: true },
+    });
+    if (existingSuccessor) {
+      // The Admin boundary resolves this marker by the submitted durable
+      // idempotency key. An exact duplicate returns the original result; a
+      // different key receives the documented safe conflict.
+      throw new ResumeRequeuePersistenceConflict();
+    }
+
     const resume = await transaction.resume.findUnique({
       where: { id: input.resumeId },
       select: {
@@ -91,7 +107,12 @@ export class ResumeRequeueCommandService {
         parseStatus: true,
         user: { select: { dataProcessingConsentAt: true } },
         parseExecutions: {
-          orderBy: { generation: 'desc' },
+          // Eligibility belongs to the immutable initial failure. A
+          // concurrent winner may already have created generation 1 by the
+          // time this statement runs; that successor must be resolved by the
+          // existing generation/idempotency uniqueness constraints instead
+          // of being re-evaluated as the failed target.
+          where: { generation: 0 },
           take: 1,
           select: {
             id: true,
