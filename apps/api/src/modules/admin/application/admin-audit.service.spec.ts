@@ -183,6 +183,7 @@ describe('AdminAuditService', () => {
     ['admin.session.revoke', 'admin_session_revoke'],
     ['admin.session.revoke_all', 'admin_session_revoke_all'],
     ['admin.job.deactivate', 'admin_job_deactivate'],
+    ['admin.resume.requeue', 'admin_resume_requeue'],
   ] as const)('uses a non-denial type for successful %s events', async (action, type) => {
     await service.write(transaction as never, {
       actorUserId: 'admin-1',
@@ -237,6 +238,54 @@ describe('AdminAuditService', () => {
     );
     expect(JSON.stringify(persisted)).not.toMatch(
       /raw-proof|raw-token|private-agent|192\.0\.2\.1|requestBody|secret/i,
+    );
+  });
+
+  it('writes a redacted resume-requeue event without resume content or request secrets', async () => {
+    await service.write(transaction as never, {
+      actorUserId: 'admin-1',
+      targetType: 'resume',
+      targetId: 'resume-1',
+      action: 'admin.resume.requeue',
+      correlationId: 'request_12345678',
+      ipAddress: '192.0.2.1',
+      userAgent: 'private-agent',
+      before: {
+        status: 'failed',
+        failureCategory: 'provider_transient',
+        parsedJson: { fullName: 'Private Candidate' },
+        originalFileUrl: 's3://private/resume.pdf',
+        proof: 'raw-proof',
+      },
+      after: {
+        status: 'requeue_requested',
+        reason: 'provider_recovered',
+        token: 'raw-token',
+        requestBody: { prompt: 'private' },
+      },
+    });
+
+    const persisted = activityLog.create.mock.calls[0][0].data;
+    expect(persisted).toEqual(
+      expect.objectContaining({
+        type: 'admin_resume_requeue',
+        action: 'admin.resume.requeue',
+        targetType: 'resume',
+        targetId: 'resume-1',
+        before: {
+          status: 'failed',
+          failureCategory: 'provider_transient',
+        },
+        after: {
+          status: 'requeue_requested',
+          reason: 'provider_recovered',
+        },
+        ipAddress: undefined,
+        userAgent: undefined,
+      }),
+    );
+    expect(JSON.stringify(persisted)).not.toMatch(
+      /Private Candidate|s3:\/\/|raw-proof|raw-token|private-agent|192\.0\.2\.1|requestBody|prompt/i,
     );
   });
 

@@ -7,7 +7,11 @@ import type {
   AdminConsoleJobsRequest,
   AdminConsoleNotificationsRequest,
 } from '@applyai/shared-types';
-import { JobDeactivationReason } from '@applyai/shared-types';
+import {
+  JobDeactivationReason,
+  ResumeParseFailureCategory,
+  ResumeRequeueReason,
+} from '@applyai/shared-types';
 import { adminApiClient } from '@/lib/api/admin-api-client';
 import { Button } from '@/components/ui/Button';
 
@@ -28,6 +32,21 @@ function Loading({ label }: { label: string }) {
 function Pagination({ cursor, setCursor, history, setHistory, nextCursor }: { cursor?: string; setCursor: (value?: string) => void; history: Array<string | undefined>; setHistory: React.Dispatch<React.SetStateAction<Array<string | undefined>>>; nextCursor: string | null }) {
   const next = typeof nextCursor === 'string' && nextCursor.trim() ? nextCursor : undefined;
   return <div className="flex items-center justify-between gap-3"><Button variant="outline" size="sm" disabled={!history.length} onClick={() => { const previous = history.length ? history[history.length - 1] : undefined; setHistory((items) => items.slice(0, -1)); setCursor(previous); }}>Previous</Button><span className="text-xs text-gray-500">Cursor pagination</span>{next ? <Button variant="outline" size="sm" onClick={() => { setHistory((items) => [...items, cursor]); setCursor(next); }}>Next</Button> : <span />}</div>;
+}
+
+function requeueReasonFor(
+  category: ResumeParseFailureCategory,
+): ResumeRequeueReason | undefined {
+  if (category === ResumeParseFailureCategory.provider_transient) {
+    return ResumeRequeueReason.provider_recovered;
+  }
+  if (category === ResumeParseFailureCategory.storage_transient) {
+    return ResumeRequeueReason.storage_recovered;
+  }
+  if (category === ResumeParseFailureCategory.worker_crash) {
+    return ResumeRequeueReason.worker_recovery;
+  }
+  return undefined;
 }
 
 export function AdminJobsPage() {
@@ -73,12 +92,40 @@ export function AdminJobsPage() {
 export function AdminResumeFailuresPage() {
   const [cursor, setCursor] = useState<string>();
   const [history, setHistory] = useState<Array<string | undefined>>([]);
+  const [selectedResumeId, setSelectedResumeId] = useState<string>();
+  const [reason, setReason] = useState<ResumeRequeueReason>();
+  const [code, setCode] = useState('');
+  const [idempotencyKey, setIdempotencyKey] = useState('');
+  const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ['admin-console', 'resume-failures', cursor], queryFn: () => adminApiClient.adminConsole.resumeFailures({ limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) }) });
+  const requeue = useMutation({
+    mutationFn: async (resumeId: string) => {
+      if (!reason || !idempotencyKey) throw new Error('Missing safe requeue context');
+      const issued = await adminApiClient.adminConsole.issueStepUp({
+        code,
+        action: 'admin.resume.requeue',
+        targetType: 'resume',
+        targetId: resumeId,
+      });
+      return adminApiClient.adminConsole.requeueResume(resumeId, {
+        reason,
+        stepUpProof: issued.proof,
+        idempotencyKey,
+      });
+    },
+    onSuccess: async () => {
+      setCode('');
+      setReason(undefined);
+      setSelectedResumeId(undefined);
+      setIdempotencyKey('');
+      await queryClient.invalidateQueries({ queryKey: ['admin-console', 'resume-failures'] });
+    },
+  });
   if (query.isLoading) return <Loading label="Loading resume failures" />;
   if (query.isError) return <State title="Could not load resume failures" detail="The safe failure projection is unavailable." retry={() => void query.refetch()} />;
   const data = query.data;
   if (!data) return null;
-  return <section className="space-y-5"><Header title="Resume Failures" detail="Sanitized processing state only. Requeue is unavailable until an owning idempotent command exists." />{data.failures.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Resume reference</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Executions</th><th className="px-4 py-3">Failed</th></tr></thead><tbody className="divide-y divide-stone-100">{data.failures.map((failure) => <tr key={failure.resumeId}><td className="px-4 py-3 font-mono text-xs">{failure.resumeId}</td><td className="px-4 py-3">{failure.mimeType ?? 'Unknown'}</td><td className="px-4 py-3 tabular-nums">{failure.executionCount}</td><td className="px-4 py-3 whitespace-nowrap">{new Date(failure.failedAt).toLocaleString()}</td></tr>)}</tbody></table></div> : <State title="No resume failures" detail="No failed resume-processing records were returned." />}<Pagination cursor={cursor} setCursor={setCursor} history={history} setHistory={setHistory} nextCursor={data.nextCursor} /></section>;
+  return <section className="space-y-5"><Header title="Resume Failures" detail="Sanitized processing state with one bounded administrative requeue for explicitly transient failures." />{data.failures.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Resume reference</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Failure</th><th className="px-4 py-3">Attempts</th><th className="px-4 py-3">Failed</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-stone-100">{data.failures.map((failure) => { const mappedReason = requeueReasonFor(failure.failureCategory); return <tr key={failure.resumeId}><td className="px-4 py-3 font-mono text-xs">{failure.resumeId}</td><td className="px-4 py-3">{failure.mimeType ?? 'Unknown'}</td><td className="px-4 py-3">{failure.failureCategory.replaceAll('_', ' ')}</td><td className="px-4 py-3 tabular-nums">{failure.executionCount}</td><td className="px-4 py-3 whitespace-nowrap">{new Date(failure.failedAt).toLocaleString()}</td><td className="px-4 py-3">{failure.requeueable && mappedReason ? <Button variant="outline" size="sm" onClick={() => { setSelectedResumeId(failure.resumeId); setReason(mappedReason); setCode(''); setIdempotencyKey(crypto.randomUUID()); requeue.reset(); }}>Requeue</Button> : <span className="text-xs text-gray-500">Not requeueable</span>}</td></tr>; })}</tbody></table></div> : <State title="No resume failures" detail="No failed resume-processing records were returned." />}{selectedResumeId && reason ? <form className="grid gap-3 border border-orange-200 bg-orange-50 p-4 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end" onSubmit={(event) => { event.preventDefault(); requeue.mutate(selectedResumeId); }}><p className="text-sm text-gray-700"><span className="block text-xs font-medium">Approved reason</span>{reason.replaceAll('_', ' ')}</p><label className="grid gap-1 text-xs font-medium text-gray-700">Authenticator code<input aria-label="Resume requeue authenticator code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="h-9 rounded-md border border-stone-300 bg-white px-3 text-sm" /></label><Button type="submit" size="sm" disabled={code.length !== 6 || requeue.isPending}>{requeue.isPending ? 'Requesting…' : 'Confirm requeue'}</Button><Button type="button" variant="outline" size="sm" onClick={() => { setSelectedResumeId(undefined); setReason(undefined); setIdempotencyKey(''); }}>Cancel</Button>{requeue.isError ? <p role="alert" className="text-sm text-red-700 sm:col-span-4">Resume requeue failed. Verify eligibility and the step-up code, then retry.</p> : null}</form> : null}<Pagination cursor={cursor} setCursor={setCursor} history={history} setHistory={setHistory} nextCursor={data.nextCursor} /></section>;
 }
 
 export function AdminBetaGatePage() {

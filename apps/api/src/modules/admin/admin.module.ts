@@ -24,6 +24,7 @@ import { ApplicationModule } from '../application-tracker/application-tracker.mo
 import { AdminOperationsService } from './application/admin-operations.service';
 import { AdminConsoleOperationsController } from './interface/admin-console-operations.controller';
 import { AdminJobsService } from './application/admin-jobs.service';
+import { AdminResumesService } from './application/admin-resumes.service';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { AdminJobsService } from './application/admin-jobs.service';
     AdminSessionsService,
     AdminOperationsService,
     AdminJobsService,
+    AdminResumesService,
   ],
   controllers: [
     AdminController,

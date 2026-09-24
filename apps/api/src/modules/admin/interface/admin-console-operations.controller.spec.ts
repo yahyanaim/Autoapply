@@ -10,6 +10,7 @@ import { AdminOperationsService } from '../application/admin-operations.service'
 import { AdminConsoleOperationsController } from './admin-console-operations.controller';
 import { AdminConsoleEnabledGuard } from './guards/admin-console-enabled.guard';
 import { AdminJobsService } from '../application/admin-jobs.service';
+import { AdminResumesService } from '../application/admin-resumes.service';
 import { RequestContextService } from '../../../shared/observability/request-context.service';
 
 describe('AdminConsoleOperationsController', () => {
@@ -30,10 +31,18 @@ describe('AdminConsoleOperationsController', () => {
       reason: 'invalid_listing',
     }),
   };
+  const adminResumes = {
+    requeue: jest.fn().mockResolvedValue({
+      resumeId: 'ckz8dc7m40000qwertyuiop12',
+      requeueRequestId: 'ckz8dc7m40001qwertyuiop12',
+      status: 'requeue_requested',
+      requestedAt: new Date('2026-09-25T10:00:00.000Z'),
+    }),
+  };
 
   async function createApp(options: { enabled?: boolean; authenticated?: boolean; user?: { role: UserRole; mfaVerified: boolean } } = {}) {
     const jwtGuard: CanActivate = { canActivate(context: ExecutionContext) { if (options.authenticated === false) throw new UnauthorizedException(); context.switchToHttp().getRequest().user = options.user ?? { id: 'admin-1', sessionId: 'session-1', role: UserRole.platform_admin, mfaVerified: true }; return true; } };
-    const moduleRef = await Test.createTestingModule({ controllers: [AdminConsoleOperationsController], providers: [{ provide: AdminOperationsService, useValue: operations }, { provide: AdminJobsService, useValue: adminJobs }, { provide: RequestContextService, useValue: { getRequestId: () => 'request_12345678' } }, JwtAuthGuard, RolesGuard, Reflector, AdminConsoleEnabledGuard, { provide: ConfigService, useValue: { get: jest.fn(() => options.enabled ?? true) } }] }).overrideGuard(JwtAuthGuard).useValue(jwtGuard).compile();
+    const moduleRef = await Test.createTestingModule({ controllers: [AdminConsoleOperationsController], providers: [{ provide: AdminOperationsService, useValue: operations }, { provide: AdminJobsService, useValue: adminJobs }, { provide: AdminResumesService, useValue: adminResumes }, { provide: RequestContextService, useValue: { getRequestId: () => 'request_12345678' } }, JwtAuthGuard, RolesGuard, Reflector, AdminConsoleEnabledGuard, { provide: ConfigService, useValue: { get: jest.fn(() => options.enabled ?? true) } }] }).overrideGuard(JwtAuthGuard).useValue(jwtGuard).compile();
     const app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
@@ -98,12 +107,49 @@ describe('AdminConsoleOperationsController', () => {
     await app.close();
   });
 
+  it('validates and delegates a bound idempotent resume requeue', async () => {
+    const app = await createApp();
+    const resumeId = 'ckz8dc7m40000qwertyuiop12';
+    await request(app.getHttpServer())
+      .post(`/admin/console/resume-failures/${resumeId}/requeue`)
+      .set('X-Admin-Step-Up-Proof', 'proof-value')
+      .set('Idempotency-Key', 'resume-requeue-request-0001')
+      .send({ reason: 'provider_recovered' })
+      .expect(200)
+      .expect({
+        resumeId,
+        requeueRequestId: 'ckz8dc7m40001qwertyuiop12',
+        status: 'requeue_requested',
+        requestedAt: '2026-09-25T10:00:00.000Z',
+      });
+    expect(adminResumes.requeue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resumeId,
+        reason: 'provider_recovered',
+        idempotencyKey: 'resume-requeue-request-0001',
+        stepUpProof: 'proof-value',
+        context: expect.objectContaining({
+          actorUserId: 'admin-1',
+          sessionId: 'session-1',
+        }),
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .post(`/admin/console/resume-failures/${resumeId}/requeue`)
+      .set('X-Admin-Step-Up-Proof', 'proof-value')
+      .send({ reason: 'not-approved', unexpected: true })
+      .expect(400);
+    await app.close();
+  });
+
   it('keeps the Admin throttle and injects no Prisma service', () => {
     expect(Reflect.getMetadata('THROTTLER:LIMITdefault', AdminConsoleOperationsController)).toBe(50);
     expect(Reflect.getMetadata('THROTTLER:TTLdefault', AdminConsoleOperationsController)).toBe(15 * 60_000);
     expect(Reflect.getMetadata('design:paramtypes', AdminConsoleOperationsController)).toEqual([
       AdminOperationsService,
       AdminJobsService,
+      AdminResumesService,
       RequestContextService,
     ]);
   });

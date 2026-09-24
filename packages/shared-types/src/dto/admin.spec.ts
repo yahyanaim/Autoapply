@@ -12,10 +12,13 @@ import type {
   AdminConsoleJobDetail,
   AdminConsoleDeactivateJobResponse,
   AdminConsoleResumeFailure,
+  AdminConsoleRequeueResumeRequest,
+  AdminConsoleRequeueResumeResponse,
   AdminConsoleBetaGateResponse,
   AdminConsoleNotificationFailure,
   AdminConsoleApplicationsResponse,
 } from './admin';
+import { ResumeRequeueReason } from '../enums';
 
 declare const user: AdminConsoleUserSummary;
 
@@ -138,11 +141,28 @@ deactivatedJob.deactivatedByUserId;
 deactivatedJob.sourceUrl;
 
 declare const resumeFailure: AdminConsoleResumeFailure;
-resumeFailure.failureCategory satisfies 'processing_failed';
+resumeFailure.failureCategory satisfies string;
+resumeFailure.requeueable satisfies boolean;
 // @ts-expect-error Resume failure operations must never expose parsed CV content.
 resumeFailure.parsedJson;
 // @ts-expect-error Resume failure operations must never expose file locations.
 resumeFailure.originalFileUrl;
+
+const resumeRequeue: AdminConsoleRequeueResumeRequest = {
+  reason: ResumeRequeueReason.provider_recovered,
+  stepUpProof: 'proof',
+  idempotencyKey: 'resume-requeue-request-0001',
+};
+declare const resumeRequeueResult: AdminConsoleRequeueResumeResponse;
+resumeRequeueResult.resumeId satisfies string;
+resumeRequeueResult.requeueRequestId satisfies string;
+resumeRequeueResult.status satisfies 'requeue_requested';
+// @ts-expect-error Requeue responses must never expose resume content.
+resumeRequeueResult.parsedJson;
+// @ts-expect-error Requeue responses must never expose queue payloads or hashes.
+resumeRequeueResult.idempotencyKeyHash;
+
+void resumeRequeue;
 
 declare const betaGate: AdminConsoleBetaGateResponse;
 betaGate.remainingSlots satisfies number;

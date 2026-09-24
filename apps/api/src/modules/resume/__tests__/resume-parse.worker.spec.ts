@@ -16,13 +16,37 @@ describe('ResumeParseWorker queue admission', () => {
       add: jest.fn().mockResolvedValue({ id: 'dlq_1' }),
       close: jest.fn(),
     };
-    const prisma = {
+    const prisma: any = {
       activityLog: { create: jest.fn().mockResolvedValue({ id: 'activity-1' }) },
+      resume: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      resumeParseExecution: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'execution-1',
+          resumeId: 'r1',
+          executionBoundary: 'free',
+          status: 'queued',
+          attemptCount: 0,
+          maxAttempts: 3,
+        }),
+        create: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       resumeParseExecutionClaim: {
-        create: jest.fn().mockResolvedValue({ id: 'claim-1' }),
-        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: 'claim-1',
+          attempt: 1,
+          retryAuthorizedAttempt: null,
+          leaseVersion: 0,
+          leaseExpiresAt: null,
+          executionId: 'execution-1',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
+    prisma.$transaction = jest.fn(
+      (callback: (transaction: any) => unknown): unknown => callback(prisma),
+    );
     const planAwareRouter = {
       resolve: jest.fn().mockResolvedValue({ boundary: 'free' }),
     };
@@ -96,6 +120,44 @@ describe('ResumeParseWorker queue admission', () => {
     );
   });
 
+  it('classifies an expired terminal worker lease as an explicitly requeueable crash', async () => {
+    const { worker, prisma, deadLetterQueue } = createWorker();
+    prisma.resumeParseExecution.findUnique.mockResolvedValue({
+      id: 'execution-1',
+      resumeId: 'r1',
+      status: 'processing',
+      claim: {
+        id: 'claim-1',
+        queueName: 'resume-parse-free',
+        leaseVersion: 2,
+        leaseExpiresAt: new Date('2026-09-14T23:59:59.000Z'),
+      },
+    });
+
+    await (worker as any).handleTerminalFailure(
+      signedFreeJob({ attemptsMade: 3 }),
+      new Error('worker process exited'),
+      'resume-parse-free',
+      false,
+    );
+
+    expect(prisma.resumeParseExecution.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'execution-1',
+        status: { in: ['processing', 'retrying'] },
+      },
+      data: {
+        status: 'failed_requeueable',
+        failureCategory: 'worker_crash',
+        failedAt: new Date('2026-09-15T00:00:00.000Z'),
+      },
+    });
+    expect(prisma.resume.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'r1' } }),
+    );
+    expect(deadLetterQueue.add).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects a job copied to a different plan queue before verification or parsing', async () => {
     const { worker, signature, resumeService, planAwareRouter } = createWorker();
     const job = signedFreeJob({
@@ -147,19 +209,32 @@ describe('ResumeParseWorker queue admission', () => {
   it('rejects a duplicate delivery when no prior failure authorized a retry', async () => {
     const { worker, prisma, resumeService, planAwareRouter } = createWorker();
     prisma.resumeParseExecutionClaim.create.mockRejectedValue({ code: 'P2002' });
+    prisma.resumeParseExecutionClaim.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'claim-1',
+        attempt: 1,
+        retryAuthorizedAttempt: null,
+        leaseVersion: 1,
+        leaseExpiresAt: new Date('2026-09-15T00:05:00.000Z'),
+        executionId: 'execution-1',
+      });
 
     await expect(
       (worker as any).processJob('free', signedFreeJob()),
     ).rejects.toMatchObject({ name: 'UnrecoverableError' });
 
-    expect(prisma.resumeParseExecutionClaim.create).toHaveBeenCalledWith({
-      data: {
+    expect(prisma.resumeParseExecutionClaim.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
         resumeId: 'r1',
+        executionId: 'execution-1',
         queueName: 'resume-parse-free',
         jobId: 'resume-parse-free-r1',
         attempt: 1,
-      },
-    });
+        }),
+      }),
+    );
     expect(planAwareRouter.resolve).not.toHaveBeenCalled();
     expect(resumeService.parse).not.toHaveBeenCalled();
     expect(resumeService.markParseFailed).not.toHaveBeenCalled();
@@ -167,7 +242,14 @@ describe('ResumeParseWorker queue admission', () => {
 
   it('does not treat a replayed original payload as a new retry merely because attemptsMade changed', async () => {
     const { worker, prisma, resumeService, planAwareRouter } = createWorker();
-    prisma.resumeParseExecutionClaim.create.mockRejectedValue({ code: 'P2002' });
+    prisma.resumeParseExecutionClaim.findUnique.mockResolvedValue({
+      id: 'claim-1',
+      attempt: 1,
+      retryAuthorizedAttempt: null,
+      leaseVersion: 1,
+      leaseExpiresAt: new Date('2026-09-15T00:05:00.000Z'),
+      executionId: 'execution-1',
+    });
 
     await expect(
       (worker as any).processJob(
@@ -176,37 +258,98 @@ describe('ResumeParseWorker queue admission', () => {
       ),
     ).rejects.toMatchObject({ name: 'UnrecoverableError' });
 
-    expect(prisma.resumeParseExecutionClaim.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ attempt: 2 }),
-    });
-    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        attempt: 1,
-        retryAuthorizedAttempt: 2,
-      }),
-      data: { attempt: 2, retryAuthorizedAttempt: null },
-    });
+    expect(prisma.resumeParseExecutionClaim.create).not.toHaveBeenCalled();
+    expect(prisma.resumeParseExecutionClaim.updateMany).not.toHaveBeenCalled();
     expect(planAwareRouter.resolve).not.toHaveBeenCalled();
+    expect(resumeService.parse).not.toHaveBeenCalled();
+  });
+
+  it('never trusts altered BullMQ retry options beyond the durable three-attempt cap', async () => {
+    const { worker, prisma, resumeService } = createWorker();
+
+    await expect(
+      (worker as any).processJob(
+        'free',
+        signedFreeJob({ attemptsMade: 3, opts: { attempts: 100 } }),
+      ),
+    ).rejects.toMatchObject({ name: 'UnrecoverableError' });
+
+    expect(prisma.resumeParseExecutionClaim.findUnique).not.toHaveBeenCalled();
     expect(resumeService.parse).not.toHaveBeenCalled();
   });
 
   it('admits a later delivery only when the preceding real failure authorized that exact retry', async () => {
     const { worker, prisma, resumeService } = createWorker();
-    prisma.resumeParseExecutionClaim.create.mockRejectedValue({ code: 'P2002' });
-    prisma.resumeParseExecutionClaim.updateMany.mockResolvedValue({ count: 1 });
+    prisma.resumeParseExecutionClaim.findUnique.mockResolvedValue({
+      id: 'claim-1',
+      attempt: 1,
+      retryAuthorizedAttempt: 2,
+      leaseVersion: 1,
+      leaseExpiresAt: null,
+      executionId: 'execution-1',
+    });
 
     await expect(
       (worker as any).processJob('free', signedFreeJob({ attemptsMade: 1 })),
     ).resolves.toEqual({ id: 'r1' });
 
-    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        attempt: 1,
-        retryAuthorizedAttempt: 2,
+    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          attempt: 1,
+          retryAuthorizedAttempt: 2,
+        }),
+        data: expect.objectContaining({
+          attempt: 2,
+          retryAuthorizedAttempt: null,
+          leaseVersion: 2,
+        }),
       }),
-      data: { attempt: 2, retryAuthorizedAttempt: null },
-    });
+    );
     expect(resumeService.parse).toHaveBeenCalledTimes(1);
+  });
+
+  it('links a retained pre-migration claim to its durable execution without losing attempt history', async () => {
+    const { worker, prisma, resumeService } = createWorker();
+    prisma.resumeParseExecutionClaim.findUnique.mockResolvedValue({
+      id: 'legacy-claim-1',
+      attempt: 1,
+      retryAuthorizedAttempt: null,
+      leaseVersion: 0,
+      leaseExpiresAt: null,
+      executionId: null,
+    });
+
+    await expect(
+      (worker as any).processJob('free', signedFreeJob()),
+    ).resolves.toEqual({ id: 'r1' });
+
+    expect(prisma.resumeParseExecutionClaim.create).not.toHaveBeenCalled();
+    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'legacy-claim-1',
+          executionId: null,
+          attempt: 1,
+          leaseVersion: 0,
+        }),
+        data: expect.objectContaining({
+          executionId: 'execution-1',
+          attempt: 1,
+          retryAuthorizedAttempt: null,
+          leaseVersion: 1,
+        }),
+      }),
+    );
+    expect(resumeService.parse).toHaveBeenCalledWith(
+      'r1',
+      'free',
+      expect.objectContaining({
+        executionId: 'execution-1',
+        claimId: 'legacy-claim-1',
+        leaseVersion: 1,
+      }),
+    );
   });
 
   it('authorizes exactly one later BullMQ delivery only after a retryable parse failure', async () => {
@@ -220,13 +363,15 @@ describe('ResumeParseWorker queue admission', () => {
       (worker as any).processJob('free', signedFreeJob()),
     ).rejects.toThrow('Resume parsing failed');
 
-    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        attempt: 1,
-        retryAuthorizedAttempt: null,
+    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          attempt: 1,
+          retryAuthorizedAttempt: null,
+        }),
+        data: expect.objectContaining({ retryAuthorizedAttempt: 2 }),
       }),
-      data: { retryAuthorizedAttempt: 2 },
-    });
+    );
     expect(resumeService.markParseFailed).not.toHaveBeenCalled();
   });
 
@@ -240,12 +385,15 @@ describe('ResumeParseWorker queue admission', () => {
       (worker as any).processJob('free', signedFreeJob()),
     ).rejects.toMatchObject({ name: 'UnrecoverableError' });
 
-    expect(prisma.resumeParseExecutionClaim.updateMany).not.toHaveBeenCalled();
-    expect(resumeService.markParseFailed).toHaveBeenCalledWith('r1');
+    expect(prisma.resumeParseExecution.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'failed_permanent' }),
+      }),
+    );
   });
 
   it('rejects a signed Free job when the current trusted entitlement is paid', async () => {
-    const { worker, resumeService, planAwareRouter } = createWorker();
+    const { worker, prisma, resumeService, planAwareRouter } = createWorker();
     planAwareRouter.resolve.mockResolvedValue({ boundary: 'paid' });
 
     await expect(
@@ -253,7 +401,14 @@ describe('ResumeParseWorker queue admission', () => {
     ).rejects.toMatchObject({ name: 'UnrecoverableError' });
 
     expect(resumeService.parse).not.toHaveBeenCalled();
-    expect(resumeService.markParseFailed).toHaveBeenCalledWith('r1');
+    expect(prisma.resumeParseExecution.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'failed_permanent',
+          failureCategory: 'entitlement_changed',
+        }),
+      }),
+    );
   });
 
   it('passes the signed queue boundary to parsing only after claim and entitlement checks', async () => {
@@ -265,7 +420,15 @@ describe('ResumeParseWorker queue admission', () => {
 
     expect(prisma.resumeParseExecutionClaim.create).toHaveBeenCalled();
     expect(planAwareRouter.resolve).toHaveBeenCalledWith('u1');
-    expect(resumeService.parse).toHaveBeenCalledWith('r1', 'free');
+    expect(resumeService.parse).toHaveBeenCalledWith(
+      'r1',
+      'free',
+      expect.objectContaining({
+        executionId: 'execution-1',
+        claimId: 'claim-1',
+        leaseVersion: 1,
+      }),
+    );
   });
 
   it('quarantines unsigned legacy jobs with redacted metadata and never executes their payload', async () => {

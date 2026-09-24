@@ -16,6 +16,8 @@ import { AdminOverviewService } from './application/admin-overview.service';
 import { AdminConsoleOverviewController } from './interface/admin-console-overview.controller';
 import { AdminJobsService } from './application/admin-jobs.service';
 import { JobService } from '../job/application/job.service';
+import { AdminResumesService } from './application/admin-resumes.service';
+import { ResumeRequeueCommandService } from '../resume/application/resume-requeue-command.service';
 
 describe('AdminModule', () => {
   it('registers and compiles the mutation foundation without circular dependencies', async () => {
@@ -39,6 +41,7 @@ describe('AdminModule', () => {
         AdminSessionsService,
         AdminOverviewService,
         AdminJobsService,
+        AdminResumesService,
       ]),
     );
 
@@ -51,11 +54,13 @@ describe('AdminModule', () => {
         AdminSessionsService,
         AdminOverviewService,
         AdminJobsService,
+        AdminResumesService,
         { provide: PrismaService, useValue: {} },
         { provide: AuthMfaVerificationService, useValue: {} },
         { provide: AuthService, useValue: {} },
         { provide: BillingUsageReadService, useValue: {} },
         { provide: JobService, useValue: {} },
+        { provide: ResumeRequeueCommandService, useValue: {} },
       ],
     })
       .compile();

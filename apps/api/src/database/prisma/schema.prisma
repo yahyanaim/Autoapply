@@ -91,6 +91,48 @@ enum ResumeParseStatus {
   failed
 }
 
+enum ResumeParseExecutionStatus {
+  requeue_requested
+  queued
+  processing
+  retrying
+  succeeded
+  failed_requeueable
+  failed_permanent
+}
+
+enum ResumeParseFailureCategory {
+  provider_transient
+  storage_transient
+  worker_crash
+  document_unreadable
+  document_empty
+  provider_response_invalid
+  provider_configuration
+  authorization
+  entitlement_changed
+  record_missing
+  internal_unknown
+  legacy_unclassified
+}
+
+enum ResumeParseDispatchStatus {
+  pending
+  dispatching
+  dispatched
+}
+
+enum ResumeRequeueReason {
+  provider_recovered
+  storage_recovered
+  worker_recovery
+}
+
+enum ResumeParseExecutionOrigin {
+  initial
+  admin_requeue
+}
+
 enum RemoteType {
   remote
   hybrid
@@ -147,6 +189,7 @@ enum ActivityType {
   admin_session_revoke
   admin_session_revoke_all
   admin_job_deactivate
+  admin_resume_requeue
   queue_job
 }
 
@@ -184,6 +227,7 @@ model User {
   extensionAuthHandoffs ExtensionAuthHandoff[]
   capturedJobs          Job[]                  @relation("CapturedJobs")
   deactivatedJobs       Job[]                  @relation("DeactivatedJobs")
+  requestedResumeRequeues ResumeParseExecution[] @relation("ResumeRequeueRequestedBy")
   refreshTokenHistory   RefreshTokenHistory[]
   idempotencyRecords    IdempotencyRecord[]
 
@@ -271,6 +315,7 @@ model Resume {
   skills       Skill[]           @relation("ResumeSkills")
   matchScores  MatchScoreCache[]
   parseExecutionClaims ResumeParseExecutionClaim[]
+  parseExecutions ResumeParseExecution[]
 
   @@index([userId])
   @@map("resumes")
@@ -285,17 +330,79 @@ model Resume {
 model ResumeParseExecutionClaim {
   id        String   @id @default(cuid())
   resumeId  String
+  executionId String? @unique
   queueName String
   jobId     String
   attempt   Int
   retryAuthorizedAttempt Int?
   claimedAt DateTime @default(now())
+  leaseVersion Int @default(0)
+  leaseExpiresAt DateTime?
 
   resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  execution ResumeParseExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@unique([queueName, jobId])
   @@index([resumeId])
   @@map("resume_parse_execution_claims")
+}
+
+model ResumeParseExecution {
+  id                     String                     @id @default(cuid())
+  resumeId               String
+  predecessorExecutionId String?                    @unique
+  generation             Int
+  origin                 ResumeParseExecutionOrigin
+  executionBoundary      String
+  status                 ResumeParseExecutionStatus
+  failureCategory        ResumeParseFailureCategory?
+  attemptCount           Int                        @default(0)
+  maxAttempts            Int                        @default(3)
+  queueName              String
+  queueJobId             String                     @unique
+  requestedByUserId      String?
+  requeueReason          ResumeRequeueReason?
+  idempotencyKeyHash     String?
+  requestFingerprint     String?
+  requestedAt            DateTime                   @default(now())
+  queuedAt               DateTime?
+  startedAt              DateTime?
+  completedAt            DateTime?
+  failedAt               DateTime?
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+
+  resume       Resume                       @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  requestedBy  User?                        @relation("ResumeRequeueRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  predecessor  ResumeParseExecution?        @relation("ResumeExecutionChain", fields: [predecessorExecutionId], references: [id], onDelete: Restrict)
+  successor    ResumeParseExecution?        @relation("ResumeExecutionChain")
+  claim        ResumeParseExecutionClaim?
+  dispatch     ResumeParseDispatch?
+
+  @@unique([resumeId, generation])
+  @@unique([requestedByUserId, idempotencyKeyHash])
+  @@index([resumeId, createdAt])
+  @@index([status, failedAt])
+  @@map("resume_parse_executions")
+}
+
+model ResumeParseDispatch {
+  id                String                    @id @default(cuid())
+  executionId       String                    @unique
+  status            ResumeParseDispatchStatus @default(pending)
+  attemptCount      Int                       @default(0)
+  availableAt       DateTime                  @default(now())
+  leaseExpiresAt    DateTime?
+  dispatchedAt      DateTime?
+  lastErrorCategory String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  execution ResumeParseExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([status, leaseExpiresAt])
+  @@map("resume_parse_dispatches")
 }
 
 model MatchScoreCache {

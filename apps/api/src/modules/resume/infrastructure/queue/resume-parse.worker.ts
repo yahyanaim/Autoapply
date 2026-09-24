@@ -16,13 +16,25 @@ import {
   ResumeParseJobData,
   ResumeParsePaidQueueToken,
   ResumeParseDeadLetterQueueToken,
+  ResumeParseExecutionFence,
   ResumeService,
   resumeParseQueueName,
 } from '../../application/resume.service';
 import { ResumeParseJobSignatureService } from './resume-parse-job-signature.service';
-import { UnrecoverableResumeParseError } from '../parsers/resume-parser';
+import {
+  RetryableResumeParseError,
+  StaleResumeParseExecutionError,
+  UnrecoverableResumeParseError,
+} from '../parsers/resume-parser';
 import { PrismaService } from '../../../../database/prisma/prisma.service';
-import { ActivityType, Prisma, ResumeParseStatus } from '@prisma/client';
+import {
+  ActivityType,
+  Prisma,
+  ResumeParseExecutionOrigin,
+  ResumeParseExecutionStatus,
+  ResumeParseFailureCategory,
+  ResumeParseStatus,
+} from '@prisma/client';
 import { SystemClock } from '../../../../shared/adapters/system-clock.adapter';
 import {
   safeErrorCategory,
@@ -34,6 +46,8 @@ import {
 } from '../../../ai/application/plan-aware-ai.router';
 
 const legacyResumeParseQueueName = 'resume-parse';
+const EXECUTION_LEASE_MS = 5 * 60_000;
+const EXECUTION_HEARTBEAT_MS = 60_000;
 
 @Injectable()
 export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
@@ -106,6 +120,7 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
           password: url.password || undefined,
           tls: url.protocol === 'rediss:' ? {} : undefined,
         },
+        lockDuration: EXECUTION_LEASE_MS,
       },
     );
     this.workers.push(worker);
@@ -146,7 +161,7 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
         }),
       );
       if (job && this.isTerminalFailure(job, error)) {
-        void this.routeToDeadLetter(job, error, queueName, legacy).catch(
+        void this.handleTerminalFailure(job, error, queueName, legacy).catch(
           (deadLetterError) => {
             this.logger.error(
               serializeSafeLog({
@@ -229,14 +244,33 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
       return ownedResume;
     }
 
+    const execution = await this.ensureExecution(
+      resumeId,
+      boundary,
+      jobId,
+      job.opts.attempts ?? 3,
+    );
+    if (
+      execution.status === ResumeParseExecutionStatus.succeeded ||
+      execution.status === ResumeParseExecutionStatus.failed_permanent ||
+      execution.status === ResumeParseExecutionStatus.failed_requeueable
+    ) {
+      throw new UnrecoverableError('Resume parse execution is already terminal');
+    }
+
     const currentAttempt = job.attemptsMade + 1;
-    const claimed = await this.claimExecution(
+    const maxAttempts = Math.min(Math.max(execution.maxAttempts, 1), 3);
+    if (currentAttempt > maxAttempts) {
+      throw new UnrecoverableError('Resume parse execution limit reached');
+    }
+    const fence = await this.claimExecution(
       resumeId,
       resumeParseQueueName(boundary),
       jobId,
       currentAttempt,
+      execution.id,
     );
-    if (!claimed) {
+    if (!fence) {
       // Do not route a duplicate delivery through the generic parse failure
       // path: it must not mutate resume state or consume a retry.
       throw new UnrecoverableError('Resume parse job was already claimed');
@@ -247,12 +281,24 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
       route = await this.planAwareRouter.resolve(userId);
     } catch (error) {
       if (error instanceof ForbiddenException) {
-        await this.failEntitlementChangedJob(userId, resumeId, boundary, job);
+        await this.failEntitlementChangedJob(
+          userId,
+          resumeId,
+          boundary,
+          job,
+          fence,
+        );
       }
       throw error;
     }
     if (route.boundary !== boundary) {
-      await this.failEntitlementChangedJob(userId, resumeId, boundary, job);
+      await this.failEntitlementChangedJob(
+        userId,
+        resumeId,
+        boundary,
+        job,
+        fence,
+      );
     }
 
     await this.writeActivity(userId, {
@@ -263,7 +309,9 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
       attempt: job.attemptsMade + 1,
     });
     try {
-      const result = await this.resumeService.parse(resumeId, boundary);
+      const result = await this.withLeaseHeartbeat(fence, () =>
+        this.resumeService.parse(resumeId, boundary, fence),
+      );
       await this.writeActivity(userId, {
         event: 'resume_parse_completed',
         jobId: job.id,
@@ -273,11 +321,14 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
       });
       return result;
     } catch (error) {
+      if (error instanceof StaleResumeParseExecutionError) {
+        throw new UnrecoverableError('Resume parse execution lease was superseded');
+      }
       const unrecoverable =
         error instanceof UnrecoverableResumeParseError ||
         error instanceof ForbiddenException ||
         error instanceof NotFoundException;
-      const attempts = job.opts.attempts ?? 1;
+      const attempts = maxAttempts;
       const retryAuthorized =
         !unrecoverable &&
         this.isRetryableFailure(error) &&
@@ -286,10 +337,15 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
           resumeParseQueueName(boundary),
           jobId,
           currentAttempt,
+          fence,
         ));
       const terminal = unrecoverable || !retryAuthorized;
       if (terminal) {
-        await this.resumeService.markParseFailed(resumeId);
+        await this.markExecutionFailed(
+          resumeId,
+          fence,
+          this.failureCategory(error),
+        );
       }
       await this.writeActivity(userId, {
         event: 'resume_parse_failed',
@@ -350,6 +406,102 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private async handleTerminalFailure(
+    job: Job,
+    error: Error,
+    queueName: string,
+    legacy: boolean,
+  ): Promise<void> {
+    if (!legacy) {
+      try {
+        await this.markTerminalWorkerCrash(job, queueName);
+      } catch (crashClassificationError) {
+        this.logger.error(
+          serializeSafeLog({
+            event: 'resume_parse_crash_classification_failed',
+            component: 'resume_worker',
+            action: 'resume_parse',
+            error: crashClassificationError,
+          }),
+        );
+      }
+    }
+    await this.routeToDeadLetter(job, error, queueName, legacy);
+  }
+
+  private async markTerminalWorkerCrash(
+    job: Job,
+    queueName: string,
+  ): Promise<void> {
+    const jobId = job.id === undefined || job.id === null ? null : String(job.id);
+    if (!jobId) return;
+    const now = this.clock.now();
+    await this.prisma.$transaction(async (transaction) => {
+      const execution = await transaction.resumeParseExecution.findUnique({
+        where: { queueJobId: jobId },
+        select: {
+          id: true,
+          resumeId: true,
+          status: true,
+          claim: {
+            select: {
+              id: true,
+              queueName: true,
+              leaseVersion: true,
+              leaseExpiresAt: true,
+            },
+          },
+        },
+      });
+      if (
+        !execution?.claim ||
+        execution.claim.queueName !== queueName ||
+        !execution.claim.leaseExpiresAt ||
+        execution.claim.leaseExpiresAt > now ||
+        (execution.status !== ResumeParseExecutionStatus.processing &&
+          execution.status !== ResumeParseExecutionStatus.retrying)
+      ) {
+        return;
+      }
+      const released =
+        await transaction.resumeParseExecutionClaim.updateMany({
+          where: {
+            id: execution.claim.id,
+            executionId: execution.id,
+            leaseVersion: execution.claim.leaseVersion,
+            leaseExpiresAt: { lte: now },
+          },
+          data: { leaseExpiresAt: null, retryAuthorizedAttempt: null },
+        });
+      if (released.count !== 1) return;
+      const failed = await transaction.resumeParseExecution.updateMany({
+        where: {
+          id: execution.id,
+          status: {
+            in: [
+              ResumeParseExecutionStatus.processing,
+              ResumeParseExecutionStatus.retrying,
+            ],
+          },
+        },
+        data: {
+          status: ResumeParseExecutionStatus.failed_requeueable,
+          failureCategory: ResumeParseFailureCategory.worker_crash,
+          failedAt: now,
+        },
+      });
+      if (failed.count !== 1) return;
+      await transaction.resume.updateMany({
+        where: { id: execution.resumeId },
+        data: {
+          parseStatus: ResumeParseStatus.failed,
+          parseError:
+            'Resume parsing failed. Check the file and AI provider configuration, then upload it again.',
+        },
+      });
+    });
+  }
+
   private async quarantineLegacyJob(job: Job): Promise<void> {
     // Legacy queue data has no signature. Do not deserialize, inspect, log,
     // re-sign, re-queue, look up, or execute it. The retained DLQ entry has
@@ -367,51 +519,169 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
     queueName: string,
     jobId: string,
     attempt: number,
-  ): Promise<boolean> {
-    try {
-      await this.prisma.resumeParseExecutionClaim.create({
-        data: { resumeId, queueName, jobId, attempt },
-      });
-      return true;
-    } catch (error) {
-      if (!isUniqueConstraintViolation(error)) throw error;
-      // A later BullMQ delivery is admitted only when the prior, real failure
-      // recorded an authorization for this exact next attempt. A copied signed
-      // payload cannot manufacture that authorization by altering attemptsMade.
-      const consumedAuthorization =
-        await this.prisma.resumeParseExecutionClaim.updateMany({
-          where: {
+    executionId: string,
+  ): Promise<ResumeParseExecutionFence | null> {
+    let claim = await this.prisma.resumeParseExecutionClaim.findUnique({
+      where: { queueName_jobId: { queueName, jobId } },
+      select: {
+        id: true,
+        attempt: true,
+        retryAuthorizedAttempt: true,
+        leaseVersion: true,
+        leaseExpiresAt: true,
+        executionId: true,
+      },
+    });
+    if (!claim) {
+      try {
+        claim = await this.prisma.resumeParseExecutionClaim.create({
+          data: {
+            resumeId,
+            executionId,
             queueName,
             jobId,
-            attempt: attempt - 1,
-            retryAuthorizedAttempt: attempt,
+            attempt,
           },
-          data: { attempt, retryAuthorizedAttempt: null },
+          select: {
+            id: true,
+            attempt: true,
+            retryAuthorizedAttempt: true,
+            leaseVersion: true,
+            leaseExpiresAt: true,
+            executionId: true,
+          },
         });
-      return consumedAuthorization.count === 1;
+      } catch (error) {
+        if (!isUniqueConstraintViolation(error)) throw error;
+        claim = await this.prisma.resumeParseExecutionClaim.findUnique({
+          where: { queueName_jobId: { queueName, jobId } },
+          select: {
+            id: true,
+            attempt: true,
+            retryAuthorizedAttempt: true,
+            leaseVersion: true,
+            leaseExpiresAt: true,
+            executionId: true,
+          },
+        });
+      }
     }
+    if (!claim || (claim.executionId && claim.executionId !== executionId)) {
+      return null;
+    }
+
+    const now = this.clock.now();
+    const isSameAttemptRecovery =
+      claim.attempt === attempt &&
+      (!claim.leaseExpiresAt || claim.leaseExpiresAt <= now);
+    const isAuthorizedRetry =
+      claim.attempt === attempt - 1 &&
+      claim.retryAuthorizedAttempt === attempt;
+    if (!isSameAttemptRecovery && !isAuthorizedRetry) return null;
+
+    const nextLeaseVersion = claim.leaseVersion + 1;
+    const leaseExpiresAt = new Date(now.getTime() + EXECUTION_LEASE_MS);
+    const claimed = await this.prisma.$transaction(async (transaction) => {
+      const updatedClaim =
+        await transaction.resumeParseExecutionClaim.updateMany({
+          where: {
+            id: claim!.id,
+            executionId: claim!.executionId,
+            attempt: claim!.attempt,
+            leaseVersion: claim!.leaseVersion,
+            ...(isSameAttemptRecovery
+              ? {
+                  OR: [
+                    { leaseExpiresAt: null },
+                    { leaseExpiresAt: { lte: now } },
+                  ],
+                }
+              : { retryAuthorizedAttempt: attempt }),
+          },
+          data: {
+            attempt,
+            executionId,
+            retryAuthorizedAttempt: null,
+            leaseVersion: nextLeaseVersion,
+            leaseExpiresAt,
+            claimedAt: now,
+          },
+        });
+      if (updatedClaim.count !== 1) return false;
+      const updatedExecution = await transaction.resumeParseExecution.updateMany({
+        where: {
+          id: executionId,
+          status: {
+            in: [
+              ResumeParseExecutionStatus.requeue_requested,
+              ResumeParseExecutionStatus.queued,
+              ResumeParseExecutionStatus.processing,
+              ResumeParseExecutionStatus.retrying,
+            ],
+          },
+          attemptCount: { lte: 3 },
+        },
+        data: {
+          status: ResumeParseExecutionStatus.processing,
+          attemptCount: Math.max(attempt, 1),
+          startedAt: now,
+          failureCategory: null,
+        },
+      });
+      if (updatedExecution.count !== 1) {
+        throw new UnrecoverableError('Resume parse execution limit reached');
+      }
+      await transaction.resume.updateMany({
+        where: { id: resumeId },
+        data: { parseStatus: ResumeParseStatus.processing, parseError: null },
+      });
+      return true;
+    });
+    return claimed
+      ? { executionId, claimId: claim.id, leaseVersion: nextLeaseVersion }
+      : null;
   }
 
   private async authorizeRetry(
     queueName: string,
     jobId: string,
     attempt: number,
+    fence: ResumeParseExecutionFence,
   ): Promise<boolean> {
-    const authorized = await this.prisma.resumeParseExecutionClaim.updateMany({
-      where: {
-        queueName,
-        jobId,
-        attempt,
-        retryAuthorizedAttempt: null,
-      },
-      data: { retryAuthorizedAttempt: attempt + 1 },
+    return this.prisma.$transaction(async (transaction) => {
+      const authorized =
+        await transaction.resumeParseExecutionClaim.updateMany({
+          where: {
+            id: fence.claimId,
+            executionId: fence.executionId,
+            queueName,
+            jobId,
+            attempt,
+            leaseVersion: fence.leaseVersion,
+            retryAuthorizedAttempt: null,
+            leaseExpiresAt: { gt: this.clock.now() },
+          },
+          data: {
+            retryAuthorizedAttempt: attempt + 1,
+            leaseExpiresAt: null,
+          },
+        });
+      if (authorized.count !== 1) return false;
+      const retrying = await transaction.resumeParseExecution.updateMany({
+        where: {
+          id: fence.executionId,
+          status: ResumeParseExecutionStatus.processing,
+        },
+        data: { status: ResumeParseExecutionStatus.retrying },
+      });
+      return retrying.count === 1;
     });
-    return authorized.count === 1;
   }
 
   private isRetryableFailure(error: unknown): boolean {
     if (
       error instanceof UnrecoverableResumeParseError ||
+      error instanceof StaleResumeParseExecutionError ||
       error instanceof ForbiddenException ||
       error instanceof NotFoundException
     ) {
@@ -432,8 +702,13 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
     resumeId: string,
     boundary: AiExecutionBoundary,
     job: Job,
+    fence: ResumeParseExecutionFence,
   ): Promise<never> {
-    await this.resumeService.markParseFailed(resumeId);
+    await this.markExecutionFailed(
+      resumeId,
+      fence,
+      ResumeParseFailureCategory.entitlement_changed,
+    );
     await this.writeActivity(userId, {
       event: 'resume_parse_failed',
       jobId: job.id,
@@ -444,6 +719,159 @@ export class ResumeParseWorker implements OnModuleInit, OnModuleDestroy {
       errorCategory: 'http_4xx',
     });
     throw new UnrecoverableError('Resume job entitlement no longer matches');
+  }
+
+  private async ensureExecution(
+    resumeId: string,
+    boundary: AiExecutionBoundary,
+    jobId: string,
+    maxAttempts: number,
+  ) {
+    const existing = await this.prisma.resumeParseExecution.findUnique({
+      where: { queueJobId: jobId },
+    });
+    if (existing) {
+      if (
+        existing.resumeId !== resumeId ||
+        existing.executionBoundary !== boundary
+      ) {
+        throw new UnrecoverableError('Resume parse execution identity mismatch');
+      }
+      return existing;
+    }
+    try {
+      return await this.prisma.resumeParseExecution.create({
+        data: {
+          resumeId,
+          generation: 0,
+          origin: ResumeParseExecutionOrigin.initial,
+          executionBoundary: boundary,
+          status: ResumeParseExecutionStatus.queued,
+          maxAttempts: Math.min(Math.max(maxAttempts, 1), 3),
+          queueName: resumeParseQueueName(boundary),
+          queueJobId: jobId,
+          queuedAt: this.clock.now(),
+        },
+      });
+    } catch (error) {
+      if (!isUniqueConstraintViolation(error)) throw error;
+      const raced = await this.prisma.resumeParseExecution.findUnique({
+        where: { queueJobId: jobId },
+      });
+      if (!raced) throw error;
+      return raced;
+    }
+  }
+
+  private async withLeaseHeartbeat<T>(
+    fence: ResumeParseExecutionFence,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const heartbeat = setInterval(() => {
+      const now = this.clock.now();
+      void this.prisma.resumeParseExecutionClaim
+        .updateMany({
+          where: {
+            id: fence.claimId,
+            executionId: fence.executionId,
+            leaseVersion: fence.leaseVersion,
+            leaseExpiresAt: { gt: now },
+          },
+          data: {
+            leaseExpiresAt: new Date(now.getTime() + EXECUTION_LEASE_MS),
+          },
+        })
+        .catch((error) => {
+          this.logger.error(
+            serializeSafeLog({
+              event: 'resume_parse_lease_heartbeat_failed',
+              component: 'resume_worker',
+              action: 'resume_parse',
+              error,
+            }),
+          );
+        });
+    }, EXECUTION_HEARTBEAT_MS);
+    heartbeat.unref();
+    try {
+      return await operation();
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
+  private failureCategory(error: unknown): ResumeParseFailureCategory {
+    if (
+      error instanceof UnrecoverableResumeParseError ||
+      error instanceof RetryableResumeParseError
+    ) {
+      return error.category;
+    }
+    if (error instanceof ForbiddenException) {
+      return ResumeParseFailureCategory.authorization;
+    }
+    if (error instanceof NotFoundException) {
+      return ResumeParseFailureCategory.record_missing;
+    }
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      if (
+        typeof response === 'object' &&
+        response !== null &&
+        (response as { retryable?: unknown }).retryable === true
+      ) {
+        return ResumeParseFailureCategory.provider_transient;
+      }
+      return ResumeParseFailureCategory.provider_configuration;
+    }
+    return ResumeParseFailureCategory.internal_unknown;
+  }
+
+  private async markExecutionFailed(
+    resumeId: string,
+    fence: ResumeParseExecutionFence,
+    failureCategory: ResumeParseFailureCategory,
+  ): Promise<void> {
+    const requeueable = new Set<ResumeParseFailureCategory>([
+      ResumeParseFailureCategory.provider_transient,
+      ResumeParseFailureCategory.storage_transient,
+      ResumeParseFailureCategory.worker_crash,
+    ]).has(failureCategory);
+    await this.prisma.$transaction(async (transaction) => {
+      const released =
+        await transaction.resumeParseExecutionClaim.updateMany({
+          where: {
+            id: fence.claimId,
+            executionId: fence.executionId,
+            leaseVersion: fence.leaseVersion,
+            leaseExpiresAt: { gt: this.clock.now() },
+          },
+          data: { leaseExpiresAt: null, retryAuthorizedAttempt: null },
+        });
+      if (released.count !== 1) return;
+      const failed = await transaction.resumeParseExecution.updateMany({
+        where: {
+          id: fence.executionId,
+          status: ResumeParseExecutionStatus.processing,
+        },
+        data: {
+          status: requeueable
+            ? ResumeParseExecutionStatus.failed_requeueable
+            : ResumeParseExecutionStatus.failed_permanent,
+          failureCategory,
+          failedAt: this.clock.now(),
+        },
+      });
+      if (failed.count !== 1) return;
+      await transaction.resume.updateMany({
+        where: { id: resumeId },
+        data: {
+          parseStatus: ResumeParseStatus.failed,
+          parseError:
+            'Resume parsing failed. Check the file and AI provider configuration, then upload it again.',
+        },
+      });
+    });
   }
 
   private isTerminalFailure(job: Job, error: Error): boolean {

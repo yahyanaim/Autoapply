@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ResumeParseStatus } from '@prisma/client';
+import {
+  ResumeParseExecutionStatus,
+  ResumeParseFailureCategory,
+  ResumeParseStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 
 @Injectable()
@@ -25,6 +29,16 @@ export class ResumeOperationsReadService {
           orderBy: { claimedAt: 'desc' },
           take: 1,
           select: { attempt: true, claimedAt: true },
+        },
+        parseExecutions: {
+          orderBy: { generation: 'desc' },
+          take: 2,
+          select: {
+            generation: true,
+            status: true,
+            failureCategory: true,
+            attemptCount: true,
+          },
         },
       },
     });
@@ -55,6 +69,16 @@ export class ResumeOperationsReadService {
           take: 1,
           select: { attempt: true, claimedAt: true },
         },
+        parseExecutions: {
+          orderBy: { generation: 'desc' },
+          take: 2,
+          select: {
+            generation: true,
+            status: true,
+            failureCategory: true,
+            attemptCount: true,
+          },
+        },
       },
     });
     if (!row) throw new NotFoundException('Resume processing failure not found');
@@ -69,15 +93,40 @@ export class ResumeOperationsReadService {
     updatedAt: Date;
     _count: { parseExecutionClaims: number };
     parseExecutionClaims: Array<{ attempt: number; claimedAt: Date }>;
+    parseExecutions: Array<{
+      generation: number;
+      status: ResumeParseExecutionStatus;
+      failureCategory: ResumeParseFailureCategory | null;
+      attemptCount: number;
+    }>;
   }) {
     const lastClaim = row.parseExecutionClaims[0];
+    const latestExecution = row.parseExecutions[0];
+    const latestFailure = row.parseExecutions.find(
+      (execution) =>
+        execution.status ===
+          ResumeParseExecutionStatus.failed_requeueable ||
+        execution.status === ResumeParseExecutionStatus.failed_permanent,
+    );
+    const requeueable =
+      latestExecution?.status ===
+        ResumeParseExecutionStatus.failed_requeueable &&
+      latestExecution.generation === 0;
     return {
       resumeId: row.id,
       status: row.parseStatus,
-      failureCategory: 'processing_failed' as const,
+      failureCategory:
+        latestFailure?.failureCategory ??
+        ResumeParseFailureCategory.legacy_unclassified,
+      requeueable,
       mimeType: row.mimeType,
-      executionCount: row._count.parseExecutionClaims,
-      lastAttempt: lastClaim?.attempt ?? null,
+      executionCount: row.parseExecutions.length
+        ? row.parseExecutions.reduce(
+            (total, execution) => total + execution.attemptCount,
+            0,
+          )
+        : row._count.parseExecutionClaims,
+      lastAttempt: latestExecution?.attemptCount ?? lastClaim?.attempt ?? null,
       lastAttemptAt: lastClaim?.claimedAt.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       failedAt: row.updatedAt.toISOString(),

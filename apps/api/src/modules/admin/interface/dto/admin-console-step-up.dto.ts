@@ -7,6 +7,7 @@ export enum AdminConsoleStepUpActionDto {
   revokeSession = 'admin.session.revoke',
   revokeAllSessions = 'admin.session.revoke_all',
   deactivateJob = 'admin.job.deactivate',
+  requeueResume = 'admin.resume.requeue',
 }
 
 export class AdminConsoleStepUpRequestDto {
@@ -19,15 +20,15 @@ export class AdminConsoleStepUpRequestDto {
   @IsEnum(AdminConsoleStepUpActionDto)
   action!: AdminConsoleStepUpActionDto;
 
-  @ApiProperty({ enum: ['user', 'session', 'job'] })
+  @ApiProperty({ enum: ['user', 'session', 'job', 'resume'] })
   @IsString()
-  @Matches(/^(user|session|job)$/, {
-    message: 'targetType must be user, session, or job',
+  @Matches(/^(user|session|job|resume)$/, {
+    message: 'targetType must be user, session, job, or resume',
   })
-  targetType!: 'user' | 'session' | 'job';
+  targetType!: 'user' | 'session' | 'job' | 'resume';
 
   @ApiProperty({
-    description: 'Prisma CUID for users/jobs or UUID v4 for sessions',
+    description: 'Prisma CUID for users, jobs, or resumes; UUID v4 for sessions',
     oneOf: [
       { pattern: '^c[a-z0-9]{24}$' },
       { pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' },

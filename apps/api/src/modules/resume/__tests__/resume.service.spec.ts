@@ -7,7 +7,10 @@ import {
   StorageToken,
 } from '../application/resume.service';
 import { PrismaService } from '../../../database/prisma/prisma.service';
-import { ResumeParser } from '../infrastructure/parsers/resume-parser';
+import {
+  ResumeParser,
+  StaleResumeParseExecutionError,
+} from '../infrastructure/parsers/resume-parser';
 import { PlanAwareAiRouter } from '../../ai/application/plan-aware-ai.router';
 import { ResumeParseJobSignatureService } from '../infrastructure/queue/resume-parse-job-signature.service';
 
@@ -39,6 +42,11 @@ describe('ResumeService', () => {
         findFirst: jest.fn(),
         findMany: jest.fn(),
       },
+      resumeParseExecution: {
+        create: jest.fn().mockResolvedValue({ id: 'execution-1' }),
+        updateMany: jest.fn(),
+      },
+      resumeParseExecutionClaim: { updateMany: jest.fn() },
       usageLimit: {
         findUnique: jest.fn().mockResolvedValue({
           resumesUsed: 0,
@@ -92,6 +100,18 @@ describe('ResumeService', () => {
       expect.objectContaining({ jobId: 'resume-parse-free-r1', attempts: 3 }),
     );
     expect(paidQueue.add).not.toHaveBeenCalled();
+    expect(prisma.resumeParseExecution.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        resumeId: 'r1',
+        generation: 0,
+        origin: 'initial',
+        executionBoundary: 'free',
+        status: 'queued',
+        maxAttempts: 3,
+        queueName: 'resume-parse-free',
+        queueJobId: 'resume-parse-free-r1',
+      }),
+    });
     expect(jobSignature.sign).toHaveBeenCalledWith({
       resumeId: 'r1',
       userId: 'u1',
@@ -177,6 +197,78 @@ describe('ResumeService', () => {
       where: { id: 'r1' },
       data: expect.objectContaining({ parseStatus: 'ready', parseError: null }),
     });
+  });
+
+  it('commits a parsed result only through the active execution fence', async () => {
+    prisma.resume.findUnique.mockResolvedValue({
+      id: 'r1',
+      userId: 'u1',
+      originalFileUrl: '/uploads/resumes/r1.txt',
+      mimeType: 'text/plain',
+    });
+    storage.downloadFile.mockResolvedValue(Buffer.from('resume text'));
+    parser.parse.mockResolvedValue({
+      skills: ['TypeScript'],
+      experience: [],
+      education: [],
+      projects: [],
+      languages: [],
+      certifications: [],
+    });
+    prisma.resumeParseExecutionClaim.updateMany.mockResolvedValue({ count: 1 });
+    prisma.resumeParseExecution.updateMany.mockResolvedValue({ count: 1 });
+    prisma.resume.update.mockResolvedValue({ id: 'r1' });
+
+    await expect(
+      service.parse('r1', 'free', {
+        executionId: 'execution-1',
+        claimId: 'claim-1',
+        leaseVersion: 2,
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: 'r1' }));
+
+    expect(prisma.resumeParseExecutionClaim.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'claim-1',
+        executionId: 'execution-1',
+        leaseVersion: 2,
+        leaseExpiresAt: { gt: expect.any(Date) },
+      },
+      data: { leaseExpiresAt: null },
+    });
+    expect(prisma.resumeParseExecution.updateMany).toHaveBeenCalledWith({
+      where: { id: 'execution-1', status: 'processing' },
+      data: expect.objectContaining({ status: 'succeeded' }),
+    });
+  });
+
+  it('prevents a stale or expired worker lease from committing parsed content', async () => {
+    prisma.resume.findUnique.mockResolvedValue({
+      id: 'r1',
+      userId: 'u1',
+      originalFileUrl: '/uploads/resumes/r1.txt',
+      mimeType: 'text/plain',
+    });
+    storage.downloadFile.mockResolvedValue(Buffer.from('resume text'));
+    parser.parse.mockResolvedValue({
+      skills: [],
+      experience: [],
+      education: [],
+      projects: [],
+      languages: [],
+      certifications: [],
+    });
+    prisma.resumeParseExecutionClaim.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      service.parse('r1', 'free', {
+        executionId: 'execution-1',
+        claimId: 'claim-1',
+        leaseVersion: 1,
+      }),
+    ).rejects.toBeInstanceOf(StaleResumeParseExecutionError);
+    expect(prisma.resumeParseExecution.updateMany).not.toHaveBeenCalled();
+    expect(prisma.resume.update).not.toHaveBeenCalled();
   });
 
   it('returns a completed parse idempotently without calling storage or AI again', async () => {

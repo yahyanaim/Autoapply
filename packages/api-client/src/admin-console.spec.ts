@@ -10,12 +10,14 @@ import type {
   AdminConsoleRevokeUserSessionResponse,
   AdminConsoleRevokeUserSessionsResponse,
   AdminConsoleDeactivateJobResponse,
+  AdminConsoleRequeueResumeResponse,
   AdminConsoleUserSummary,
   AdminConsoleUsersResponse,
 } from '@applyai/shared-types';
 import {
   AdminSessionStatus,
   JobDeactivationReason,
+  ResumeRequeueReason,
   SessionClientType,
   UserStatus,
 } from '@applyai/shared-types';
@@ -59,6 +61,12 @@ const deactivatedJob: Promise<AdminConsoleDeactivateJobResponse> =
   });
 const resumeFailures = client.adminConsole.resumeFailures({ limit: 20 });
 const resumeFailure = client.adminConsole.resumeFailure('ckz8dc7m40000qwertyuiop12');
+const requeuedResume: Promise<AdminConsoleRequeueResumeResponse> =
+  client.adminConsole.requeueResume('ckz8dc7m40000qwertyuiop12', {
+    reason: ResumeRequeueReason.provider_recovered,
+    stepUpProof: 'proof',
+    idempotencyKey: 'resume-requeue-request-0001',
+  });
 const betaGate = client.adminConsole.betaGate();
 const notifications = client.adminConsole.notifications({ limit: 20 });
 const applications = client.adminConsole.applications({});
@@ -101,6 +109,7 @@ void job;
 void deactivatedJob;
 void resumeFailures;
 void resumeFailure;
+void requeuedResume;
 void betaGate;
 void notifications;
 void applications;
