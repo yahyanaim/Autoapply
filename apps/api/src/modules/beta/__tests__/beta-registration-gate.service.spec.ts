@@ -1,6 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BetaRegistrationGateService } from '../application/beta-registration-gate.service';
+import { PrismaService } from '../../../database/prisma/prisma.service';
 
 describe('BetaRegistrationGateService', () => {
   const transaction = {
@@ -12,6 +13,9 @@ describe('BetaRegistrationGateService', () => {
     get: jest.fn(),
   };
   let service: BetaRegistrationGateService;
+  const prisma = {
+    betaRegistrationGate: { findUnique: jest.fn() },
+  };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -20,7 +24,10 @@ describe('BetaRegistrationGateService', () => {
       if (key === 'BETA_MAX_REGISTRATIONS') return 100;
       return fallback;
     });
-    service = new BetaRegistrationGateService(config as never as ConfigService);
+    service = new BetaRegistrationGateService(
+      config as never as ConfigService,
+      prisma as never as PrismaService,
+    );
   });
 
   it('does not touch the gate while beta mode is disabled', async () => {
@@ -68,5 +75,32 @@ describe('BetaRegistrationGateService', () => {
     await expect(service.claimSlot(transaction as never)).rejects.toThrow(
       ForbiddenException,
     );
+  });
+
+  it.each([
+    [true, 40, 100, 'open', 60],
+    [true, 100, 100, 'full', 0],
+    [false, 40, 100, 'disabled', 60],
+  ] as const)('returns a durable safe gate summary', async (enabled, count, capacity, status, remaining) => {
+    config.get.mockImplementation((key: string, fallback: unknown) =>
+      key === 'BETA_MODE' ? enabled : key === 'BETA_MAX_REGISTRATIONS' ? capacity : fallback,
+    );
+    prisma.betaRegistrationGate.findUnique.mockResolvedValue({
+      count,
+      updatedAt: new Date('2026-09-24T00:00:00.000Z'),
+    });
+
+    await expect(service.getAdminSummary()).resolves.toEqual({
+      enabled,
+      registrationCount: count,
+      capacity,
+      remainingSlots: remaining,
+      status,
+      updatedAt: '2026-09-24T00:00:00.000Z',
+    });
+    expect(prisma.betaRegistrationGate.findUnique).toHaveBeenCalledWith({
+      where: { id: 'singleton' },
+      select: { count: true, updatedAt: true },
+    });
   });
 });

@@ -13,6 +13,7 @@ describe('JobService', () => {
       job: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
+        findUnique: jest.fn(),
         count: jest.fn(),
         create: jest.fn(),
         upsert: jest.fn(),
@@ -149,6 +150,41 @@ describe('JobService', () => {
           update: expect.objectContaining({ scrapedAt: expect.any(Date) }),
         }),
       );
+    });
+  });
+
+  describe('Admin operations reads', () => {
+    it('uses the documented scrapedAt observation time for bounded eligibility', async () => {
+      const now = new Date();
+      prismaMock.job.findMany.mockResolvedValue([
+        {
+          id: 'job-1',
+          title: 'Engineer',
+          source: 'greenhouse',
+          location: null,
+          remoteType: null,
+          scrapedAt: now,
+          createdAt: now,
+          company: { name: 'ApplyAI' },
+        },
+      ]);
+      const result = await service.listForAdmin({ limit: 20, eligibility: 'eligible' });
+      expect(result.jobs[0]).toEqual(expect.objectContaining({ lastObservedAt: now.toISOString(), eligible: true }));
+      expect(prismaMock.job.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 21, where: expect.objectContaining({ scrapedAt: { gte: expect.any(Date) } }), select: expect.not.objectContaining({ description: true, capturedByUserId: true }) }));
+    });
+
+    it('returns a projected job detail without captured URLs, descriptions, or captured-user data', async () => {
+      const now = new Date();
+      const sensitiveSourceUrl =
+        'https://user:password@example.test/job?access_token=fake-sensitive-token&signature=fake-signature#private';
+      prismaMock.job.findUnique.mockResolvedValue({ id: 'job-1', title: 'Engineer', source: 'greenhouse', sourceUrl: sensitiveSourceUrl, location: null, remoteType: null, salaryMin: null, salaryMax: null, scrapedAt: now, createdAt: now, updatedAt: now, company: null, skills: [] });
+      const result = await service.getForAdmin('job-1');
+      expect(result).not.toHaveProperty('description');
+      expect(result).not.toHaveProperty('sourceUrl');
+      expect(JSON.stringify(result)).not.toContain('fake-sensitive-token');
+      expect(JSON.stringify(result)).not.toContain('fake-signature');
+      expect(JSON.stringify(result)).not.toContain('password');
+      expect(prismaMock.job.findUnique).toHaveBeenCalledWith(expect.objectContaining({ select: expect.not.objectContaining({ description: true, capturedByUserId: true, sourceUrl: true }) }));
     });
   });
 });

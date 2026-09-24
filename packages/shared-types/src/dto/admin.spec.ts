@@ -8,6 +8,12 @@ import type {
   AdminConsoleActivityLogEvent,
   AdminConsoleOverviewResponse,
   AdminConsoleRevokeUserSessionsResponse,
+  AdminConsoleJobSummary,
+  AdminConsoleJobDetail,
+  AdminConsoleResumeFailure,
+  AdminConsoleBetaGateResponse,
+  AdminConsoleNotificationFailure,
+  AdminConsoleApplicationsResponse,
 } from './admin';
 
 declare const user: AdminConsoleUserSummary;
@@ -109,3 +115,40 @@ bulkRevocation.token;
 void stepUp;
 void suspension;
 void bulkRevocation;
+
+declare const operationalJob: AdminConsoleJobSummary;
+operationalJob.lastObservedAt satisfies string;
+// @ts-expect-error Job operations must never expose descriptions or captured-user data.
+operationalJob.description;
+// @ts-expect-error Job operations must never expose captured-user data.
+operationalJob.capturedByUserId;
+
+declare const operationalJobDetail: AdminConsoleJobDetail;
+// @ts-expect-error Admin job details must never expose captured source URLs.
+operationalJobDetail.sourceUrl;
+
+declare const resumeFailure: AdminConsoleResumeFailure;
+resumeFailure.failureCategory satisfies 'processing_failed';
+// @ts-expect-error Resume failure operations must never expose parsed CV content.
+resumeFailure.parsedJson;
+// @ts-expect-error Resume failure operations must never expose file locations.
+resumeFailure.originalFileUrl;
+
+declare const betaGate: AdminConsoleBetaGateResponse;
+betaGate.remainingSlots satisfies number;
+// @ts-expect-error Beta reads never expose or mutate environment variables.
+betaGate.environment;
+
+declare const notificationFailure: AdminConsoleNotificationFailure;
+notificationFailure.id satisfies string;
+// @ts-expect-error Notification operations must never expose message bodies.
+notificationFailure.body;
+// @ts-expect-error Notification operations must never expose recipients.
+notificationFailure.userId;
+
+declare const applicationAggregate: AdminConsoleApplicationsResponse;
+applicationAggregate.total satisfies number;
+// @ts-expect-error Application operations are aggregate-only.
+applicationAggregate.users;
+// @ts-expect-error Application operations never expose Nori or career-chat data.
+applicationAggregate.nori;

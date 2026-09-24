@@ -17,9 +17,24 @@ import { AdminConsoleActivityLogsController } from './interface/admin-console-ac
 import { AdminConsoleStepUpController } from './interface/admin-console-step-up.controller';
 import { AdminOverviewService } from './application/admin-overview.service';
 import { AdminConsoleOverviewController } from './interface/admin-console-overview.controller';
+import { ResumeModule } from '../resume/resume.module';
+import { BetaModule } from '../beta/beta.module';
+import { NotificationModule } from '../notification/notification.module';
+import { ApplicationModule } from '../application-tracker/application-tracker.module';
+import { AdminOperationsService } from './application/admin-operations.service';
+import { AdminConsoleOperationsController } from './interface/admin-console-operations.controller';
 
 @Module({
-  imports: [PrismaModule, JobModule, AuthModule, BillingModule],
+  imports: [
+    PrismaModule,
+    JobModule,
+    AuthModule,
+    BillingModule,
+    ResumeModule,
+    BetaModule,
+    NotificationModule,
+    ApplicationModule,
+  ],
   providers: [
     AdminService,
     AdminStepUpMfaService,
@@ -29,6 +44,7 @@ import { AdminConsoleOverviewController } from './interface/admin-console-overvi
     AdminOverviewService,
     AdminConsoleEnabledGuard,
     AdminSessionsService,
+    AdminOperationsService,
   ],
   controllers: [
     AdminController,
@@ -37,6 +53,7 @@ import { AdminConsoleOverviewController } from './interface/admin-console-overvi
     AdminConsoleActivityLogsController,
     AdminConsoleStepUpController,
     AdminConsoleOverviewController,
+    AdminConsoleOperationsController,
   ],
   exports: [AdminService, AdminMutationExecutor, AdminUsersService],
 })

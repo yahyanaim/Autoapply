@@ -21,6 +21,17 @@ import type {
   AdminConsoleActivityLogsRequest,
   AdminConsoleActivityLogsResponse,
   AdminConsoleOverviewResponse,
+  AdminConsoleJobsRequest,
+  AdminConsoleJobsResponse,
+  AdminConsoleJobDetail,
+  AdminConsoleResumeFailuresRequest,
+  AdminConsoleResumeFailuresResponse,
+  AdminConsoleResumeFailure,
+  AdminConsoleBetaGateResponse,
+  AdminConsoleNotificationsRequest,
+  AdminConsoleNotificationsResponse,
+  AdminConsoleApplicationsRequest,
+  AdminConsoleApplicationsResponse,
 } from '@applyai/shared-types';
 import type {
   AuthLoginRequest,
@@ -374,6 +385,69 @@ export class ApiClient {
   };
 
   adminConsole = {
+    jobs: async (
+      params: AdminConsoleJobsRequest = {},
+    ): Promise<AdminConsoleJobsResponse> => {
+      const res = await this.http.get<AdminConsoleJobsResponse>(
+        '/admin/console/jobs',
+        { params },
+      );
+      return res.data;
+    },
+
+    job: async (jobId: string): Promise<AdminConsoleJobDetail> => {
+      const res = await this.http.get<AdminConsoleJobDetail>(
+        `/admin/console/jobs/${encodeURIComponent(jobId)}`,
+      );
+      return res.data;
+    },
+
+    resumeFailures: async (
+      params: AdminConsoleResumeFailuresRequest = {},
+    ): Promise<AdminConsoleResumeFailuresResponse> => {
+      const res = await this.http.get<AdminConsoleResumeFailuresResponse>(
+        '/admin/console/resume-failures',
+        { params },
+      );
+      return res.data;
+    },
+
+    resumeFailure: async (
+      resumeId: string,
+    ): Promise<AdminConsoleResumeFailure> => {
+      const res = await this.http.get<AdminConsoleResumeFailure>(
+        `/admin/console/resume-failures/${encodeURIComponent(resumeId)}`,
+      );
+      return res.data;
+    },
+
+    betaGate: async (): Promise<AdminConsoleBetaGateResponse> => {
+      const res = await this.http.get<AdminConsoleBetaGateResponse>(
+        '/admin/console/beta',
+      );
+      return res.data;
+    },
+
+    notifications: async (
+      params: AdminConsoleNotificationsRequest = {},
+    ): Promise<AdminConsoleNotificationsResponse> => {
+      const res = await this.http.get<AdminConsoleNotificationsResponse>(
+        '/admin/console/notifications',
+        { params },
+      );
+      return res.data;
+    },
+
+    applications: async (
+      params: AdminConsoleApplicationsRequest = {},
+    ): Promise<AdminConsoleApplicationsResponse> => {
+      const res = await this.http.get<AdminConsoleApplicationsResponse>(
+        '/admin/console/applications',
+        { params },
+      );
+      return res.data;
+    },
+
     overview: async (): Promise<AdminConsoleOverviewResponse> => {
       const res = await this.http.get<AdminConsoleOverviewResponse>(
         '/admin/console/overview',
