@@ -25,6 +25,9 @@ import { AdminOperationsService } from './application/admin-operations.service';
 import { AdminConsoleOperationsController } from './interface/admin-console-operations.controller';
 import { AdminJobsService } from './application/admin-jobs.service';
 import { AdminResumesService } from './application/admin-resumes.service';
+import { AIModule } from '../ai/ai.module';
+import { AdminMetricsService } from './application/admin-metrics.service';
+import { AdminConsoleMetricsController } from './interface/admin-console-metrics.controller';
 
 @Module({
   imports: [
@@ -36,6 +39,7 @@ import { AdminResumesService } from './application/admin-resumes.service';
     BetaModule,
     NotificationModule,
     ApplicationModule,
+    AIModule,
   ],
   providers: [
     AdminService,
@@ -49,6 +53,7 @@ import { AdminResumesService } from './application/admin-resumes.service';
     AdminOperationsService,
     AdminJobsService,
     AdminResumesService,
+    AdminMetricsService,
   ],
   controllers: [
     AdminController,
@@ -58,6 +63,7 @@ import { AdminResumesService } from './application/admin-resumes.service';
     AdminConsoleStepUpController,
     AdminConsoleOverviewController,
     AdminConsoleOperationsController,
+    AdminConsoleMetricsController,
   ],
   exports: [AdminService, AdminMutationExecutor, AdminUsersService],
 })

@@ -349,3 +349,86 @@ export interface AdminConsoleApplicationsResponse {
   total: number;
   byStatus: Record<ApplicationStatus, number>;
 }
+
+export interface AdminConsoleMetricsRequest {
+  /** Inclusive UTC calendar day in YYYY-MM-DD form. */
+  from: string;
+  /** Inclusive UTC calendar day in YYYY-MM-DD form; maximum range is 90 days. */
+  to: string;
+}
+
+export interface AdminConsoleMetricsDay {
+  day: string;
+  requestCount: number;
+  costedRequestCount: number;
+  /** Recorded estimated operational cost, never settled provider cost. */
+  estimatedCostUsd: number;
+}
+
+export interface AdminConsoleBillingMetricsDay {
+  /** UTC calendar day. The migration day can be partial. */
+  day: string;
+  coverage: 'complete' | 'partial';
+  activePaidSubscriptions: number;
+  activePaidSubscriptionsByPlan: {
+    pro: number;
+    premium: number;
+  };
+  /** End-of-day MRR in USD cents. */
+  monthlyRecurringRevenueMinor: number;
+  newPaidSubscriptions: number;
+  expansionMrrMinor: number;
+  contractionMrrMinor: number;
+  churnCount: number;
+  churnedMrrMinor: number;
+  reactivationCount: number;
+}
+
+export interface AdminConsoleBillingMovementTotals {
+  newPaidSubscriptions: number;
+  expansionMrrMinor: number;
+  contractionMrrMinor: number;
+  churnCount: number;
+  churnedMrrMinor: number;
+  reactivationCount: number;
+}
+
+export interface AdminConsoleMetricsResponse {
+  period: {
+    from: string;
+    to: string;
+    timeZone: 'UTC';
+    maximumDays: 90;
+  };
+  billing: {
+    asOf: string;
+    currency: 'usd';
+    activePaidSubscriptions: number;
+    activePaidSubscriptionsByPlan: {
+      pro: number;
+      premium: number;
+    };
+    /** Current MRR in USD cents from active Pro and Premium subscriptions. */
+    monthlyRecurringRevenueMinor: number;
+    history: {
+      /** No transition history exists before this deployment boundary. */
+      historyAvailableFrom: string;
+      requestedRangeStartsBeforeHistory: boolean;
+      actualCoveredRange: {
+        from: string;
+        toExclusive: string;
+      } | null;
+      /** Null when the requested range is entirely before available history. */
+      totals: AdminConsoleBillingMovementTotals | null;
+      daily: AdminConsoleBillingMetricsDay[];
+    };
+  };
+  ai: {
+    costType: 'estimated';
+    currency: 'usd';
+    requestCount: number;
+    costedRequestCount: number;
+    estimatedCostUsd: number;
+    daily: AdminConsoleMetricsDay[];
+  };
+}
