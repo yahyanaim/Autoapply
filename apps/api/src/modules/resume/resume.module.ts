@@ -22,6 +22,8 @@ import { GeneratedResumePdfService } from './infrastructure/pdf/generated-resume
 import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
 import { serializeSafeLog } from '../../shared/observability/safe-log';
 import { ResumeOperationsReadService } from './application/resume-operations-read.service';
+import { ResumeRequeueCommandService } from './application/resume-requeue-command.service';
+import { ResumeParseDispatcher } from './infrastructure/queue/resume-parse-dispatcher.service';
 
 class InactiveResumeQueue {
   constructor(private readonly boundary: 'free' | 'paid') {}
@@ -101,6 +103,8 @@ function createResumeQueue(
     ResumeParseJobSignatureService,
     GeneratedResumePdfService,
     ResumeOperationsReadService,
+    ResumeRequeueCommandService,
+    ResumeParseDispatcher,
     {
       provide: StorageToken,
       useFactory: (
@@ -141,6 +145,7 @@ function createResumeQueue(
     ResumeParsePaidQueueToken,
     StorageToken,
     ResumeOperationsReadService,
+    ResumeRequeueCommandService,
   ],
 })
 export class ResumeModule {}

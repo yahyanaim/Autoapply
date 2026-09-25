@@ -10,6 +10,8 @@ import {
   RemoteType,
   JobStatus,
   JobDeactivationReason,
+  ResumeParseFailureCategory,
+  ResumeRequeueReason,
 } from '../enums';
 
 export type AdminConsoleUserAction =
@@ -17,7 +19,8 @@ export type AdminConsoleUserAction =
   | 'admin.user.reactivate'
   | 'admin.session.revoke'
   | 'admin.session.revoke_all'
-  | 'admin.job.deactivate';
+  | 'admin.job.deactivate'
+  | 'admin.resume.requeue';
 
 /** Deliberately excludes credentials, MFA material, tokens, CVs, and billing data. */
 export interface AdminConsoleUserSummary {
@@ -126,6 +129,8 @@ export interface AdminConsoleActivityLogSnapshot {
   plan?: string;
   enabled?: boolean;
   suspendedAt?: string | null;
+  reason?: string;
+  failureCategory?: string;
 }
 
 export interface AdminConsoleActivityLogsRequest {
@@ -166,7 +171,7 @@ export interface AdminConsoleOverviewResponse {
 export interface AdminConsoleStepUpRequest {
   code: string;
   action: AdminConsoleUserAction;
-  targetType: 'user' | 'session' | 'job';
+  targetType: 'user' | 'session' | 'job' | 'resume';
   targetId: string;
 }
 
@@ -267,13 +272,27 @@ export interface AdminConsoleResumeFailuresRequest {
 export interface AdminConsoleResumeFailure {
   resumeId: string;
   status: 'failed';
-  failureCategory: 'processing_failed';
+  failureCategory: ResumeParseFailureCategory;
+  requeueable: boolean;
   mimeType: string | null;
   executionCount: number;
   lastAttempt: number | null;
   lastAttemptAt: string | null;
   createdAt: string;
   failedAt: string;
+}
+
+export interface AdminConsoleRequeueResumeRequest {
+  reason: ResumeRequeueReason;
+  stepUpProof: string;
+  idempotencyKey: string;
+}
+
+export interface AdminConsoleRequeueResumeResponse {
+  resumeId: string;
+  requeueRequestId: string;
+  status: 'requeue_requested';
+  requestedAt: string;
 }
 
 export interface AdminConsoleResumeFailuresResponse {

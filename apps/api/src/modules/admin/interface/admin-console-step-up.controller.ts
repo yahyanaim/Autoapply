@@ -52,9 +52,11 @@ export class AdminConsoleStepUpController {
     const expectedTargetType =
       input.action === AdminConsoleStepUpActionDto.revokeSession
         ? 'session'
-        : input.action === AdminConsoleStepUpActionDto.deactivateJob
-          ? 'job'
-          : 'user';
+        : input.action === AdminConsoleStepUpActionDto.requeueResume
+          ? 'resume'
+          : input.action === AdminConsoleStepUpActionDto.deactivateJob
+            ? 'job'
+            : 'user';
     if (input.targetType !== expectedTargetType) {
       throw new BadRequestException('Invalid step-up target binding');
     }

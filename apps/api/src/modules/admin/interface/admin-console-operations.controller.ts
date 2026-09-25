@@ -25,9 +25,11 @@ import { Roles } from '../../auth/interface/decorators/roles.decorator';
 import { RolesGuard } from '../../auth/interface/guards/roles.guard';
 import { AdminOperationsService } from '../application/admin-operations.service';
 import { AdminJobsService } from '../application/admin-jobs.service';
+import { AdminResumesService } from '../application/admin-resumes.service';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
 import { RequestContextService } from '../../../shared/observability/request-context.service';
 import { AdminConsoleEnabledGuard } from './guards/admin-console-enabled.guard';
+import { requireIdempotencyKey } from '../../../shared/idempotency/idempotency-key';
 import {
   AdminConsoleApplicationsQueryDto,
   AdminConsoleApplicationsResponseDto,
@@ -41,8 +43,11 @@ import {
   AdminConsoleNotificationsQueryDto,
   AdminConsoleNotificationsResponseDto,
   AdminConsoleResumeFailureResponseDto,
+  AdminConsoleResumeIdParamDto,
   AdminConsoleResumeFailuresQueryDto,
   AdminConsoleResumeFailuresResponseDto,
+  AdminConsoleRequeueResumeDto,
+  AdminConsoleRequeueResumeResponseDto,
 } from './dto/admin-console-operations.dto';
 
 @ApiTags('admin-console-operations')
@@ -58,6 +63,7 @@ export class AdminConsoleOperationsController {
   constructor(
     private readonly operations: AdminOperationsService,
     private readonly adminJobs: AdminJobsService,
+    private readonly adminResumes: AdminResumesService,
     private readonly requestContext: RequestContextService,
   ) {}
 
@@ -135,6 +141,58 @@ export class AdminConsoleOperationsController {
   @ApiResponse({ status: 404, description: 'Resume processing failure not found' })
   getResumeFailure(@Param() params: AdminConsoleIdParamDto) {
     return this.operations.getResumeFailure(params.id);
+  }
+
+  @Post('resume-failures/:resumeId/requeue')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Request one idempotent requeue for an eligible resume failure',
+  })
+  @ApiParam({ name: 'resumeId', description: 'Prisma CUID resume identifier' })
+  @ApiHeader({
+    name: 'X-Admin-Step-Up-Proof',
+    required: true,
+    description: 'Single-use proof bound to this actor, session, action, and resume',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'Stable key for this logical requeue request',
+  })
+  @ApiBody({ type: AdminConsoleRequeueResumeDto })
+  @ApiResponse({ status: 200, type: AdminConsoleRequeueResumeResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid requeue request or proof' })
+  @ApiResponse({ status: 401, description: 'Step-up proof is invalid' })
+  @ApiResponse({ status: 403, description: 'Admin Console access denied' })
+  @ApiResponse({ status: 404, description: 'Resume processing failure not found' })
+  @ApiResponse({ status: 409, description: 'Resume failure is not requeueable' })
+  async requeueResume(
+    @Param() params: AdminConsoleResumeIdParamDto,
+    @Headers('x-admin-step-up-proof') stepUpProof: string | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @CurrentUser('id') actorUserId: string,
+    @CurrentUser('sessionId') sessionId: string,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('mfaVerified') mfaVerified: boolean,
+    @Body() input: AdminConsoleRequeueResumeDto,
+  ) {
+    const mutation = await this.adminResumes.requeue({
+      context: {
+        actorUserId,
+        sessionId,
+        role,
+        mfaVerified,
+        correlationId: this.requestContext.getRequestId(),
+      },
+      resumeId: params.resumeId,
+      reason: input.reason,
+      idempotencyKey: requireIdempotencyKey(idempotencyKey),
+      stepUpProof: stepUpProof ?? '',
+    });
+    return {
+      ...mutation,
+      requestedAt: mutation.requestedAt.toISOString(),
+    };
   }
 
   @Get('beta')

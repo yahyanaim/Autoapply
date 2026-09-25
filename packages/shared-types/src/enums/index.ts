@@ -102,6 +102,27 @@ export enum JobDeactivationReason {
   other = 'other',
 }
 
+export enum ResumeParseFailureCategory {
+  provider_transient = 'provider_transient',
+  storage_transient = 'storage_transient',
+  worker_crash = 'worker_crash',
+  document_unreadable = 'document_unreadable',
+  document_empty = 'document_empty',
+  provider_response_invalid = 'provider_response_invalid',
+  provider_configuration = 'provider_configuration',
+  authorization = 'authorization',
+  entitlement_changed = 'entitlement_changed',
+  record_missing = 'record_missing',
+  internal_unknown = 'internal_unknown',
+  legacy_unclassified = 'legacy_unclassified',
+}
+
+export enum ResumeRequeueReason {
+  provider_recovered = 'provider_recovered',
+  storage_recovered = 'storage_recovered',
+  worker_recovery = 'worker_recovery',
+}
+
 export enum OAuthProvider {
   google = 'google',
   github = 'github',

@@ -12,11 +12,19 @@ import { StoragePort } from '../../../shared/ports/storage.port';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import {
   ResumeParser,
+  RetryableResumeParseError,
+  StaleResumeParseExecutionError,
   UnrecoverableResumeParseError,
 } from '../infrastructure/parsers/resume-parser';
 import { PdfParser } from '../infrastructure/parsers/pdf.parser';
 import { DocxParser } from '../infrastructure/parsers/docx.parser';
-import { Prisma, ResumeParseStatus } from '@prisma/client';
+import {
+  Prisma,
+  ResumeParseExecutionOrigin,
+  ResumeParseExecutionStatus,
+  ResumeParseFailureCategory,
+  ResumeParseStatus,
+} from '@prisma/client';
 import {
   GeneratedResumeDocument,
   generatedResumeToText,
@@ -48,6 +56,12 @@ export interface ResumeParseJobData {
 }
 
 export type ResumeParseJobIdentity = Omit<ResumeParseJobData, 'signature'>;
+
+export interface ResumeParseExecutionFence {
+  executionId: string;
+  claimId: string;
+  leaseVersion: number;
+}
 
 export function resumeParseQueueName(boundary: AiExecutionBoundary): string {
   return `resume-parse-${boundary}`;
@@ -95,7 +109,12 @@ export class ResumeService {
 
     let resume;
     try {
-      resume = await this.createResumeWithQuota(userId, file, fileUrl);
+      resume = await this.createResumeWithQuota(
+        userId,
+        file,
+        fileUrl,
+        route.boundary,
+      );
     } catch (error) {
       try {
         await this.storageAdapter.deleteFile(fileUrl);
@@ -150,7 +169,11 @@ export class ResumeService {
     return resume;
   }
 
-  async parse(resumeId: string, expectedBoundary?: AiExecutionBoundary) {
+  async parse(
+    resumeId: string,
+    expectedBoundary?: AiExecutionBoundary,
+    fence?: ResumeParseExecutionFence,
+  ) {
     const resume = await this.prisma.resume.findUnique({
       where: { id: resumeId },
     });
@@ -161,17 +184,27 @@ export class ResumeService {
       return { ...resume, parsedJson: resume.parsedJson };
     }
 
-    await this.prisma.resume.update({
-      where: { id: resumeId },
-      data: {
-        parseStatus: ResumeParseStatus.processing,
-        parseError: null,
-      },
-    });
+    if (!fence) {
+      await this.prisma.resume.update({
+        where: { id: resumeId },
+        data: {
+          parseStatus: ResumeParseStatus.processing,
+          parseError: null,
+        },
+      });
+    }
 
-    const fileBuffer = await this.storageAdapter.downloadFile(
-      resume.originalFileUrl,
-    );
+    let fileBuffer: Buffer;
+    try {
+      fileBuffer = await this.storageAdapter.downloadFile(
+        resume.originalFileUrl,
+      );
+    } catch {
+      throw new RetryableResumeParseError(
+        'Resume storage is temporarily unavailable',
+        ResumeParseFailureCategory.storage_transient,
+      );
+    }
 
     let rawText: string;
     try {
@@ -188,11 +221,13 @@ export class ResumeService {
     } catch {
       throw new UnrecoverableResumeParseError(
         'The resume document could not be read',
+        ResumeParseFailureCategory.document_unreadable,
       );
     }
     if (!rawText.trim()) {
       throw new UnrecoverableResumeParseError(
         'The resume contains no readable text',
+        ResumeParseFailureCategory.document_empty,
       );
     }
 
@@ -202,14 +237,53 @@ export class ResumeService {
       expectedBoundary,
     );
 
-    const updated = await this.prisma.resume.update({
-      where: { id: resumeId },
-      data: {
-        parsedJson: parsedJson as unknown as Prisma.InputJsonValue,
-        parseStatus: ResumeParseStatus.ready,
-        parseError: null,
-      },
-    });
+    const updated = fence
+      ? await this.prisma.$transaction(async (transaction) => {
+          const completedClaim =
+            await transaction.resumeParseExecutionClaim.updateMany({
+              where: {
+                id: fence.claimId,
+                executionId: fence.executionId,
+                leaseVersion: fence.leaseVersion,
+                leaseExpiresAt: { gt: new Date() },
+              },
+              data: { leaseExpiresAt: null },
+            });
+          if (completedClaim.count !== 1) {
+            throw new StaleResumeParseExecutionError();
+          }
+          const completedExecution =
+            await transaction.resumeParseExecution.updateMany({
+              where: {
+                id: fence.executionId,
+                status: ResumeParseExecutionStatus.processing,
+              },
+              data: {
+                status: ResumeParseExecutionStatus.succeeded,
+                failureCategory: null,
+                completedAt: new Date(),
+              },
+            });
+          if (completedExecution.count !== 1) {
+            throw new StaleResumeParseExecutionError();
+          }
+          return transaction.resume.update({
+            where: { id: resumeId },
+            data: {
+              parsedJson: parsedJson as unknown as Prisma.InputJsonValue,
+              parseStatus: ResumeParseStatus.ready,
+              parseError: null,
+            },
+          });
+        })
+      : await this.prisma.resume.update({
+          where: { id: resumeId },
+          data: {
+            parsedJson: parsedJson as unknown as Prisma.InputJsonValue,
+            parseStatus: ResumeParseStatus.ready,
+            parseError: null,
+          },
+        });
 
     return { ...updated, parsedJson };
   }
@@ -363,6 +437,7 @@ export class ResumeService {
     userId: string,
     file: Express.Multer.File,
     fileUrl: string,
+    executionBoundary: AiExecutionBoundary,
   ) {
     for (let attempt = 1; attempt <= QUOTA_TRANSACTION_RETRIES; attempt++) {
       try {
@@ -388,7 +463,7 @@ export class ResumeService {
                 storageBytesUsed: { increment: file.size },
               },
             });
-            return transaction.resume.create({
+            const resume = await transaction.resume.create({
               data: {
                 userId,
                 originalFileUrl: fileUrl,
@@ -398,6 +473,21 @@ export class ResumeService {
                 isPrimary: false,
               },
             });
+            const queueName = resumeParseQueueName(executionBoundary);
+            await transaction.resumeParseExecution.create({
+              data: {
+                resumeId: resume.id,
+                generation: 0,
+                origin: ResumeParseExecutionOrigin.initial,
+                executionBoundary,
+                status: ResumeParseExecutionStatus.queued,
+                maxAttempts: 3,
+                queueName,
+                queueJobId: `${queueName}-${resume.id}`,
+                queuedAt: new Date(),
+              },
+            });
+            return resume;
           },
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );

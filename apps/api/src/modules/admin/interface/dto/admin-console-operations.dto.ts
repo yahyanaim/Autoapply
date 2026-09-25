@@ -18,6 +18,8 @@ import {
   RemoteType,
   JobDeactivationReason,
   JobStatus,
+  ResumeParseFailureCategory,
+  ResumeRequeueReason,
 } from '@prisma/client';
 
 const CUID = /^c[a-z0-9]{24}$/;
@@ -69,6 +71,12 @@ export class AdminConsoleIdParamDto {
   id!: string;
 }
 
+export class AdminConsoleResumeIdParamDto {
+  @ApiProperty({ pattern: '^c[a-z0-9]{24}$' })
+  @Matches(CUID, { message: 'resumeId must be a valid identifier' })
+  resumeId!: string;
+}
+
 export class AdminConsoleJobResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() title!: string;
@@ -118,13 +126,29 @@ export class AdminConsoleResumeFailuresQueryDto extends CursorQueryDto {}
 export class AdminConsoleResumeFailureResponseDto {
   @ApiProperty() resumeId!: string;
   @ApiProperty({ enum: ['failed'] }) status!: 'failed';
-  @ApiProperty({ enum: ['processing_failed'] }) failureCategory!: 'processing_failed';
+  @ApiProperty({ enum: ResumeParseFailureCategory })
+  failureCategory!: ResumeParseFailureCategory;
+  @ApiProperty() requeueable!: boolean;
   @ApiProperty({ nullable: true }) mimeType!: string | null;
   @ApiProperty() executionCount!: number;
   @ApiProperty({ nullable: true }) lastAttempt!: number | null;
   @ApiProperty({ nullable: true }) lastAttemptAt!: string | null;
   @ApiProperty() createdAt!: string;
   @ApiProperty() failedAt!: string;
+}
+
+export class AdminConsoleRequeueResumeDto {
+  @ApiProperty({ enum: ResumeRequeueReason })
+  @IsEnum(ResumeRequeueReason)
+  reason!: ResumeRequeueReason;
+}
+
+export class AdminConsoleRequeueResumeResponseDto {
+  @ApiProperty() resumeId!: string;
+  @ApiProperty() requeueRequestId!: string;
+  @ApiProperty({ enum: ['requeue_requested'] })
+  status!: 'requeue_requested';
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
 }
 
 export class AdminConsoleResumeFailuresResponseDto {

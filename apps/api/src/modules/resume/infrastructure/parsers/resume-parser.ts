@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AIRequestFeature } from '@prisma/client';
+import { AIRequestFeature, ResumeParseFailureCategory } from '@prisma/client';
 import { AIService } from '../../../ai/application/ai.service';
 import type { AiExecutionBoundary } from '../../../ai/application/plan-aware-ai.router';
 
@@ -31,9 +31,29 @@ export interface ParsedResume {
 }
 
 export class UnrecoverableResumeParseError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly category: ResumeParseFailureCategory,
+  ) {
     super(message);
     this.name = 'UnrecoverableResumeParseError';
+  }
+}
+
+export class RetryableResumeParseError extends Error {
+  constructor(
+    message: string,
+    readonly category: ResumeParseFailureCategory,
+  ) {
+    super(message);
+    this.name = 'RetryableResumeParseError';
+  }
+}
+
+export class StaleResumeParseExecutionError extends Error {
+  constructor() {
+    super('Resume parse execution lease is no longer current');
+    this.name = 'StaleResumeParseExecutionError';
   }
 }
 
@@ -62,11 +82,17 @@ export class ResumeParser {
     try {
       parsed = JSON.parse(json);
     } catch {
-      throw new UnrecoverableResumeParseError('AI provider returned invalid resume JSON');
+      throw new UnrecoverableResumeParseError(
+        'AI provider returned invalid resume JSON',
+        ResumeParseFailureCategory.provider_response_invalid,
+      );
     }
 
     if (!isParsedResume(parsed)) {
-      throw new UnrecoverableResumeParseError('AI provider returned an invalid resume structure');
+      throw new UnrecoverableResumeParseError(
+        'AI provider returned an invalid resume structure',
+        ResumeParseFailureCategory.provider_response_invalid,
+      );
     }
     return parsed;
   }

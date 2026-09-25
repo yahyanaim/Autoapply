@@ -1,4 +1,8 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  ResumeParseExecutionStatus,
+  ResumeParseFailureCategory,
+} from '@prisma/client';
 import { ResumeOperationsReadService } from '../application/resume-operations-read.service';
 
 describe('ResumeOperationsReadService', () => {
@@ -12,6 +16,14 @@ describe('ResumeOperationsReadService', () => {
     updatedAt: new Date('2026-09-24T00:00:00.000Z'),
     _count: { parseExecutionClaims: 2 },
     parseExecutionClaims: [{ attempt: 2, claimedAt: new Date('2026-09-24T00:00:00.000Z') }],
+    parseExecutions: [
+      {
+        generation: 0,
+        status: ResumeParseExecutionStatus.failed_requeueable,
+        failureCategory: ResumeParseFailureCategory.provider_transient,
+        attemptCount: 2,
+      },
+    ],
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -19,9 +31,19 @@ describe('ResumeOperationsReadService', () => {
   it('returns a bounded sanitized failure projection with no resume content', async () => {
     prisma.resume.findMany.mockResolvedValue([row]);
     const result = await service.listFailures({ limit: 20 });
-    expect(result.failures[0]).toEqual(expect.objectContaining({ resumeId: row.id, executionCount: 2, lastAttempt: 2 }));
+    expect(result.failures[0]).toEqual(
+      expect.objectContaining({
+        resumeId: row.id,
+        executionCount: 2,
+        lastAttempt: 2,
+        failureCategory: ResumeParseFailureCategory.provider_transient,
+        requeueable: true,
+      }),
+    );
     expect(prisma.resume.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 21, where: { parseStatus: 'failed' }, select: expect.not.objectContaining({ parsedJson: true, originalFileUrl: true, parseError: true, userId: true }) }));
-    expect(JSON.stringify(result)).not.toMatch(/parsedJson|originalFileUrl|parseError|userId|prompt|token|provider/i);
+    expect(JSON.stringify(result)).not.toMatch(
+      /parsedJson|originalFileUrl|parseError|userId|prompt|token|secret|credential|storagePath/i,
+    );
   });
 
   it('returns safe detail and rejects missing failures', async () => {

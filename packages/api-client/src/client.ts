@@ -29,6 +29,8 @@ import type {
   AdminConsoleResumeFailuresRequest,
   AdminConsoleResumeFailuresResponse,
   AdminConsoleResumeFailure,
+  AdminConsoleRequeueResumeRequest,
+  AdminConsoleRequeueResumeResponse,
   AdminConsoleBetaGateResponse,
   AdminConsoleNotificationsRequest,
   AdminConsoleNotificationsResponse,
@@ -432,6 +434,24 @@ export class ApiClient {
     ): Promise<AdminConsoleResumeFailure> => {
       const res = await this.http.get<AdminConsoleResumeFailure>(
         `/admin/console/resume-failures/${encodeURIComponent(resumeId)}`,
+      );
+      return res.data;
+    },
+
+    requeueResume: async (
+      resumeId: string,
+      data: AdminConsoleRequeueResumeRequest,
+    ): Promise<AdminConsoleRequeueResumeResponse> => {
+      const { stepUpProof, idempotencyKey, ...payload } = data;
+      const res = await this.http.post<AdminConsoleRequeueResumeResponse>(
+        `/admin/console/resume-failures/${encodeURIComponent(resumeId)}/requeue`,
+        payload,
+        {
+          headers: {
+            'X-Admin-Step-Up-Proof': stepUpProof,
+            'Idempotency-Key': idempotencyKey,
+          },
+        },
       );
       return res.data;
     },
