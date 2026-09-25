@@ -3,11 +3,13 @@ import { BillingService } from '../application/billing.service';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
 import { NotFoundException } from '@nestjs/common';
+import { SubscriptionLifecycleService } from '../application/subscription-lifecycle.service';
 
 describe('BillingService', () => {
   let service: BillingService;
   let prismaMock: any;
   let stripeMock: any;
+  let lifecycleMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -35,12 +37,20 @@ describe('BillingService', () => {
         return plan === 'pro' || plan === 'premium' ? plan : 'free';
       }),
     };
+    lifecycleMock = {
+      recordInTransaction: jest.fn().mockResolvedValue({
+        id: 'lifecycle-1',
+        sequence: 1n,
+        category: 'observation',
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BillingService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: StripeAdapter, useValue: stripeMock },
+        { provide: SubscriptionLifecycleService, useValue: lifecycleMock },
       ],
     }).compile();
 
@@ -118,6 +128,12 @@ describe('BillingService', () => {
     };
 
     it('does not grant paid limits for an incomplete checkout subscription', async () => {
+      prismaMock.subscription.findFirst.mockResolvedValue({
+        id: 'local_sub',
+        userId: 'u1',
+        plan: 'free',
+        status: 'active',
+      });
       prismaMock.subscription.updateMany.mockResolvedValue({ count: 1 });
       stripeMock.retrieveSubscription.mockResolvedValue({
         id: 'sub_1',
@@ -157,17 +173,20 @@ describe('BillingService', () => {
         id: 'local_sub',
         userId: 'u1',
         plan: 'pro',
+        status: 'active',
       });
       stripeMock.retrieveSubscription.mockResolvedValue({
         id: 'sub_1',
         status: 'canceled',
         metadata: { plan: 'pro' },
+        canceled_at: 1_700_000_100,
         ...period,
       });
 
       await service.handleWebhook({
         id: 'evt_old_update',
         type: 'customer.subscription.updated',
+        created: 1_700_000_000,
         data: {
           object: {
             id: 'sub_1',
@@ -182,6 +201,20 @@ describe('BillingService', () => {
         where: { stripeSubscriptionId: 'sub_1' },
         data: expect.objectContaining({ plan: 'free', status: 'canceled' }),
       });
+      expect(lifecycleMock.recordInTransaction).toHaveBeenCalledWith(
+        prismaMock,
+        expect.objectContaining({
+          subscriptionId: 'local_sub',
+          sourceStripeEventId: 'evt_old_update',
+          previous: expect.objectContaining({
+            plan: 'pro',
+            status: 'active',
+          }),
+          next: { plan: 'free', status: 'canceled' },
+          effectiveAt: new Date('2023-11-14T22:15:00.000Z'),
+          authoritativeOverride: true,
+        }),
+      );
     });
 
     it('uses the actual Stripe price-derived plan after a portal change', async () => {
@@ -189,6 +222,7 @@ describe('BillingService', () => {
         id: 'local_sub',
         userId: 'u1',
         plan: 'pro',
+        status: 'active',
       });
       stripeMock.resolveSubscriptionPlan.mockReturnValue('premium');
       stripeMock.retrieveSubscription.mockResolvedValue({
@@ -221,6 +255,14 @@ describe('BillingService', () => {
           jobDiscoveriesMax: 2_147_483_647,
         }),
       });
+      expect(lifecycleMock.recordInTransaction).toHaveBeenCalledWith(
+        prismaMock,
+        expect.objectContaining({
+          sourceStripeEventId: 'evt_portal_upgrade',
+          previous: expect.objectContaining({ plan: 'pro', status: 'active' }),
+          next: { plan: 'premium', status: 'active' },
+        }),
+      );
     });
 
     it('returns duplicate events before making another Stripe API call', async () => {
@@ -231,6 +273,44 @@ describe('BillingService', () => {
       ).resolves.toEqual({ received: true, duplicate: true });
       expect(stripeMock.retrieveSubscription).not.toHaveBeenCalled();
       expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('propagates lifecycle persistence failure from the shared webhook transaction', async () => {
+      prismaMock.subscription.findFirst.mockResolvedValue({
+        id: 'local_sub',
+        userId: 'u1',
+        plan: 'pro',
+        status: 'active',
+      });
+      stripeMock.resolveSubscriptionPlan.mockReturnValue('premium');
+      stripeMock.retrieveSubscription.mockResolvedValue({
+        id: 'sub_1',
+        status: 'active',
+        metadata: { plan: 'premium' },
+        ...period,
+      });
+      lifecycleMock.recordInTransaction.mockRejectedValueOnce(
+        new Error('lifecycle persistence failed'),
+      );
+
+      await expect(
+        service.handleWebhook({
+          id: 'evt_rollback',
+          type: 'customer.subscription.updated',
+          created: 1_700_000_000,
+          data: {
+            object: {
+              id: 'sub_1',
+              status: 'active',
+              metadata: { plan: 'premium' },
+              ...period,
+            },
+          },
+        } as never),
+      ).rejects.toThrow('lifecycle persistence failed');
+      expect(prismaMock.stripeWebhookEvent.create).toHaveBeenCalledWith({
+        data: { eventId: 'evt_rollback', type: 'customer.subscription.updated' },
+      });
     });
   });
 });

@@ -11,6 +11,7 @@ import type {
   AdminConsoleRevokeUserSessionsResponse,
   AdminConsoleDeactivateJobResponse,
   AdminConsoleRequeueResumeResponse,
+  AdminConsoleMetricsResponse,
   AdminConsoleUserSummary,
   AdminConsoleUsersResponse,
 } from '@applyai/shared-types';
@@ -28,6 +29,9 @@ declare const sanitizedUser: AdminConsoleUserSummary;
 
 // @ts-expect-error Typed Admin client responses must not expose MFA enrollment state.
 sanitizedUser.mfaEnabled;
+
+const metrics: Promise<AdminConsoleMetricsResponse> =
+  client.adminConsole.metrics({ from: '2026-09-01', to: '2026-09-25' });
 
 const users: Promise<AdminConsoleUsersResponse> = client.adminConsole.users({
   cursor: 'opaque-cursor',
@@ -118,3 +122,4 @@ void suspended;
 void reactivated;
 void revokedSession;
 void revokedSessions;
+void metrics;
