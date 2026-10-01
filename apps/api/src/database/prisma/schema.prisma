@@ -60,6 +60,21 @@ enum PaymentStatus {
   refunded
 }
 
+enum SubscriptionLifecycleEventCategory {
+  paid_activation
+  plan_upgrade
+  plan_downgrade
+  cancellation
+  reactivation
+  trial_start
+  trial_conversion
+  past_due_transition
+  pause_transition
+  unpaid_transition
+  subscription_deletion
+  observation
+}
+
 enum AIRequestFeature {
   resume_parse
   job_analyze
@@ -601,7 +616,69 @@ model StripeWebhookEvent {
   type        String
   processedAt DateTime @default(now())
 
+  lifecycleEvent SubscriptionLifecycleEvent?
+
   @@map("stripe_webhook_events")
+}
+
+model SubscriptionLifecycleEvent {
+  id                    String                             @id @default(cuid())
+  sequence              BigInt                             @unique @default(autoincrement())
+  // Opaque Billing identity retained even if the source Subscription is deleted.
+  subscriptionId        String
+  sourceStripeEventId   String                             @unique
+  category              SubscriptionLifecycleEventCategory
+  previousStatus        SubscriptionStatus
+  nextStatus            SubscriptionStatus
+  previousPlan          SubscriptionPlan
+  nextPlan              SubscriptionPlan
+  previousPriceUsdMinor Int?
+  nextPriceUsdMinor     Int?
+  currency              String                             @default("usd")
+  effectiveAt           DateTime
+  observedAt            DateTime                           @default(now())
+
+  sourceEvent  StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([subscriptionId, effectiveAt, sequence])
+  @@index([effectiveAt, sequence])
+  @@index([category, effectiveAt])
+  @@map("subscription_lifecycle_events")
+}
+
+model BillingMetricsHistoryBoundary {
+  id                                  String   @id
+  historyAvailableFrom                DateTime
+  currency                            String   @default("usd")
+  baselineActivePaidSubscriptions     Int
+  baselineActiveProSubscriptions      Int
+  baselineActivePremiumSubscriptions  Int
+  baselineMonthlyRecurringRevenueMinor Int
+  createdAt                           DateTime @default(now())
+
+  @@map("billing_metrics_history_boundaries")
+}
+
+model BillingDailySubscriptionMetric {
+  id                         String   @id @default(cuid())
+  day                        DateTime
+  currency                   String   @default("usd")
+  activePaidDelta            Int      @default(0)
+  activeProDelta             Int      @default(0)
+  activePremiumDelta         Int      @default(0)
+  monthlyRecurringRevenueDeltaMinor Int @default(0)
+  newPaidSubscriptions       Int      @default(0)
+  expansionMrrMinor          Int      @default(0)
+  contractionMrrMinor        Int      @default(0)
+  churnCount                 Int      @default(0)
+  churnedMrrMinor            Int      @default(0)
+  reactivationCount          Int      @default(0)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([day, currency])
+  @@index([day])
+  @@map("billing_daily_subscription_metrics")
 }
 
 model AIRequest {

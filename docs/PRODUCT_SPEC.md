@@ -436,6 +436,31 @@ self-target policy; or an owning Billing/Entitlement command. Admin must not
 write `UsageLimit` directly. Do not represent either deferred capability as
 implemented or partially implemented.
 
+### Admin Console Phase 3B closure
+
+**Job Deactivation is implemented and merged.** Jobs retain durable historical
+records while the Jobs-owned command excludes deactivated jobs from new
+discovery and new application/preparation work.
+
+**Resume Requeue is implemented and merged.** The Resume-owned command uses
+explicit failure classification, durable idempotency, one successor execution
+generation, and transactional outbox dispatch.
+
+**Beta Gate Controls are deferred.** The existing Beta Gate Admin view remains
+read-only. There is no authoritative Beta-owned control command or approved
+runtime-control semantics for changing capacity or pausing and resuming
+registration independently of deployment configuration.
+
+**Notification Retry/Replay is deferred.** The existing Notification Admin
+view remains read-only. There is no authoritative Notification-owned retry
+command, durable retry intent, or provider-idempotency model that can safely
+prevent duplicate delivery after ambiguous provider acceptance.
+
+Do not represent the deferred Beta Gate or Notification controls as
+implemented or partially implemented. Do not add placeholder endpoints,
+contracts, metrics, audit actions, migrations, or mutation UI for them. The
+existing Active Incidents and Quota Override deferrals remain unchanged.
+
 **V2 (Phase 3, ~+8–12 weeks)**
 
 - AI Career Advisor

@@ -17,6 +17,8 @@ import type {
   AdminConsoleBetaGateResponse,
   AdminConsoleNotificationFailure,
   AdminConsoleApplicationsResponse,
+  AdminConsoleMetricsRequest,
+  AdminConsoleMetricsResponse,
 } from './admin';
 import { ResumeRequeueReason } from '../enums';
 
@@ -182,3 +184,46 @@ applicationAggregate.total satisfies number;
 applicationAggregate.users;
 // @ts-expect-error Application operations never expose Nori or career-chat data.
 applicationAggregate.nori;
+
+const metricsRequest: AdminConsoleMetricsRequest = {
+  from: '2026-09-01',
+  to: '2026-09-25',
+};
+declare const metrics: AdminConsoleMetricsResponse;
+metrics.period.timeZone satisfies 'UTC';
+metrics.period.maximumDays satisfies 90;
+metrics.billing.currency satisfies 'usd';
+metrics.billing.activePaidSubscriptionsByPlan.pro satisfies number;
+metrics.billing.monthlyRecurringRevenueMinor satisfies number;
+metrics.billing.history.historyAvailableFrom satisfies string;
+metrics.billing.history.requestedRangeStartsBeforeHistory satisfies boolean;
+metrics.billing.history.actualCoveredRange?.from satisfies string | undefined;
+metrics.billing.history.totals?.churnedMrrMinor satisfies number | undefined;
+metrics.billing.history.daily[0]?.coverage satisfies
+  | 'complete'
+  | 'partial'
+  | undefined;
+// @ts-expect-error Billing lifecycle history never exposes Stripe identities.
+metrics.billing.history.stripeEventId;
+// @ts-expect-error Billing lifecycle history never exposes subscriber identities.
+metrics.billing.history.userId;
+metrics.ai.costType satisfies 'estimated';
+metrics.ai.daily[0]?.day satisfies string | undefined;
+// @ts-expect-error Financial metrics never expose Stripe subscription IDs.
+metrics.billing.stripeSubscriptionId;
+// @ts-expect-error Financial metrics never expose invoices or instruments.
+metrics.billing.payments;
+// @ts-expect-error AI metrics never expose provider/model attribution.
+metrics.ai.provider;
+// @ts-expect-error AI metrics never expose prompts or request content.
+metrics.ai.prompt;
+// @ts-expect-error Margin is explicitly outside Phase 4A.
+metrics.margin;
+// @ts-expect-error Paid activation history does not exist, so new-paid metrics are blocked.
+metrics.billing.newPaidSubscriptions;
+// @ts-expect-error Effective cancellation history does not exist, so churn is blocked.
+metrics.billing.churnCount;
+// @ts-expect-error Historical subscription snapshots do not exist in Phase 4A.
+metrics.billing.daily;
+
+void metricsRequest;

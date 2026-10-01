@@ -9,7 +9,7 @@ const navigation = [
   { label: 'Overview', href: '/admin/console/overview', icon: Gauge, enabled: true },
   { label: 'Users', href: '/admin/console/users', icon: Users, enabled: true },
   { label: 'Activity Log', href: '/admin/console/activity-logs', icon: FileText, enabled: true },
-  { label: 'Billing', href: '/admin/console/billing', icon: ChartNoAxesCombined, enabled: false },
+  { label: 'Metrics', href: '/admin/console/metrics', icon: ChartNoAxesCombined, enabled: true },
   { label: 'Jobs', href: '/admin/console/jobs', icon: BriefcaseBusiness, enabled: true },
   { label: 'Resume Failures', href: '/admin/console/resume-failures', icon: FileWarning, enabled: true },
   { label: 'Beta Gate', href: '/admin/console/beta-gate', icon: ShieldCheck, enabled: true },

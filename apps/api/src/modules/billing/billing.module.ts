@@ -6,12 +6,16 @@ import { StripeAdapter } from './infrastructure/stripe/stripe.adapter';
 import { PrismaModule } from '../../database/prisma/prisma.module';
 import { PlanEntitlementGuard } from './interface/guards/plan-entitlement.guard';
 import { BillingUsageReadService } from './application/billing-usage-read.service';
+import { BillingMetricsReadService } from './application/billing-metrics-read.service';
+import { SubscriptionLifecycleService } from './application/subscription-lifecycle.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
   providers: [
     BillingService,
     BillingUsageReadService,
+    BillingMetricsReadService,
+    SubscriptionLifecycleService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],
@@ -19,6 +23,7 @@ import { BillingUsageReadService } from './application/billing-usage-read.servic
   exports: [
     BillingService,
     BillingUsageReadService,
+    BillingMetricsReadService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],

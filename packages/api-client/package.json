@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@applyai/shared-types": "workspace:*",
-    "axios": "^1.7.0"
+    "axios": "^1.20.0"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

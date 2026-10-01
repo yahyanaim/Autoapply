@@ -1,15 +1,26 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
 import { Prisma, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PLAN_LIMITS } from '../domain/plan-limits';
+import {
+  SubscriptionLifecycleService,
+} from './subscription-lifecycle.service';
+import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 
 @Injectable()
 export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeAdapter: StripeAdapter,
+    private readonly lifecycle: SubscriptionLifecycleService,
+    @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
   async createCheckoutSession(userId: string, plan: SubscriptionPlan) {
@@ -59,7 +70,12 @@ export class BillingService {
         await transaction.stripeWebhookEvent.create({
           data: { eventId: event.id, type: event.type },
         });
-        await this.processWebhook(transaction, event, currentSubscription);
+        await this.processWebhook(
+          transaction,
+          event,
+          currentSubscription,
+          this.clock.now(),
+        );
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -78,6 +94,7 @@ export class BillingService {
     transaction: Prisma.TransactionClient,
     event: Stripe.Event,
     currentSubscription?: Stripe.Subscription,
+    observedAt: Date = this.clock.now(),
   ) {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -100,6 +117,13 @@ export class BillingService {
         }
         const { status, effectivePlan } =
           this.subscriptionEntitlement(currentSubscription);
+        const previous = await transaction.subscription.findFirst({
+          where: { userId },
+          select: { id: true, userId: true, plan: true, status: true },
+        });
+        if (!previous) {
+          throw new BadRequestException('User subscription record not found');
+        }
         const updated = await transaction.subscription.updateMany({
           where: { userId },
           data: {
@@ -113,6 +137,19 @@ export class BillingService {
         });
         if (updated.count !== 1) throw new BadRequestException('User subscription record not found');
         await this.updatePlanLimits(transaction, userId, effectivePlan);
+        await this.lifecycle.recordInTransaction(transaction, {
+          subscriptionId: previous.id,
+            sourceStripeEventId: event.id,
+            previous,
+            next: { plan: effectivePlan, status },
+            effectiveAt: this.transitionTime(
+              currentSubscription,
+              status,
+              event,
+              observedAt,
+            ),
+          observedAt,
+        });
         break;
       }
       case 'invoice.payment_succeeded':
@@ -125,6 +162,7 @@ export class BillingService {
         if (!stripeSubscriptionId) break;
         const subscription = await transaction.subscription.findFirst({
           where: { stripeSubscriptionId },
+          select: { id: true, userId: true, plan: true, status: true },
         });
         if (subscription) {
           const stripePaymentId = typeof invoice.payment_intent === 'string'
@@ -173,6 +211,19 @@ export class BillingService {
               },
             });
             await this.updatePlanLimits(transaction, subscription.userId, effectivePlan);
+            await this.lifecycle.recordInTransaction(transaction, {
+              subscriptionId: subscription.id,
+              sourceStripeEventId: event.id,
+              previous: subscription,
+              next: { plan: effectivePlan, status },
+              effectiveAt: this.transitionTime(
+                currentSubscription,
+                status,
+                event,
+                observedAt,
+              ),
+              observedAt,
+            });
           }
         }
         break;
@@ -182,6 +233,7 @@ export class BillingService {
         const sub = currentSubscription ?? eventSubscription;
         const existing = await transaction.subscription.findFirst({
           where: { stripeSubscriptionId: eventSubscription.id },
+          select: { id: true, userId: true, plan: true, status: true },
         });
         const { status, effectivePlan } =
           this.subscriptionEntitlement(sub);
@@ -197,6 +249,22 @@ export class BillingService {
         });
         if (existing) {
           await this.updatePlanLimits(transaction, existing.userId, effectivePlan);
+          await this.lifecycle.recordInTransaction(transaction, {
+            subscriptionId: existing.id,
+            sourceStripeEventId: event.id,
+            previous: existing,
+            next: { plan: effectivePlan, status },
+            effectiveAt: this.transitionTime(
+              sub,
+              status,
+              event,
+              observedAt,
+            ),
+            observedAt,
+            authoritativeOverride: currentSubscription
+              ? !this.sameStripeState(eventSubscription, currentSubscription)
+              : false,
+          });
         }
         break;
       }
@@ -204,6 +272,7 @@ export class BillingService {
         const sub = event.data.object as Stripe.Subscription;
         const existing = await transaction.subscription.findFirst({
           where: { stripeSubscriptionId: sub.id },
+          select: { id: true, userId: true, plan: true, status: true },
         });
         await transaction.subscription.updateMany({
           where: { stripeSubscriptionId: sub.id },
@@ -211,6 +280,18 @@ export class BillingService {
         });
         if (existing) {
           await this.updatePlanLimits(transaction, existing.userId, SubscriptionPlan.free);
+          await this.lifecycle.recordInTransaction(transaction, {
+            subscriptionId: existing.id,
+            sourceStripeEventId: event.id,
+            previous: existing,
+            next: {
+              plan: SubscriptionPlan.free,
+              status: SubscriptionStatus.canceled,
+            },
+            effectiveAt: this.cancellationTime(sub, event, observedAt),
+            observedAt,
+            sourceCategory: 'subscription_deletion',
+          });
         }
         break;
       }
@@ -268,6 +349,45 @@ export class BillingService {
       status,
       effectivePlan: entitled ? configuredPlan : SubscriptionPlan.free,
     };
+  }
+
+  private sameStripeState(
+    eventSubscription: Stripe.Subscription,
+    currentSubscription: Stripe.Subscription,
+  ): boolean {
+    const eventState = this.subscriptionEntitlement(eventSubscription);
+    const currentState = this.subscriptionEntitlement(currentSubscription);
+    return (
+      eventState.status === currentState.status &&
+      eventState.effectivePlan === currentState.effectivePlan
+    );
+  }
+
+  private eventTime(event: Stripe.Event, fallback: Date): Date {
+    return Number.isFinite(event.created)
+      ? new Date(event.created * 1_000)
+      : fallback;
+  }
+
+  private cancellationTime(
+    subscription: Stripe.Subscription,
+    event: Stripe.Event,
+    fallback: Date,
+  ): Date {
+    return typeof subscription.canceled_at === 'number'
+      ? new Date(subscription.canceled_at * 1_000)
+      : this.eventTime(event, fallback);
+  }
+
+  private transitionTime(
+    subscription: Stripe.Subscription,
+    status: SubscriptionStatus,
+    event: Stripe.Event,
+    fallback: Date,
+  ): Date {
+    return status === SubscriptionStatus.canceled
+      ? this.cancellationTime(subscription, event, fallback)
+      : this.eventTime(event, fallback);
   }
 
   private async updatePlanLimits(

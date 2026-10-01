@@ -18,18 +18,24 @@ import { AdminJobsService } from './application/admin-jobs.service';
 import { JobService } from '../job/application/job.service';
 import { AdminResumesService } from './application/admin-resumes.service';
 import { ResumeRequeueCommandService } from '../resume/application/resume-requeue-command.service';
+import { AdminMetricsService } from './application/admin-metrics.service';
+import { AdminConsoleMetricsController } from './interface/admin-console-metrics.controller';
+import { BillingMetricsReadService } from '../billing/application/billing-metrics-read.service';
+import { AiMetricsReadService } from '../ai/application/ai-metrics-read.service';
+import { AIModule } from '../ai/ai.module';
 
 describe('AdminModule', () => {
   it('registers and compiles the mutation foundation without circular dependencies', async () => {
     const providers = Reflect.getMetadata('providers', AdminModule) as unknown[];
     const imports = Reflect.getMetadata('imports', AdminModule) as unknown[];
     const controllers = Reflect.getMetadata('controllers', AdminModule) as unknown[];
-    expect(imports).toEqual(expect.arrayContaining([BillingModule]));
+    expect(imports).toEqual(expect.arrayContaining([BillingModule, AIModule]));
     expect(controllers).toEqual(
       expect.arrayContaining([
         AdminConsoleActivityLogsController,
         AdminConsoleStepUpController,
         AdminConsoleOverviewController,
+        AdminConsoleMetricsController,
       ]),
     );
     expect(providers).toEqual(
@@ -42,6 +48,7 @@ describe('AdminModule', () => {
         AdminOverviewService,
         AdminJobsService,
         AdminResumesService,
+        AdminMetricsService,
       ]),
     );
 
@@ -55,12 +62,15 @@ describe('AdminModule', () => {
         AdminOverviewService,
         AdminJobsService,
         AdminResumesService,
+        AdminMetricsService,
         { provide: PrismaService, useValue: {} },
         { provide: AuthMfaVerificationService, useValue: {} },
         { provide: AuthService, useValue: {} },
         { provide: BillingUsageReadService, useValue: {} },
         { provide: JobService, useValue: {} },
         { provide: ResumeRequeueCommandService, useValue: {} },
+        { provide: BillingMetricsReadService, useValue: {} },
+        { provide: AiMetricsReadService, useValue: {} },
       ],
     })
       .compile();

@@ -36,6 +36,8 @@ import type {
   AdminConsoleNotificationsResponse,
   AdminConsoleApplicationsRequest,
   AdminConsoleApplicationsResponse,
+  AdminConsoleMetricsRequest,
+  AdminConsoleMetricsResponse,
 } from '@applyai/shared-types';
 import type {
   AuthLoginRequest,
@@ -389,6 +391,16 @@ export class ApiClient {
   };
 
   adminConsole = {
+    metrics: async (
+      params: AdminConsoleMetricsRequest,
+    ): Promise<AdminConsoleMetricsResponse> => {
+      const res = await this.http.get<AdminConsoleMetricsResponse>(
+        '/admin/console/metrics',
+        { params },
+      );
+      return res.data;
+    },
+
     jobs: async (
       params: AdminConsoleJobsRequest = {},
     ): Promise<AdminConsoleJobsResponse> => {
