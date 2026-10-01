@@ -34,12 +34,19 @@ describe('AIService resume ownership and readiness', () => {
       }),
     ),
   };
+  const quota = {
+    reserve: jest.fn().mockResolvedValue({
+      resetAt: new Date('2026-08-01T00:00:00.000Z'),
+    }),
+    release: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new AIService(
     prisma as never,
     {} as never,
     {} as never,
     {} as never,
     matchScoreCache as never,
+    quota as never,
   );
 
   beforeEach(() => {
@@ -145,14 +152,12 @@ describe('AIService resume ownership and readiness', () => {
       service.optimizeResume('user_1', 'resume_1', 'job_1'),
     ).rejects.toThrow(BadGatewayException);
     expect(prisma.resumeVersion.create).not.toHaveBeenCalled();
-    expect(prisma.usageLimit.updateMany).toHaveBeenCalledWith({
-      where: {
-        userId: 'user_1',
-        resetAt: new Date('2026-08-01T00:00:00.000Z'),
-        resumeOptimizationsUsed: { gt: 0 },
-      },
-      data: { resumeOptimizationsUsed: { decrement: 1 } },
-    });
+    expect(quota.release).toHaveBeenCalledWith(
+      'user_1',
+      'resume_optimizations',
+      1,
+      new Date('2026-08-01T00:00:00.000Z'),
+    );
   });
 
   it('enforces the monthly resume-optimization allowance atomically', async () => {
@@ -166,9 +171,9 @@ describe('AIService resume ownership and readiness', () => {
       id: 'job_1',
       description: 'TypeScript',
     });
-    prisma.usageLimit.updateMany
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 0 });
+    quota.reserve.mockRejectedValueOnce(
+      new ForbiddenException('Monthly resume-optimization limit reached'),
+    );
 
     await expect(
       service.optimizeResume('user_1', 'resume_1', 'job_1'),
@@ -253,6 +258,10 @@ describe('AIService resume ownership and readiness', () => {
 
     const result = await service.optimizeResume('user_1', 'resume_1', 'job_1');
 
+    expect(quota.reserve).toHaveBeenCalledWith(
+      'user_1', 'resume_optimizations', 1, expect.any(Date),
+      'Monthly resume-optimization limit reached. Upgrade your plan or wait for the next reset.',
+    );
     expect(result).toEqual(
       expect.objectContaining({
         versionId: 'version_1',
@@ -355,6 +364,7 @@ describe('AIService request budgets', () => {
       planAwareRouter as never,
       promptService as never,
       {} as never,
+      { reserve: jest.fn(), release: jest.fn() } as never,
     );
 
     await expect(
@@ -398,6 +408,7 @@ describe('AIService request budgets', () => {
           .mockReturnValue('System\n## Resume\n{{resume}}'),
       } as never,
       {} as never,
+      { reserve: jest.fn(), release: jest.fn() } as never,
     );
 
     await expect(
@@ -428,6 +439,15 @@ describe('AIService quota summary', () => {
       {} as never,
       {} as never,
       {} as never,
+      {
+        getUsageSummaryForAdmin: jest.fn().mockResolvedValue({
+          resetAt,
+          usage: {
+            aiRequests: { used: 2, limit: 5 },
+            resumeOptimizations: { used: 1, limit: 1 },
+          },
+        }),
+      } as never,
       { now: () => new Date('2026-07-27T12:00:00.000Z') } as never,
     );
 
@@ -482,18 +502,25 @@ describe('AIService plan-aware execution and quota rollback', () => {
       getOutputCostPerMillion: jest.fn().mockReturnValue(0.2),
       getProviderName: jest.fn().mockReturnValue('openai'),
     };
+    const quota = {
+      reserve: jest.fn().mockResolvedValue({
+        resetAt: new Date('2026-08-01T00:00:00.000Z'),
+      }),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
     const service = new AIService(
       prisma as never,
       providerFactory as never,
       router as never,
       { loadTemplate: jest.fn().mockReturnValue('System\n## Resume\n{{resume}}') } as never,
       {} as never,
+      quota as never,
     );
-    return { prisma, router, service };
+    return { prisma, router, service, quota };
   }
 
   it('records a successful GLM request once through the trusted Free route', async () => {
-    const { prisma, router, service } = createService({ boundary: 'free' });
+    const { prisma, router, service, quota } = createService({ boundary: 'free' });
     router.complete.mockResolvedValue({
       boundary: 'free',
       providerName: 'glm',
@@ -503,6 +530,9 @@ describe('AIService plan-aware execution and quota rollback', () => {
     await expect(
       service.complete(AIRequestFeature.resume_parse, 'user_1', { resume: 'synthetic' }),
     ).resolves.toEqual({ content: '{}', model: 'glm-model' });
+    expect(quota.reserve).toHaveBeenCalledWith(
+      'user_1', 'ai_requests', 1, expect.any(Date), 'AI request limit reached',
+    );
 
     expect(prisma.aIRequest.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -517,7 +547,7 @@ describe('AIService plan-aware execution and quota rollback', () => {
   });
 
   it('releases a reserved Free allowance after a GLM failure', async () => {
-    const { prisma, router, service } = createService({ boundary: 'free' });
+    const { prisma, router, service, quota } = createService({ boundary: 'free' });
     router.complete.mockRejectedValue(new Error('synthetic provider failure'));
 
     await expect(
@@ -525,18 +555,16 @@ describe('AIService plan-aware execution and quota rollback', () => {
     ).rejects.toThrow('synthetic provider failure');
 
     expect(prisma.aIRequest.create).not.toHaveBeenCalled();
-    expect(prisma.usageLimit.updateMany).toHaveBeenCalledWith({
-      where: {
-        userId: 'user_1',
-        resetAt: new Date('2026-08-01T00:00:00.000Z'),
-        aiRequestsUsed: { gt: 0 },
-      },
-      data: { aiRequestsUsed: { decrement: 1 } },
-    });
+    expect(quota.release).toHaveBeenCalledWith(
+      'user_1',
+      'ai_requests',
+      1,
+      new Date('2026-08-01T00:00:00.000Z'),
+    );
   });
 
   it('revalidates a queued boundary immediately before execution and releases its reservation on a plan change', async () => {
-    const { prisma, router, service } = createService({ boundary: 'free' });
+    const { prisma, router, service, quota } = createService({ boundary: 'free' });
     router.resolve
       .mockResolvedValueOnce({
         boundary: 'free',
@@ -561,14 +589,12 @@ describe('AIService plan-aware execution and quota rollback', () => {
 
     expect(router.complete).not.toHaveBeenCalled();
     expect(prisma.aIRequest.create).not.toHaveBeenCalled();
-    expect(prisma.usageLimit.updateMany).toHaveBeenCalledWith({
-      where: {
-        userId: 'user_1',
-        resetAt: new Date('2026-08-01T00:00:00.000Z'),
-        aiRequestsUsed: { gt: 0 },
-      },
-      data: { aiRequestsUsed: { decrement: 1 } },
-    });
+    expect(quota.release).toHaveBeenCalledWith(
+      'user_1',
+      'ai_requests',
+      1,
+      new Date('2026-08-01T00:00:00.000Z'),
+    );
   });
 
   it('does not reserve allowance or call a provider when entitlement resolution fails', async () => {

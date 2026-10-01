@@ -12,7 +12,7 @@ import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { QuotaGrantCategory, QuotaGrantReason, UserRole } from '@prisma/client';
 import request from 'supertest';
 import { AdminUsersService } from '../application/admin-users.service';
 import { AdminSessionsService } from '../application/admin-sessions.service';
@@ -21,6 +21,7 @@ import { RolesGuard } from '../../auth/interface/guards/roles.guard';
 import { AdminConsoleEnabledGuard } from './guards/admin-console-enabled.guard';
 import { AdminConsoleUsersController } from './admin-console-users.controller';
 import { RequestContextService } from '../../../shared/observability/request-context.service';
+import { AdminQuotaService } from '../application/admin-quota.service';
 
 const safeUser = {
   id: 'user-1',
@@ -61,6 +62,12 @@ const safeReactivation = {
 const targetSessionId = '7d397356-f8f8-4f8e-9dce-5571bb1e24e0';
 const safeRevocation = { userId, sessionId: targetSessionId, status: 'revoked' };
 const safeBulkRevocation = { userId, revokedSessionCount: 2 };
+const safeQuotaGrant = {
+  grantId: 'grant-1', targetUserId: userId,
+  category: QuotaGrantCategory.applications, amount: 5,
+  expiresAt: new Date('2026-10-31T23:59:59.000Z'), status: 'active',
+  createdAt: new Date('2026-10-01T12:00:00.000Z'), effectiveLimit: 15, remaining: 8,
+};
 const safeUsage = (plan: 'free' | 'pro' | 'premium') => ({
   userId,
   plan,
@@ -98,6 +105,7 @@ describe('AdminConsoleUsersController', () => {
     revokeAll: jest.fn().mockResolvedValue(safeBulkRevocation),
   };
   const requestContext = { getRequestId: jest.fn(() => 'request_12345678') };
+  const adminQuota = { grant: jest.fn().mockResolvedValue(safeQuotaGrant) };
 
   async function createApp(options?: {
     enabled?: boolean;
@@ -123,6 +131,7 @@ describe('AdminConsoleUsersController', () => {
       providers: [
         { provide: AdminUsersService, useValue: users },
         { provide: AdminSessionsService, useValue: adminSessions },
+        { provide: AdminQuotaService, useValue: adminQuota },
         { provide: RequestContextService, useValue: requestContext },
         JwtAuthGuard,
         RolesGuard,
@@ -151,6 +160,85 @@ describe('AdminConsoleUsersController', () => {
   }
 
   beforeEach(() => jest.clearAllMocks());
+
+  it.each([
+    ['unauthenticated', { authenticated: false }, 401],
+    ['non-platform-admin', { user: { ...trustedAdmin, role: UserRole.user } }, 403],
+    ['MFA-incomplete platform admin', { user: { ...trustedAdmin, mfaVerified: false } }, 403],
+    ['disabled feature flag', { enabled: false }, 403],
+  ] as const)('denies quota grants for %s requests', async (_name, options, status) => {
+    const app = await createApp(options);
+    await request(app.getHttpServer())
+      .post(`/admin/console/users/${userId}/quota-grants`)
+      .set('X-Admin-Step-Up-Proof', 'a'.repeat(43))
+      .set('Idempotency-Key', 'quota-grant-request-0001')
+      .send({
+        category: QuotaGrantCategory.applications,
+        amount: 5,
+        expiresAt: '2026-10-31T23:59:59.000Z',
+        reason: QuotaGrantReason.customer_support,
+      })
+      .expect(status);
+    expect(adminQuota.grant).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('validates and delegates a target-bound idempotent temporary quota grant', async () => {
+    const app = await createApp();
+    const response = await request(app.getHttpServer())
+      .post(`/admin/console/users/${userId}/quota-grants`)
+      .set('X-Admin-Step-Up-Proof', 'a'.repeat(43))
+      .set('Idempotency-Key', 'quota-grant-request-0001')
+      .send({
+        category: QuotaGrantCategory.applications,
+        amount: 5,
+        expiresAt: '2026-10-31T23:59:59.000Z',
+        reason: QuotaGrantReason.customer_support,
+      })
+      .expect(200);
+    expect(response.body).toEqual({
+      ...safeQuotaGrant,
+      expiresAt: safeQuotaGrant.expiresAt.toISOString(),
+      createdAt: safeQuotaGrant.createdAt.toISOString(),
+    });
+    expect(adminQuota.grant).toHaveBeenCalledWith(expect.objectContaining({
+      targetUserId: userId,
+      category: QuotaGrantCategory.applications,
+      amount: 5,
+      reason: QuotaGrantReason.customer_support,
+      idempotencyKey: 'quota-grant-request-0001',
+      stepUpProof: 'a'.repeat(43),
+      context: expect.objectContaining({ actorUserId: trustedAdmin.id, sessionId: trustedAdmin.sessionId }),
+    }));
+    expect(response.body).not.toHaveProperty('stepUpProof');
+    expect(response.body).not.toHaveProperty('idempotencyKey');
+    await app.close();
+  });
+
+  it.each([
+    [{ amount: 0 }, 400],
+    [{ amount: 1.5 }, 400],
+    [{ category: 'unknown' }, 400],
+    [{ reason: 'free text' }, 400],
+    [{ expiresAt: '2026-10-31T23:59:59+01:00' }, 400],
+    [{ unexpected: 'secret' }, 400],
+  ])('rejects invalid quota grant DTO input %j', async (override, status) => {
+    const app = await createApp();
+    await request(app.getHttpServer())
+      .post(`/admin/console/users/${userId}/quota-grants`)
+      .set('X-Admin-Step-Up-Proof', 'a'.repeat(43))
+      .set('Idempotency-Key', 'quota-grant-request-0001')
+      .send({
+        category: QuotaGrantCategory.applications,
+        amount: 5,
+        expiresAt: '2026-10-31T23:59:59.000Z',
+        reason: QuotaGrantReason.customer_support,
+        ...override,
+      })
+      .expect(status);
+    expect(adminQuota.grant).not.toHaveBeenCalled();
+    await app.close();
+  });
 
   it.each([
     ['unauthenticated', { authenticated: false }, 401],

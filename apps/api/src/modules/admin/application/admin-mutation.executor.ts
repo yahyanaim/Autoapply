@@ -34,6 +34,7 @@ export interface ExecuteAdminMutation<T> {
   action: string;
   targetType: string;
   targetId: string;
+  isolationLevel?: Prisma.TransactionIsolationLevel;
   command: (
     transaction: Prisma.TransactionClient,
   ) => Promise<AdminDomainMutation<T>>;
@@ -72,7 +73,7 @@ export class AdminMutationExecutor {
         after: mutation.after,
       });
       return mutation.value;
-    });
+    }, input.isolationLevel ? { isolationLevel: input.isolationLevel } : undefined);
   }
 
   private validate<T>(input: ExecuteAdminMutation<T>): void {

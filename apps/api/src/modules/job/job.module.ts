@@ -10,9 +10,10 @@ import { PartnerApiClient } from './infrastructure/sources/partner-api.client';
 import { JobDiscoveryService } from './application/job-discovery.service';
 import { AIModule } from '../ai/ai.module';
 import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
-  imports: [PrismaModule, AIModule, IdempotencyModule],
+  imports: [PrismaModule, AIModule, IdempotencyModule, BillingModule],
   providers: [
     JobService,
     JobIngestionService,

@@ -16,6 +16,7 @@ describe('JobDiscoveryService', () => {
   let ingestion: any;
   let config: any;
   let matchScoreCache: any;
+  let quota: any;
   let service: JobDiscoveryService;
 
   beforeEach(() => {
@@ -51,11 +52,19 @@ describe('JobDiscoveryService', () => {
           })),
       ),
     };
+    quota = {
+      reserve: jest.fn().mockResolvedValue({
+        resetAt: new Date(Date.now() + 86_400_000),
+        quota: { used: 1, effectiveLimit: 3, remaining: 2, unlimited: false },
+      }),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
     service = new JobDiscoveryService(
       prisma,
       ingestion,
       config as ConfigService,
       matchScoreCache,
+      quota,
     );
   });
 
@@ -100,6 +109,10 @@ describe('JobDiscoveryService', () => {
       limit: 20,
     });
 
+    expect(quota.reserve).toHaveBeenCalledWith(
+      'user-1', 'job_discoveries', 1, expect.any(Date),
+      'Monthly job-discovery limit reached. Upgrade your plan or wait for the next reset.',
+    );
     expect(result.jobs).toHaveLength(20);
     expect(result.discoveryUsage).toEqual(
       expect.objectContaining({
@@ -272,14 +285,7 @@ describe('JobDiscoveryService', () => {
       parseStatus: ResumeParseStatus.ready,
       parsedJson: { skills: [], experience: [] },
     });
-    prisma.usageLimit.findUnique.mockResolvedValue({
-      jobDiscoveriesUsed: 3,
-      jobDiscoveriesMax: 3,
-      resetAt: new Date(Date.now() + 86_400_000),
-    });
-    prisma.usageLimit.updateMany
-      .mockResolvedValueOnce({ count: 0 })
-      .mockResolvedValueOnce({ count: 0 });
+    quota.reserve.mockRejectedValueOnce(new ForbiddenException('limit reached'));
 
     await expect(
       service.discover('user-1', { resumeId: 'resume-1', limit: 20 }),
@@ -334,14 +340,12 @@ describe('JobDiscoveryService', () => {
     await expect(
       service.discover('user-1', { resumeId: 'resume-1', limit: 20 }),
     ).rejects.toThrow('database unavailable');
-    expect(prisma.usageLimit.updateMany).toHaveBeenLastCalledWith({
-      where: {
-        userId: 'user-1',
-        resetAt: expect.any(Date),
-        jobDiscoveriesUsed: { gt: 0 },
-      },
-      data: { jobDiscoveriesUsed: { decrement: 1 } },
-    });
+    expect(quota.release).toHaveBeenCalledWith(
+      'user-1',
+      'job_discoveries',
+      1,
+      expect.any(Date),
+    );
   });
 
   it('shares one in-flight source refresh across concurrent discoveries', async () => {

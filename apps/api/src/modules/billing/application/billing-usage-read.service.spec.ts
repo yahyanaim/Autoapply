@@ -1,10 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma/prisma.service';
-import { UNLIMITED_PLAN_LIMIT } from '../domain/plan-limits';
 import { BillingUsageReadService } from './billing-usage-read.service';
+import { BillingQuotaService } from './billing-quota.service';
 
-const resetAt = new Date('2026-10-01T00:00:00.000Z');
+const resetAt = new Date('2099-10-01T00:00:00.000Z');
 
 function usageLimit(overrides: Record<string, unknown> = {}) {
   return {
@@ -60,13 +60,16 @@ describe('BillingUsageReadService', () => {
     },
     payment: { findMany: jest.fn() },
     aIRequest: { findMany: jest.fn() },
+    quotaGrant: { groupBy: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn(),
   };
   let service: BillingUsageReadService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new BillingUsageReadService(prisma as unknown as PrismaService);
+    service = new BillingUsageReadService(
+      new BillingQuotaService(prisma as unknown as PrismaService),
+    );
   });
 
   it('returns the complete finite Free-plan operational snapshot', async () => {
@@ -91,6 +94,25 @@ describe('BillingUsageReadService', () => {
         },
       },
     });
+  });
+
+  it('projects an overdue monthly reset without writing while unexpired grants remain active', async () => {
+    prisma.user.findUnique.mockResolvedValue(user(
+      SubscriptionPlan.free,
+      SubscriptionStatus.active,
+      usageLimit({ resetAt: new Date('2026-09-01T00:00:00.000Z') }),
+    ));
+    prisma.quotaGrant.groupBy.mockResolvedValueOnce([
+      { category: 'ai_requests', _sum: { amount: 2 } },
+      { category: 'resumes', _sum: { amount: 1 } },
+    ]);
+
+    const summary = await new BillingQuotaService(prisma as unknown as PrismaService)
+      .getUsageSummaryForAdmin('user-1', new Date('2026-10-01T12:00:00.000Z'));
+    expect(summary.resetAt).toEqual(new Date('2026-11-01T00:00:00.000Z'));
+    expect(summary.usage.aiRequests).toEqual({ used: 0, limit: 7, remaining: 7, unlimited: false });
+    expect(summary.usage.resumes).toEqual({ used: 1, limit: 2, remaining: 1, unlimited: false });
+    expect(prisma.usageLimit.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -124,13 +146,13 @@ describe('BillingUsageReadService', () => {
   it('maps the canonical unlimited sentinel and clamps finite remaining at zero', async () => {
     prisma.user.findUnique.mockResolvedValue(
       user(
-        SubscriptionPlan.premium,
+        SubscriptionPlan.free,
         SubscriptionStatus.active,
         usageLimit({
           applicationsUsed: 12,
           applicationsMax: 10,
           aiRequestsUsed: 25,
-          aiRequestsMax: UNLIMITED_PLAN_LIMIT,
+          aiRequestsMax: 5,
         }),
       ),
     );
@@ -144,6 +166,21 @@ describe('BillingUsageReadService', () => {
       unlimited: false,
     });
     expect(summary.usage.aiRequests).toEqual({
+      used: 25,
+      limit: 5,
+      remaining: 0,
+      unlimited: false,
+    });
+
+    prisma.user.findUnique.mockResolvedValue(
+      user(
+        SubscriptionPlan.premium,
+        SubscriptionStatus.active,
+        usageLimit({ aiRequestsUsed: 25 }),
+      ),
+    );
+    const premium = await service.getUsageSummaryForAdmin('user-1');
+    expect(premium.usage.aiRequests).toEqual({
       used: 25,
       limit: null,
       remaining: null,
@@ -163,7 +200,7 @@ describe('BillingUsageReadService', () => {
     );
   });
 
-  it('uses exactly one strict read projection and makes no quota or history calls', async () => {
+  it('uses two bounded strict projections and makes no writes or history calls', async () => {
     prisma.user.findUnique.mockResolvedValue(user());
 
     const result = await service.getUsageSummaryForAdmin('user-1');
@@ -174,25 +211,16 @@ describe('BillingUsageReadService', () => {
       select: {
         id: true,
         subscription: { select: { plan: true, status: true } },
-        usageLimit: {
-          select: {
-            period: true,
-            resetAt: true,
-            applicationsUsed: true,
-            applicationsMax: true,
-            aiRequestsUsed: true,
-            aiRequestsMax: true,
-            resumeOptimizationsUsed: true,
-            resumeOptimizationsMax: true,
-            jobDiscoveriesUsed: true,
-            jobDiscoveriesMax: true,
-            resumesUsed: true,
-            resumesMax: true,
-            storageBytesUsed: true,
-            storageBytesMax: true,
-          },
-        },
+        usageLimit: true,
       },
+    });
+    expect(prisma.quotaGrant.groupBy).toHaveBeenCalledWith({
+      by: ['category'],
+      where: {
+        targetUserId: 'user-1',
+        expiresAt: { gt: expect.any(Date) },
+      },
+      _sum: { amount: true },
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.user.update).not.toHaveBeenCalled();

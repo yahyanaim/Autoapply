@@ -38,6 +38,8 @@ import type {
   AdminConsoleApplicationsResponse,
   AdminConsoleMetricsRequest,
   AdminConsoleMetricsResponse,
+  AdminConsoleQuotaGrantRequest,
+  AdminConsoleQuotaGrantResponse,
 } from '@applyai/shared-types';
 import type {
   AuthLoginRequest,
@@ -555,6 +557,24 @@ export class ApiClient {
     ): Promise<AdminConsoleUserUsageLimitsResponse> => {
       const res = await this.http.get<AdminConsoleUserUsageLimitsResponse>(
         `/admin/console/users/${encodeURIComponent(userId)}/usage-limits`,
+      );
+      return res.data;
+    },
+
+    grantUserQuota: async (
+      userId: string,
+      data: AdminConsoleQuotaGrantRequest,
+    ): Promise<AdminConsoleQuotaGrantResponse> => {
+      const { stepUpProof, idempotencyKey, ...payload } = data;
+      const res = await this.http.post<AdminConsoleQuotaGrantResponse>(
+        `/admin/console/users/${encodeURIComponent(userId)}/quota-grants`,
+        payload,
+        {
+          headers: {
+            'X-Admin-Step-Up-Proof': stepUpProof,
+            'Idempotency-Key': idempotencyKey,
+          },
+        },
       );
       return res.data;
     },

@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, RemoteType, ResumeParseStatus } from '@prisma/client';
+import { Prisma, QuotaGrantCategory, RemoteType, ResumeParseStatus } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { MatchScoreCacheService } from '../../ai/application/match-score-cache.service';
@@ -16,6 +16,7 @@ import { visibleJobSources } from '../domain/job-visibility';
 import { JobIngestionService, JobSource } from './job-ingestion.service';
 import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
 import { serializeSafeLog } from '../../../shared/observability/safe-log';
+import { BillingQuotaService } from '../../billing/application/billing-quota.service';
 
 const MAX_CANDIDATES = 500;
 const MAX_CONFIGURED_SOURCES = 8;
@@ -47,6 +48,7 @@ export class JobDiscoveryService {
     private readonly ingestion: JobIngestionService,
     private readonly config: ConfigService,
     private readonly matchScoreCache: MatchScoreCacheService,
+    private readonly quota: BillingQuotaService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
@@ -297,79 +299,24 @@ export class JobDiscoveryService {
   }
 
   private async reserveDiscovery(userId: string) {
-    return this.prisma.$transaction(async (transaction) => {
-      const now = new Date();
-      const nextReset = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-      );
-      await transaction.usageLimit.updateMany({
-        where: { userId, resetAt: { lt: now } },
-        data: {
-          applicationsUsed: 0,
-          aiRequestsUsed: 0,
-          resumeOptimizationsUsed: 0,
-          jobDiscoveriesUsed: 0,
-          resetAt: nextReset,
-        },
-      });
-      const usage = await transaction.usageLimit.findUnique({
-        where: { userId },
-        select: {
-          jobDiscoveriesUsed: true,
-          jobDiscoveriesMax: true,
-          resetAt: true,
-        },
-      });
-      if (!usage) throw new NotFoundException('Usage limit not found for user');
-      const reserved = await transaction.usageLimit.updateMany({
-        where: {
-          userId,
-          jobDiscoveriesUsed: { lt: usage.jobDiscoveriesMax },
-        },
-        data: { jobDiscoveriesUsed: { increment: 1 } },
-      });
-      if (reserved.count !== 1) {
-        throw new ForbiddenException(
-          'Monthly job-discovery limit reached. Upgrade your plan or wait for the next reset.',
-        );
-      }
-      const currentUsage = await transaction.usageLimit.findUnique({
-        where: { userId },
-        select: {
-          jobDiscoveriesUsed: true,
-          jobDiscoveriesMax: true,
-          resetAt: true,
-        },
-      });
-      if (!currentUsage) {
-        throw new NotFoundException('Usage limit not found for user');
-      }
-      const used = Math.max(
-        usage.jobDiscoveriesUsed + 1,
-        currentUsage.jobDiscoveriesUsed,
-      );
-      const unlimited = currentUsage.jobDiscoveriesMax >= UNLIMITED_PLAN_LIMIT;
-      return {
-        used,
-        maximum: currentUsage.jobDiscoveriesMax,
-        remaining: unlimited
-          ? null
-          : Math.max(0, currentUsage.jobDiscoveriesMax - used),
-        unlimited,
-        resetAt: currentUsage.resetAt,
-      };
-    });
+    const reserved = await this.quota.reserve(
+      userId,
+      QuotaGrantCategory.job_discoveries,
+      1,
+      this.clock.now(),
+      'Monthly job-discovery limit reached. Upgrade your plan or wait for the next reset.',
+    );
+    return {
+      used: reserved.quota.used,
+      maximum: reserved.quota.effectiveLimit ?? UNLIMITED_PLAN_LIMIT,
+      remaining: reserved.quota.remaining,
+      unlimited: reserved.quota.unlimited,
+      resetAt: reserved.resetAt,
+    };
   }
 
   private async releaseDiscovery(userId: string, resetAt: Date) {
-    await this.prisma.usageLimit.updateMany({
-      where: {
-        userId,
-        resetAt,
-        jobDiscoveriesUsed: { gt: 0 },
-      },
-      data: { jobDiscoveriesUsed: { decrement: 1 } },
-    });
+    await this.quota.release(userId, QuotaGrantCategory.job_discoveries, 1, resetAt);
   }
 }
 

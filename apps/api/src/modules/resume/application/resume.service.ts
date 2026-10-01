@@ -20,6 +20,7 @@ import { PdfParser } from '../infrastructure/parsers/pdf.parser';
 import { DocxParser } from '../infrastructure/parsers/docx.parser';
 import {
   Prisma,
+  QuotaGrantCategory,
   ResumeParseExecutionOrigin,
   ResumeParseExecutionStatus,
   ResumeParseFailureCategory,
@@ -38,6 +39,7 @@ import {
 } from '../../ai/application/plan-aware-ai.router';
 import { serializeSafeLog } from '../../../shared/observability/safe-log';
 import { ResumeParseJobSignatureService } from '../infrastructure/queue/resume-parse-job-signature.service';
+import { BillingQuotaService } from '../../billing/application/billing-quota.service';
 
 export const StorageToken = Symbol('StoragePort');
 export const ResumeParseFreeQueueToken = Symbol('ResumeParseFreeQueue');
@@ -82,6 +84,7 @@ export class ResumeService {
     private readonly resumeParser: ResumeParser,
     private readonly planAwareRouter: PlanAwareAiRouter,
     private readonly jobSignature: ResumeParseJobSignatureService,
+    private readonly quota: BillingQuotaService,
   ) {}
 
   async upload(userId: string, file: Express.Multer.File) {
@@ -420,15 +423,8 @@ export class ResumeService {
       const deleted = await transaction.resume.delete({
         where: { id: resumeId },
       });
-      await transaction.usageLimit.updateMany({
-        where: { userId, resumesUsed: { gt: 0 } },
-        data: {
-          resumesUsed: { decrement: 1 },
-          storageBytesUsed: {
-            decrement: Math.max(0, fileSize),
-          },
-        },
-      });
+      await this.quota.releaseInTransaction(transaction, userId, QuotaGrantCategory.resumes, 1);
+      await this.quota.releaseInTransaction(transaction, userId, QuotaGrantCategory.storage_bytes, Math.max(0, fileSize));
       return deleted;
     });
   }
@@ -443,26 +439,12 @@ export class ResumeService {
       try {
         return await this.prisma.$transaction(
           async (transaction) => {
-            const quota = await transaction.usageLimit.findUnique({
-              where: { userId },
-            });
-            if (!quota)
-              throw new NotFoundException('Usage limit not found for user');
-            if (
-              quota.resumesUsed >= quota.resumesMax ||
-              quota.storageBytesUsed + file.size > quota.storageBytesMax
-            ) {
-              throw new ForbiddenException(
-                'Resume storage limit reached for this plan',
-              );
-            }
-            await transaction.usageLimit.update({
-              where: { userId },
-              data: {
-                resumesUsed: { increment: 1 },
-                storageBytesUsed: { increment: file.size },
-              },
-            });
+            await this.quota.reserveResumeStorageInTransaction(
+              transaction,
+              userId,
+              file.size,
+              new Date(),
+            );
             const resume = await transaction.resume.create({
               data: {
                 userId,

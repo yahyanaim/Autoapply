@@ -54,6 +54,12 @@ import {
   AdminConsoleRevokeAllSessionsResponseDto,
 } from './dto/admin-console-revoke-session.dto';
 import { RequestContextService } from '../../../shared/observability/request-context.service';
+import { AdminQuotaService } from '../application/admin-quota.service';
+import { requireIdempotencyKey } from '../../../shared/idempotency/idempotency-key';
+import {
+  AdminConsoleQuotaGrantDto,
+  AdminConsoleQuotaGrantResponseDto,
+} from './dto/admin-console-quota-grant.dto';
 
 @ApiTags('admin-console-users')
 @ApiBearerAuth()
@@ -65,8 +71,55 @@ export class AdminConsoleUsersController {
   constructor(
     private readonly users: AdminUsersService,
     private readonly adminSessions: AdminSessionsService,
+    private readonly adminQuota: AdminQuotaService,
     private readonly requestContext: RequestContextService,
   ) {}
+
+  @Post(':userId/quota-grants')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Grant one temporary additive quota allowance' })
+  @ApiParam({ name: 'userId', type: String, description: 'Prisma CUID user identifier' })
+  @ApiHeader({ name: 'X-Admin-Step-Up-Proof', required: true, description: 'Single-use proof bound to this actor, session, action, and target user' })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Stable key for this logical quota grant' })
+  @ApiBody({ type: AdminConsoleQuotaGrantDto })
+  @ApiResponse({ status: 200, type: AdminConsoleQuotaGrantResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid quota grant request or proof' })
+  @ApiResponse({ status: 401, description: 'Step-up proof is invalid' })
+  @ApiResponse({ status: 403, description: 'Admin Console access denied' })
+  @ApiResponse({ status: 404, description: 'User or entitlement not found' })
+  @ApiResponse({ status: 409, description: 'Quota grant conflicts with account or idempotency state' })
+  async grantQuota(
+    @Param() params: AdminConsoleUserIdParamDto,
+    @Headers('x-admin-step-up-proof') stepUpProof: string | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @CurrentUser('id') actorUserId: string,
+    @CurrentUser('sessionId') sessionId: string,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('mfaVerified') mfaVerified: boolean,
+    @Body() input: AdminConsoleQuotaGrantDto,
+  ) {
+    const result = await this.adminQuota.grant({
+      context: {
+        actorUserId,
+        sessionId,
+        role,
+        mfaVerified,
+        correlationId: this.requestContext.getRequestId(),
+      },
+      targetUserId: params.userId,
+      category: input.category,
+      amount: input.amount,
+      expiresAt: new Date(input.expiresAt),
+      reason: input.reason,
+      idempotencyKey: requireIdempotencyKey(idempotencyKey),
+      stepUpProof: stepUpProof ?? '',
+    });
+    return {
+      ...result,
+      expiresAt: result.expiresAt.toISOString(),
+      createdAt: result.createdAt.toISOString(),
+    };
+  }
 
   @Get()
   @ApiOperation({ summary: 'List sanitized Admin Console users' })

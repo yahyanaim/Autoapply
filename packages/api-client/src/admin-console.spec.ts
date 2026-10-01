@@ -14,6 +14,7 @@ import type {
   AdminConsoleMetricsResponse,
   AdminConsoleUserSummary,
   AdminConsoleUsersResponse,
+  AdminConsoleQuotaGrantResponse,
 } from '@applyai/shared-types';
 import {
   AdminSessionStatus,
@@ -21,6 +22,8 @@ import {
   ResumeRequeueReason,
   SessionClientType,
   UserStatus,
+  QuotaGrantCategory,
+  QuotaGrantReason,
 } from '@applyai/shared-types';
 import type { ApiClient } from './client';
 
@@ -60,6 +63,15 @@ const globalSessions: Promise<AdminConsoleSessionsResponse> =
   });
 const usageLimits: Promise<AdminConsoleUserUsageLimitsResponse> =
   client.adminConsole.userUsageLimits('ckz8dc7m40000qwertyuiop12');
+const quotaGrant: Promise<AdminConsoleQuotaGrantResponse> =
+  client.adminConsole.grantUserQuota('ckz8dc7m40000qwertyuiop12', {
+    category: QuotaGrantCategory.ai_requests,
+    amount: 10,
+    expiresAt: '2026-10-31T23:59:59.000Z',
+    reason: QuotaGrantReason.customer_support,
+    idempotencyKey: 'quota-grant-request-0001',
+    stepUpProof: 'proof',
+  });
 const activityLogs: Promise<AdminConsoleActivityLogsResponse> =
   client.adminConsole.activityLogs({
     action: 'admin.user.suspend',
@@ -117,6 +129,7 @@ void user;
 void sessions;
 void globalSessions;
 void usageLimits;
+void quotaGrant;
 void activityLogs;
 void overview;
 void jobs;

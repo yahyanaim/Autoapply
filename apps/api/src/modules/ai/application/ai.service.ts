@@ -24,7 +24,7 @@ import {
   formatTruthfulnessFailure,
 } from '../domain/fabrication-detector';
 import { scoreGenericness } from '../domain/genericness-detector';
-import { AIRequestFeature, Prisma, ResumeParseStatus } from '@prisma/client';
+import { AIRequestFeature, Prisma, QuotaGrantCategory, ResumeParseStatus } from '@prisma/client';
 import * as crypto from 'crypto';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import {
@@ -42,6 +42,8 @@ import {
 import { MatchScoreCacheService } from './match-score-cache.service';
 import { accessibleFreshJobWhere } from '../../job/domain/job-visibility';
 import { serializeSafeLog } from '../../../shared/observability/safe-log';
+import { BillingQuotaService } from '../../billing/application/billing-quota.service';
+import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
 
 @Injectable()
 export class AIService {
@@ -53,6 +55,7 @@ export class AIService {
     private readonly planAwareRouter: PlanAwareAiRouter,
     private readonly promptService: PromptService,
     private readonly matchScoreCache: MatchScoreCacheService,
+    private readonly quota: BillingQuotaService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
     @Optional() private readonly config: ConfigService = new ConfigService(),
   ) {}
@@ -146,40 +149,20 @@ export class AIService {
 
       return { content: response.content, model: response.model };
     } catch (error) {
-      await this.prisma.usageLimit.updateMany({
-        where: { userId, resetAt: usageResetAt, aiRequestsUsed: { gt: 0 } },
-        data: { aiRequestsUsed: { decrement: 1 } },
-      });
+      await this.quota.release(userId, QuotaGrantCategory.ai_requests, 1, usageResetAt);
       throw error;
     }
   }
 
   private async reserveUsage(userId: string): Promise<Date> {
-    return this.prisma.$transaction(async (transaction) => {
-      const now = this.clock.now();
-      await transaction.usageLimit.updateMany({
-        where: { userId, resetAt: { lt: now } },
-        data: {
-          aiRequestsUsed: 0,
-          applicationsUsed: 0,
-          resumeOptimizationsUsed: 0,
-          jobDiscoveriesUsed: 0,
-          resetAt: this.getNextResetDate(),
-        },
-      });
-      const usage = await transaction.usageLimit.findUnique({
-        where: { userId },
-      });
-      if (!usage) throw new NotFoundException('Usage limit not found for user');
-      const reserved = await transaction.usageLimit.updateMany({
-        where: { userId, aiRequestsUsed: { lt: usage.aiRequestsMax } },
-        data: { aiRequestsUsed: { increment: 1 } },
-      });
-      if (reserved.count !== 1) {
-        throw new ForbiddenException('AI request limit reached');
-      }
-      return usage.resetAt;
-    });
+    const reserved = await this.quota.reserve(
+      userId,
+      QuotaGrantCategory.ai_requests,
+      1,
+      this.clock.now(),
+      'AI request limit reached',
+    );
+    return reserved.resetAt;
   }
 
   async matchScore(userId: string, resumeId: string, jobId: string) {
@@ -434,54 +417,18 @@ export class AIService {
   }
 
   private async reserveResumeOptimization(userId: string): Promise<Date> {
-    return this.prisma.$transaction(async (transaction) => {
-      const now = this.clock.now();
-      await transaction.usageLimit.updateMany({
-        where: { userId, resetAt: { lt: now } },
-        data: {
-          aiRequestsUsed: 0,
-          applicationsUsed: 0,
-          resumeOptimizationsUsed: 0,
-          jobDiscoveriesUsed: 0,
-          resetAt: this.getNextResetDate(),
-        },
-      });
-      const usage = await transaction.usageLimit.findUnique({
-        where: { userId },
-        select: {
-          resumeOptimizationsUsed: true,
-          resumeOptimizationsMax: true,
-          resetAt: true,
-        },
-      });
-      if (!usage) throw new NotFoundException('Usage limit not found for user');
-      const reserved = await transaction.usageLimit.updateMany({
-        where: {
-          userId,
-          resumeOptimizationsUsed: {
-            lt: usage.resumeOptimizationsMax,
-          },
-        },
-        data: { resumeOptimizationsUsed: { increment: 1 } },
-      });
-      if (reserved.count !== 1) {
-        throw new ForbiddenException(
-          'Monthly resume-optimization limit reached. Upgrade your plan or wait for the next reset.',
-        );
-      }
-      return usage.resetAt;
-    });
+    const reserved = await this.quota.reserve(
+      userId,
+      QuotaGrantCategory.resume_optimizations,
+      1,
+      this.clock.now(),
+      'Monthly resume-optimization limit reached. Upgrade your plan or wait for the next reset.',
+    );
+    return reserved.resetAt;
   }
 
   private async releaseResumeOptimization(userId: string, resetAt: Date) {
-    await this.prisma.usageLimit.updateMany({
-      where: {
-        userId,
-        resetAt,
-        resumeOptimizationsUsed: { gt: 0 },
-      },
-      data: { resumeOptimizationsUsed: { decrement: 1 } },
-    });
+    await this.quota.release(userId, QuotaGrantCategory.resume_optimizations, 1, resetAt);
   }
 
   async generateCoverLetter(
@@ -594,16 +541,7 @@ export class AIService {
           },
         },
       }),
-      this.prisma.usageLimit.findUnique({
-        where: { userId },
-        select: {
-          aiRequestsUsed: true,
-          aiRequestsMax: true,
-          resumeOptimizationsUsed: true,
-          resumeOptimizationsMax: true,
-          resetAt: true,
-        },
-      }),
+      this.quota.getUsageSummaryForAdmin(userId, this.clock.now()),
     ]);
 
     const totalCost = requests.reduce((sum, req) => sum + (req.cost ?? 0), 0);
@@ -636,12 +574,13 @@ export class AIService {
       endDate,
       quota: usage
         ? {
-            aiRequestsUsed: quotaActive ? usage.aiRequestsUsed : 0,
-            aiRequestsMax: usage.aiRequestsMax,
+            aiRequestsUsed: quotaActive ? usage.usage.aiRequests.used : 0,
+            aiRequestsMax: usage.usage.aiRequests.limit ?? UNLIMITED_PLAN_LIMIT,
             resumeOptimizationsUsed: quotaActive
-              ? usage.resumeOptimizationsUsed
+              ? usage.usage.resumeOptimizations.used
               : 0,
-            resumeOptimizationsMax: usage.resumeOptimizationsMax,
+            resumeOptimizationsMax:
+              usage.usage.resumeOptimizations.limit ?? UNLIMITED_PLAN_LIMIT,
             resetAt: usage.resetAt,
           }
         : null,

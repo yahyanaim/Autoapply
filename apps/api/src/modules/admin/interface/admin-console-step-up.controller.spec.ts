@@ -214,6 +214,21 @@ describe('AdminConsoleStepUpController', () => {
     await app.close();
   });
 
+  it('issues a proof only for the approved quota-grant user binding', async () => {
+    const app = await createApp();
+    await request(app.getHttpServer())
+      .post('/admin/console/step-up')
+      .send({ ...validRequest, action: 'admin.quota.grant', targetType: 'user' })
+      .expect(200);
+    expect(stepUpMfa.issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'admin.quota.grant', targetType: 'user', targetId,
+      }),
+      '123456',
+    );
+    await app.close();
+  });
+
   it.each([
     [{ ...validRequest, action: 'admin.user.delete' }],
     [{ ...validRequest, targetType: 'organization' }],
@@ -225,6 +240,7 @@ describe('AdminConsoleStepUpController', () => {
     { ...validRequest, targetType: 'session', targetId: validSessionRequest.targetId },
     { ...validRequest, action: 'admin.job.deactivate', targetType: 'user' },
     { ...validRequest, action: 'admin.resume.requeue', targetType: 'user' },
+    { ...validRequest, action: 'admin.quota.grant', targetType: 'resume' },
   ])('rejects unsupported, malformed, or client-supplied binding input', async (body) => {
     const app = await createApp();
     await request(app.getHttpServer())
