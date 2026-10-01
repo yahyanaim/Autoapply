@@ -19,8 +19,10 @@ import type {
   AdminConsoleApplicationsResponse,
   AdminConsoleMetricsRequest,
   AdminConsoleMetricsResponse,
+  AdminConsoleQuotaGrantRequest,
+  AdminConsoleQuotaGrantResponse,
 } from './admin';
-import { ResumeRequeueReason } from '../enums';
+import { QuotaGrantCategory, QuotaGrantReason, ResumeRequeueReason } from '../enums';
 
 declare const user: AdminConsoleUserSummary;
 
@@ -165,6 +167,23 @@ resumeRequeueResult.parsedJson;
 resumeRequeueResult.idempotencyKeyHash;
 
 void resumeRequeue;
+
+const quotaGrant: AdminConsoleQuotaGrantRequest = {
+  category: QuotaGrantCategory.ai_requests,
+  amount: 25,
+  expiresAt: '2026-10-31T23:59:59.000Z',
+  reason: QuotaGrantReason.customer_support,
+  stepUpProof: 'proof',
+  idempotencyKey: 'quota-grant-request-0001',
+};
+declare const quotaGrantResult: AdminConsoleQuotaGrantResponse;
+quotaGrantResult.effectiveLimit satisfies number | null;
+quotaGrantResult.remaining satisfies number | null;
+// @ts-expect-error Sanitized responses never expose step-up proofs.
+quotaGrantResult.stepUpProof;
+// @ts-expect-error Sanitized responses never expose raw idempotency keys.
+quotaGrantResult.idempotencyKey;
+void quotaGrant;
 
 declare const betaGate: AdminConsoleBetaGateResponse;
 betaGate.remainingSlots satisfies number;

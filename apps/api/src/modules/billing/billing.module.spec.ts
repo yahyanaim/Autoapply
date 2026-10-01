@@ -6,6 +6,7 @@ import { BillingMetricsReadService } from './application/billing-metrics-read.se
 import { SubscriptionLifecycleService } from './application/subscription-lifecycle.service';
 import { BillingFinancialMetricsReadService } from './application/billing-financial-metrics-read.service';
 import { BillingFinancialMetricsRecorderService } from './application/billing-financial-metrics-recorder.service';
+import { BillingQuotaService } from './application/billing-quota.service';
 
 describe('BillingModule', () => {
   it('registers, exports, and compiles the read-only Billing services', async () => {
@@ -18,6 +19,7 @@ describe('BillingModule', () => {
         SubscriptionLifecycleService,
         BillingFinancialMetricsReadService,
         BillingFinancialMetricsRecorderService,
+        BillingQuotaService,
       ]),
     );
     expect(exports).toEqual(
@@ -25,6 +27,7 @@ describe('BillingModule', () => {
         BillingUsageReadService,
         BillingMetricsReadService,
         BillingFinancialMetricsReadService,
+        BillingQuotaService,
       ]),
     );
 
@@ -34,6 +37,7 @@ describe('BillingModule', () => {
         BillingMetricsReadService,
         BillingFinancialMetricsReadService,
         BillingFinancialMetricsRecorderService,
+        BillingQuotaService,
         { provide: PrismaService, useValue: { user: { findUnique: jest.fn() } } },
         SubscriptionLifecycleService,
       ],

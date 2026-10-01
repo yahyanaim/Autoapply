@@ -8,6 +8,7 @@ export enum AdminConsoleStepUpActionDto {
   revokeAllSessions = 'admin.session.revoke_all',
   deactivateJob = 'admin.job.deactivate',
   requeueResume = 'admin.resume.requeue',
+  grantQuota = 'admin.quota.grant',
 }
 
 export class AdminConsoleStepUpRequestDto {

@@ -28,6 +28,7 @@ import { AdminResumesService } from './application/admin-resumes.service';
 import { AIModule } from '../ai/ai.module';
 import { AdminMetricsService } from './application/admin-metrics.service';
 import { AdminConsoleMetricsController } from './interface/admin-console-metrics.controller';
+import { AdminQuotaService } from './application/admin-quota.service';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { AdminConsoleMetricsController } from './interface/admin-console-metrics
     AdminJobsService,
     AdminResumesService,
     AdminMetricsService,
+    AdminQuotaService,
   ],
   controllers: [
     AdminController,

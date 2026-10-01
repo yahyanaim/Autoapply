@@ -12,6 +12,8 @@ import {
   JobDeactivationReason,
   ResumeParseFailureCategory,
   ResumeRequeueReason,
+  QuotaGrantCategory,
+  QuotaGrantReason,
 } from '../enums';
 
 export type AdminConsoleUserAction =
@@ -20,7 +22,8 @@ export type AdminConsoleUserAction =
   | 'admin.session.revoke'
   | 'admin.session.revoke_all'
   | 'admin.job.deactivate'
-  | 'admin.resume.requeue';
+  | 'admin.resume.requeue'
+  | 'admin.quota.grant';
 
 /** Deliberately excludes credentials, MFA material, tokens, CVs, and billing data. */
 export interface AdminConsoleUserSummary {
@@ -212,6 +215,28 @@ export interface AdminConsoleUserMutationResponse {
   userId: string;
   status: UserStatus;
   suspendedAt?: string | null;
+}
+
+export interface AdminConsoleQuotaGrantRequest {
+  category: QuotaGrantCategory;
+  amount: number;
+  expiresAt: string;
+  reason: QuotaGrantReason;
+  idempotencyKey: string;
+  stepUpProof: string;
+}
+
+/** Sanitized grant confirmation; excludes proofs, keys, fingerprints, and identity data. */
+export interface AdminConsoleQuotaGrantResponse {
+  grantId: string;
+  targetUserId: string;
+  category: QuotaGrantCategory;
+  amount: number;
+  expiresAt: string;
+  status: 'active' | 'expired';
+  createdAt: string;
+  effectiveLimit: number | null;
+  remaining: number | null;
 }
 
 export type AdminConsoleJobEligibility = 'eligible' | 'stale';

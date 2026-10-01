@@ -79,6 +79,21 @@ enum BillingFinancialEventCategory {
   gross_revenue
 }
 
+enum QuotaGrantCategory {
+  applications
+  ai_requests
+  resume_optimizations
+  job_discoveries
+  resumes
+  storage_bytes
+}
+
+enum QuotaGrantReason {
+  customer_support
+  service_recovery
+  beta_program
+}
+
 enum AIRequestFeature {
   resume_parse
   job_analyze
@@ -209,6 +224,7 @@ enum ActivityType {
   admin_session_revoke_all
   admin_job_deactivate
   admin_resume_requeue
+  admin_quota_grant
   queue_job
 }
 
@@ -249,6 +265,8 @@ model User {
   requestedResumeRequeues ResumeParseExecution[] @relation("ResumeRequeueRequestedBy")
   refreshTokenHistory   RefreshTokenHistory[]
   idempotencyRecords    IdempotencyRecord[]
+  quotaGrants           QuotaGrant[]             @relation("QuotaGrantTarget")
+  grantedQuotaGrants    QuotaGrant[]             @relation("QuotaGrantActor")
 
   @@index([email])
   @@index([status, createdAt])
@@ -770,6 +788,28 @@ model UsageLimit {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("usage_limits")
+}
+
+model QuotaGrant {
+  id                 String             @id @default(cuid())
+  targetUserId       String
+  category           QuotaGrantCategory
+  amount             Int
+  expiresAt          DateTime
+  reason             QuotaGrantReason
+  grantedByUserId    String?
+  idempotencyKeyHash String
+  requestFingerprint String
+  effectiveLimitAtCreation Int
+  remainingAtCreation      Int
+  createdAt          DateTime           @default(now())
+
+  targetUser User @relation("QuotaGrantTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("QuotaGrantActor", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([grantedByUserId, idempotencyKeyHash])
+  @@index([targetUserId, category, expiresAt])
+  @@map("quota_grants")
 }
 
 model Notification {

@@ -52,6 +52,8 @@ export class AdminConsoleStepUpController {
     const expectedTargetType =
       input.action === AdminConsoleStepUpActionDto.revokeSession
         ? 'session'
+        : input.action === AdminConsoleStepUpActionDto.grantQuota
+          ? 'user'
         : input.action === AdminConsoleStepUpActionDto.requeueResume
           ? 'resume'
           : input.action === AdminConsoleStepUpActionDto.deactivateJob

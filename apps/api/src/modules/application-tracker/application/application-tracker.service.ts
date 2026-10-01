@@ -13,6 +13,7 @@ import {
   ApplicationStatus,
   JobStatus,
   Prisma,
+  QuotaGrantCategory,
   ResumeParseStatus,
 } from '@prisma/client';
 import { createHash } from 'crypto';
@@ -36,12 +37,14 @@ import {
 import { ApplicationEntity } from '../domain/application.entity';
 import { RegenerationTarget } from '../interface/dto/regenerate-application.dto';
 import { UpdateApplicationMaterialsDto } from '../interface/dto/update-materials.dto';
+import { BillingQuotaService } from '../../billing/application/billing-quota.service';
 
 @Injectable()
 export class ApplicationTrackerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiService: AIService,
+    private readonly quota: BillingQuotaService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
     @Optional() private readonly config: ConfigService = new ConfigService(),
   ) {}
@@ -634,34 +637,17 @@ export class ApplicationTrackerService {
   }
 
   async getUsage(userId: string) {
-    return this.prisma.$transaction(async (transaction) => {
-      const now = this.clock.now();
-      await transaction.usageLimit.updateMany({
-        where: { userId, resetAt: { lt: now } },
-        data: {
-          applicationsUsed: 0,
-          aiRequestsUsed: 0,
-          resumeOptimizationsUsed: 0,
-          jobDiscoveriesUsed: 0,
-          resetAt: this.getNextResetDate(now),
-        },
-      });
-      const usage = await transaction.usageLimit.findUnique({
-        where: { userId },
-        select: {
-          applicationsUsed: true,
-          applicationsMax: true,
-          resetAt: true,
-        },
-      });
-      if (!usage) throw new NotFoundException('Usage limit not found for user');
-      return {
-        used: usage.applicationsUsed,
-        maximum: usage.applicationsMax,
-        unlimited: usage.applicationsMax >= 2_000_000_000,
-        resetAt: usage.resetAt,
-      };
-    });
+    const usage = await this.quota.currentQuota(
+      userId,
+      QuotaGrantCategory.applications,
+      this.clock.now(),
+    );
+    return {
+      used: usage.used,
+      maximum: usage.effectiveLimit ?? 2_147_483_647,
+      unlimited: usage.unlimited,
+      resetAt: usage.resetAt,
+    };
   }
 
   async get(userId: string, id: string) {
@@ -898,28 +884,14 @@ export class ApplicationTrackerService {
     transaction: Prisma.TransactionClient,
     userId: string,
   ): Promise<void> {
-    const now = this.clock.now();
-    await transaction.usageLimit.updateMany({
-      where: { userId, resetAt: { lt: now } },
-      data: {
-        applicationsUsed: 0,
-        aiRequestsUsed: 0,
-        resumeOptimizationsUsed: 0,
-        jobDiscoveriesUsed: 0,
-        resetAt: this.getNextResetDate(now),
-      },
-    });
-    const usage = await transaction.usageLimit.findUnique({
-      where: { userId },
-    });
-    if (!usage) throw new NotFoundException('Usage limit not found for user');
-    const reserved = await transaction.usageLimit.updateMany({
-      where: { userId, applicationsUsed: { lt: usage.applicationsMax } },
-      data: { applicationsUsed: { increment: 1 } },
-    });
-    if (reserved.count !== 1) {
-      throw new ForbiddenException('Application limit reached');
-    }
+    await this.quota.reserveInTransaction(
+      transaction,
+      userId,
+      QuotaGrantCategory.applications,
+      1,
+      this.clock.now(),
+      'Application limit reached',
+    );
   }
 
   private async findIdempotentApplication(

@@ -184,6 +184,7 @@ describe('AdminAuditService', () => {
     ['admin.session.revoke_all', 'admin_session_revoke_all'],
     ['admin.job.deactivate', 'admin_job_deactivate'],
     ['admin.resume.requeue', 'admin_resume_requeue'],
+    ['admin.quota.grant', 'admin_quota_grant'],
   ] as const)('uses a non-denial type for successful %s events', async (action, type) => {
     await service.write(transaction as never, {
       actorUserId: 'admin-1',

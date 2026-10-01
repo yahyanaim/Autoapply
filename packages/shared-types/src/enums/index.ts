@@ -123,6 +123,21 @@ export enum ResumeRequeueReason {
   worker_recovery = 'worker_recovery',
 }
 
+export enum QuotaGrantCategory {
+  applications = 'applications',
+  ai_requests = 'ai_requests',
+  resume_optimizations = 'resume_optimizations',
+  job_discoveries = 'job_discoveries',
+  resumes = 'resumes',
+  storage_bytes = 'storage_bytes',
+}
+
+export enum QuotaGrantReason {
+  customer_support = 'customer_support',
+  service_recovery = 'service_recovery',
+  beta_program = 'beta_program',
+}
+
 export enum OAuthProvider {
   google = 'google',
   github = 'github',
@@ -139,4 +154,5 @@ export enum ActivityType {
   ai_request = 'ai_request',
   subscription_change = 'subscription_change',
   payment = 'payment',
+  admin_quota_grant = 'admin_quota_grant',
 }

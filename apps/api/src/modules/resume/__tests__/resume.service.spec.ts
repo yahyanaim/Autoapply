@@ -13,6 +13,7 @@ import {
 } from '../infrastructure/parsers/resume-parser';
 import { PlanAwareAiRouter } from '../../ai/application/plan-aware-ai.router';
 import { ResumeParseJobSignatureService } from '../infrastructure/queue/resume-parse-job-signature.service';
+import { BillingQuotaService } from '../../billing/application/billing-quota.service';
 
 describe('ResumeService', () => {
   let service: ResumeService;
@@ -23,6 +24,7 @@ describe('ResumeService', () => {
   let planAwareRouter: any;
   let jobSignature: any;
   let parser: any;
+  let quota: any;
 
   beforeEach(async () => {
     prisma = {
@@ -67,6 +69,25 @@ describe('ResumeService', () => {
     };
     jobSignature = { sign: jest.fn().mockReturnValue('a'.repeat(64)) };
     parser = { parse: jest.fn() };
+    quota = {
+      reserveResumeStorageInTransaction: jest.fn(async () => {
+        const current = await prisma.usageLimit.findUnique();
+        if (
+          current.resumesUsed >= current.resumesMax ||
+          current.storageBytesUsed + 12 > current.storageBytesMax
+        ) {
+          throw new ForbiddenException('Resume storage limit reached for this plan');
+        }
+      }),
+      releaseInTransaction: jest.fn(async (_transaction, _userId, category, amount) => {
+        await prisma.usageLimit.updateMany({
+          where: { userId: 'u1' },
+          data: category === 'resumes'
+            ? { resumesUsed: { decrement: amount } }
+            : { storageBytesUsed: { decrement: amount } },
+        });
+      }),
+    };
     const module: TestingModule = await Test.createTestingModule({ providers: [
       ResumeService,
       { provide: StorageToken, useValue: storage },
@@ -76,6 +97,7 @@ describe('ResumeService', () => {
       { provide: ResumeParser, useValue: parser },
       { provide: PlanAwareAiRouter, useValue: planAwareRouter },
       { provide: ResumeParseJobSignatureService, useValue: jobSignature },
+      { provide: BillingQuotaService, useValue: quota },
     ] }).compile();
     service = module.get(ResumeService);
   });
@@ -88,6 +110,9 @@ describe('ResumeService', () => {
     freeQueue.add.mockResolvedValue({ id: 'q1' });
 
     await expect(service.upload('u1', file)).resolves.toEqual(created);
+    expect(quota.reserveResumeStorageInTransaction).toHaveBeenCalledWith(
+      prisma, 'u1', 12, expect.any(Date),
+    );
     expect(freeQueue.add).toHaveBeenCalledWith(
       'parse-resume',
       {

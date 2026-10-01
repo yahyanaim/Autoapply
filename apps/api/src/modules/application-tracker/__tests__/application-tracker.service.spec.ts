@@ -12,11 +12,13 @@ import {
   JobStatus,
 } from '@prisma/client';
 import { AIService } from '../../ai/application/ai.service';
+import { BillingQuotaService } from '../../billing/application/billing-quota.service';
 
 describe('ApplicationTrackerService', () => {
   let service: ApplicationTrackerService;
   let prismaMock: any;
   let aiServiceMock: any;
+  let quotaMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -55,12 +57,25 @@ describe('ApplicationTrackerService', () => {
       optimizeResume: jest.fn(),
       generateCoverLetter: jest.fn(),
     };
+    quotaMock = {
+      reserveInTransaction: jest.fn().mockResolvedValue(undefined),
+      currentQuota: jest.fn(async () => {
+        const current = await prismaMock.usageLimit.findUnique();
+        return {
+          used: current.applicationsUsed,
+          effectiveLimit: current.applicationsMax,
+          unlimited: current.applicationsMax >= 2_000_000_000,
+          resetAt: current.resetAt,
+        };
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ApplicationTrackerService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: AIService, useValue: aiServiceMock },
+        { provide: BillingQuotaService, useValue: quotaMock },
       ],
     }).compile();
 
@@ -101,6 +116,9 @@ describe('ApplicationTrackerService', () => {
           id: 'a1',
           preparationStatus: 'ready_for_review',
         }),
+      );
+      expect(quotaMock.reserveInTransaction).toHaveBeenCalledWith(
+        prismaMock, 'u1', 'applications', 1, expect.any(Date), 'Application limit reached',
       );
       expect(prismaMock.job.findFirst).toHaveBeenCalledWith({
         where: {

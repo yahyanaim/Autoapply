@@ -37,6 +37,9 @@ const SAFE_AUDIT_ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
     'provider_recovered',
     'storage_recovered',
     'worker_recovery',
+    'customer_support',
+    'service_recovery',
+    'beta_program',
   ]),
   failureCategory: new Set([
     'provider_transient',
@@ -54,6 +57,7 @@ const ADMIN_ACTION_TYPES: Readonly<Record<string, ActivityType>> = {
   'admin.session.revoke_all': ActivityType.admin_session_revoke_all,
   'admin.job.deactivate': ActivityType.admin_job_deactivate,
   'admin.resume.requeue': ActivityType.admin_resume_requeue,
+  'admin.quota.grant': ActivityType.admin_quota_grant,
 };
 
 export type AdminAuditSnapshot = Readonly<Record<string, unknown>>;
