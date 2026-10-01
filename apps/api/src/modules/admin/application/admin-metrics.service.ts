@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AiMetricsReadService } from '../../ai/application/ai-metrics-read.service';
 import { BillingMetricsReadService } from '../../billing/application/billing-metrics-read.service';
+import { BillingFinancialMetricsReadService } from '../../billing/application/billing-financial-metrics-read.service';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const MAX_ADMIN_METRICS_RANGE_DAYS = 90;
@@ -10,6 +11,7 @@ const UTC_DAY = /^\d{4}-\d{2}-\d{2}$/;
 export class AdminMetricsService {
   constructor(
     private readonly billing: BillingMetricsReadService,
+    private readonly financials: BillingFinancialMetricsReadService,
     private readonly ai: AiMetricsReadService,
   ) {}
 
@@ -26,11 +28,20 @@ export class AdminMetricsService {
       throw new BadRequestException('Invalid metrics UTC date range');
     }
 
-    const [billing, billingHistory, ai] = await Promise.all([
+    const [billing, billingHistory, ai, financials] = await Promise.all([
       this.billing.getCurrentMetrics(),
       this.billing.getHistoricalMetrics({ from, toExclusive }),
       this.ai.getEstimatedCostMetrics({ from, toExclusive }),
+      this.financials.getMetrics({ from, toExclusive }),
     ]);
+    const financialAi = financials.actualCoveredRange
+      ? await this.ai.getEstimatedCostMetricsForFinancialWindow(
+          financials.actualCoveredRange,
+        )
+      : null;
+    const aiByDay = new Map(
+      financialAi?.daily.map((entry) => [entry.day, entry]) ?? [],
+    );
 
     return {
       period: {
@@ -59,6 +70,35 @@ export class AdminMetricsService {
         },
       },
       ai,
+      financials: {
+        metricsStartAt: financials.metricsStartAt.toISOString(),
+        requestedRangeStartsBeforeMetrics:
+          financials.requestedRangeStartsBeforeMetrics,
+        actualCoveredRange: financials.actualCoveredRange
+          ? {
+              from: financials.actualCoveredRange.from.toISOString(),
+              toExclusive:
+                financials.actualCoveredRange.toExclusive.toISOString(),
+            }
+          : null,
+        currency: financials.currency,
+        totals:
+          financials.totals && financialAi
+            ? {
+                ...financials.totals,
+                estimatedAiCostUsd: financialAi.estimatedCostUsd,
+                costedRequestCount: financialAi.costedRequestCount,
+              }
+            : null,
+        daily: financials.daily.map((entry) => {
+          const aiDay = aiByDay.get(entry.day);
+          return {
+            ...entry,
+            estimatedAiCostUsd: aiDay?.estimatedCostUsd ?? 0,
+            costedRequestCount: aiDay?.costedRequestCount ?? 0,
+          };
+        }),
+      },
     };
   }
 

@@ -4,6 +4,8 @@ import { BillingModule } from './billing.module';
 import { BillingUsageReadService } from './application/billing-usage-read.service';
 import { BillingMetricsReadService } from './application/billing-metrics-read.service';
 import { SubscriptionLifecycleService } from './application/subscription-lifecycle.service';
+import { BillingFinancialMetricsReadService } from './application/billing-financial-metrics-read.service';
+import { BillingFinancialMetricsRecorderService } from './application/billing-financial-metrics-recorder.service';
 
 describe('BillingModule', () => {
   it('registers, exports, and compiles the read-only Billing services', async () => {
@@ -14,12 +16,15 @@ describe('BillingModule', () => {
         BillingUsageReadService,
         BillingMetricsReadService,
         SubscriptionLifecycleService,
+        BillingFinancialMetricsReadService,
+        BillingFinancialMetricsRecorderService,
       ]),
     );
     expect(exports).toEqual(
       expect.arrayContaining([
         BillingUsageReadService,
         BillingMetricsReadService,
+        BillingFinancialMetricsReadService,
       ]),
     );
 
@@ -27,6 +32,8 @@ describe('BillingModule', () => {
       providers: [
         BillingUsageReadService,
         BillingMetricsReadService,
+        BillingFinancialMetricsReadService,
+        BillingFinancialMetricsRecorderService,
         { provide: PrismaService, useValue: { user: { findUnique: jest.fn() } } },
         SubscriptionLifecycleService,
       ],
@@ -40,6 +47,12 @@ describe('BillingModule', () => {
     );
     expect(moduleRef.get(SubscriptionLifecycleService)).toBeInstanceOf(
       SubscriptionLifecycleService,
+    );
+    expect(moduleRef.get(BillingFinancialMetricsReadService)).toBeInstanceOf(
+      BillingFinancialMetricsReadService,
+    );
+    expect(moduleRef.get(BillingFinancialMetricsRecorderService)).toBeInstanceOf(
+      BillingFinancialMetricsRecorderService,
     );
     await moduleRef.close();
   });

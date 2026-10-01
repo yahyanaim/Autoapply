@@ -12,6 +12,7 @@ import {
   SubscriptionLifecycleService,
 } from '../src/modules/billing/application/subscription-lifecycle.service';
 import { PLAN_PRICING } from '../src/modules/billing/domain/plan-pricing';
+import { BillingFinancialMetricsRecorderService } from '../src/modules/billing/application/billing-financial-metrics-recorder.service';
 
 const runId = `subscription-lifecycle-${process.pid}-${Date.now()}`;
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -59,9 +60,13 @@ describe('Billing subscription lifecycle PostgreSQL integration', () => {
           subscription.metadata.plan as SubscriptionPlan,
       ),
     };
-    billing = new BillingService(prisma, stripe as never, lifecycle, {
-      now: () => new Date(rangeFrom.getTime() + 120_000),
-    } as never);
+    billing = new BillingService(
+      prisma,
+      stripe as never,
+      lifecycle,
+      new BillingFinancialMetricsRecorderService(),
+      { now: () => new Date(rangeFrom.getTime() + 120_000) } as never,
+    );
     metrics = new BillingMetricsReadService(prisma, {
       now: () => new Date(rangeToExclusive.getTime()),
     } as never);
@@ -256,6 +261,7 @@ describe('Billing subscription lifecycle PostgreSQL integration', () => {
         resolveSubscriptionPlan: jest.fn(() => SubscriptionPlan.pro),
       } as never,
       throwingLifecycle as never,
+      new BillingFinancialMetricsRecorderService(),
       { now: () => new Date(rangeFrom.getTime() + 240_000) } as never,
     );
 

@@ -13,6 +13,7 @@ import {
   SubscriptionLifecycleService,
 } from './subscription-lifecycle.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
+import { BillingFinancialMetricsRecorderService } from './billing-financial-metrics-recorder.service';
 
 @Injectable()
 export class BillingService {
@@ -20,6 +21,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly stripeAdapter: StripeAdapter,
     private readonly lifecycle: SubscriptionLifecycleService,
+    private readonly financialMetrics: BillingFinancialMetricsRecorderService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
@@ -197,6 +199,19 @@ export class BillingService {
               invoiceUrl: invoice.hosted_invoice_url,
             },
           });
+          if (event.type === 'invoice.payment_succeeded') {
+            await this.financialMetrics.recordSuccessfulInvoiceInTransaction(
+              transaction,
+              {
+                sourceStripeEventId: event.id,
+                eventType: event.type,
+                amountMinor: invoice.amount_paid,
+                currency: invoice.currency,
+                effectiveAt: this.eventTime(event, observedAt),
+                observedAt,
+              },
+            );
+          }
           if (currentSubscription) {
             const { status, effectivePlan } =
               this.subscriptionEntitlement(currentSubscription);

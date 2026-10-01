@@ -4,12 +4,14 @@ import { PrismaService } from '../../../database/prisma/prisma.service';
 import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
 import { NotFoundException } from '@nestjs/common';
 import { SubscriptionLifecycleService } from '../application/subscription-lifecycle.service';
+import { BillingFinancialMetricsRecorderService } from '../application/billing-financial-metrics-recorder.service';
 
 describe('BillingService', () => {
   let service: BillingService;
   let prismaMock: any;
   let stripeMock: any;
   let lifecycleMock: any;
+  let financialMetricsMock: any;
 
   beforeEach(async () => {
     prismaMock = {
@@ -44,6 +46,9 @@ describe('BillingService', () => {
         category: 'observation',
       }),
     };
+    financialMetricsMock = {
+      recordSuccessfulInvoiceInTransaction: jest.fn().mockResolvedValue(null),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -51,6 +56,10 @@ describe('BillingService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: StripeAdapter, useValue: stripeMock },
         { provide: SubscriptionLifecycleService, useValue: lifecycleMock },
+        {
+          provide: BillingFinancialMetricsRecorderService,
+          useValue: financialMetricsMock,
+        },
       ],
     }).compile();
 
@@ -126,6 +135,85 @@ describe('BillingService', () => {
       current_period_end: 1_702_592_000,
       cancel_at_period_end: false,
     };
+
+    it('records successful invoice revenue through the Billing-owned transaction boundary', async () => {
+      prismaMock.subscription.findFirst.mockResolvedValue({
+        id: 'local_sub',
+        userId: 'u1',
+        plan: 'pro',
+        status: 'active',
+      });
+      stripeMock.retrieveSubscription.mockResolvedValue({
+        id: 'sub_1',
+        status: 'active',
+        metadata: { plan: 'pro' },
+        ...period,
+      });
+
+      await service.handleWebhook({
+        id: 'evt_paid',
+        type: 'invoice.payment_succeeded',
+        created: 1_700_000_000,
+        data: {
+          object: {
+            id: 'in_1',
+            subscription: 'sub_1',
+            payment_intent: 'pi_1',
+            amount_paid: 1_900,
+            amount_due: 1_900,
+            currency: 'usd',
+            hosted_invoice_url: 'https://invoice.example.test/private',
+          },
+        },
+      } as never);
+
+      expect(
+        financialMetricsMock.recordSuccessfulInvoiceInTransaction,
+      ).toHaveBeenCalledWith(prismaMock, {
+        sourceStripeEventId: 'evt_paid',
+        eventType: 'invoice.payment_succeeded',
+        amountMinor: 1_900,
+        currency: 'usd',
+        effectiveAt: new Date('2023-11-14T22:13:20.000Z'),
+        observedAt: expect.any(Date),
+      });
+    });
+
+    it('does not create financial metrics for failed or unsupported events', async () => {
+      prismaMock.subscription.findFirst.mockResolvedValue({
+        id: 'local_sub',
+        userId: 'u1',
+        plan: 'pro',
+        status: 'active',
+      });
+      stripeMock.retrieveSubscription.mockResolvedValue({
+        id: 'sub_1',
+        status: 'past_due',
+        metadata: { plan: 'pro' },
+        ...period,
+      });
+
+      await service.handleWebhook({
+        id: 'evt_failed',
+        type: 'invoice.payment_failed',
+        created: 1_700_000_000,
+        data: {
+          object: {
+            id: 'in_failed',
+            subscription: 'sub_1',
+            payment_intent: 'pi_failed',
+            amount_paid: 0,
+            amount_due: 1_900,
+            currency: 'usd',
+            hosted_invoice_url: null,
+          },
+        },
+      } as never);
+
+      expect(
+        financialMetricsMock.recordSuccessfulInvoiceInTransaction,
+      ).not.toHaveBeenCalled();
+    });
 
     it('does not grant paid limits for an incomplete checkout subscription', async () => {
       prismaMock.subscription.findFirst.mockResolvedValue({

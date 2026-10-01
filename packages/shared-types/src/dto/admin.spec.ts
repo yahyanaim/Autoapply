@@ -209,6 +209,14 @@ metrics.billing.history.stripeEventId;
 metrics.billing.history.userId;
 metrics.ai.costType satisfies 'estimated';
 metrics.ai.daily[0]?.day satisfies string | undefined;
+metrics.financials.metricsStartAt satisfies string;
+metrics.financials.currency satisfies 'usd';
+metrics.financials.totals?.grossRevenueMinor satisfies number | undefined;
+metrics.financials.totals?.estimatedAiCostUsd satisfies number | undefined;
+metrics.financials.daily[0]?.coverage satisfies
+  | 'complete'
+  | 'partial'
+  | undefined;
 // @ts-expect-error Financial metrics never expose Stripe subscription IDs.
 metrics.billing.stripeSubscriptionId;
 // @ts-expect-error Financial metrics never expose invoices or instruments.
@@ -217,8 +225,16 @@ metrics.billing.payments;
 metrics.ai.provider;
 // @ts-expect-error AI metrics never expose prompts or request content.
 metrics.ai.prompt;
-// @ts-expect-error Margin is explicitly outside Phase 4A.
-metrics.margin;
+// @ts-expect-error Refunds are explicitly outside Phase 4D.1.
+metrics.financials.refunds;
+// @ts-expect-error Stripe fees are explicitly outside Phase 4D.1.
+metrics.financials.stripeFees;
+// @ts-expect-error Net revenue is explicitly outside Phase 4D.1.
+metrics.financials.netRevenue;
+// @ts-expect-error Contribution margin is explicitly outside Phase 4D.1.
+metrics.financials.contributionMargin;
+// @ts-expect-error Financial metrics never expose payment identities.
+metrics.financials.paymentId;
 // @ts-expect-error Paid activation history does not exist, so new-paid metrics are blocked.
 metrics.billing.newPaidSubscriptions;
 // @ts-expect-error Effective cancellation history does not exist, so churn is blocked.

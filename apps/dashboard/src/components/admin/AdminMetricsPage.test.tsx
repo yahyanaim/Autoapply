@@ -80,6 +80,31 @@ const safeResponse = {
       },
     ],
   },
+  financials: {
+    metricsStartAt: '2026-09-24T12:34:56.000Z',
+    requestedRangeStartsBeforeMetrics: true,
+    actualCoveredRange: {
+      from: '2026-09-24T12:34:56.000Z',
+      toExclusive: '2026-09-26T00:00:00.000Z',
+    },
+    currency: 'usd' as const,
+    totals: {
+      grossRevenueMinor: 6_800,
+      successfulPaymentCount: 2,
+      estimatedAiCostUsd: 0.5,
+      costedRequestCount: 2,
+    },
+    daily: [
+      {
+        day: '2026-09-24',
+        coverage: 'partial' as const,
+        grossRevenueMinor: 6_800,
+        successfulPaymentCount: 2,
+        estimatedAiCostUsd: 0.5,
+        costedRequestCount: 2,
+      },
+    ],
+  },
 };
 
 function view(node: ReactNode) {
@@ -124,6 +149,16 @@ describe('AdminMetricsPage', () => {
     expect(rendered.container.textContent).toContain('$87.00');
     expect(rendered.container.textContent).toContain('Estimated AI cost');
     expect(rendered.container.textContent).toContain('Daily AI request volume');
+    expect(rendered.container.textContent).toContain('Future-only financial metrics');
+    expect(rendered.container.textContent).toContain('Gross revenue');
+    expect(rendered.container.textContent).toContain('Successful payments');
+    expect(rendered.container.textContent).toContain('$68.00');
+    expect(rendered.container.textContent).toContain(
+      'data before the metrics boundary is unavailable',
+    );
+    expect(
+      rendered.required('[aria-label="Daily future financial metrics"]'),
+    ).toBeTruthy();
     expect(rendered.container.textContent).toContain('Subscription lifecycle history');
     expect(rendered.container.textContent).toContain(
       'history before the availability timestamp is unavailable',
@@ -168,6 +203,30 @@ describe('AdminMetricsPage', () => {
     expect(
       rendered.container.querySelector(
         '[aria-label="Daily subscription lifecycle metrics"]',
+      ),
+    ).toBeNull();
+    rendered.cleanup();
+  });
+
+  it('does not render a financial table or fabricated zeroes before metricsStartAt', async () => {
+    metrics.mockResolvedValueOnce({
+      ...safeResponse,
+      financials: {
+        ...safeResponse.financials,
+        actualCoveredRange: null,
+        totals: null,
+        daily: [],
+      },
+    });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain(
+      'Financial metrics unavailable',
+    );
+    expect(
+      rendered.container.querySelector(
+        '[aria-label="Daily future financial metrics"]',
       ),
     ).toBeNull();
     rendered.cleanup();
@@ -228,6 +287,16 @@ describe('AdminMetricsPage', () => {
         requestCount: 0,
         costedRequestCount: 0,
         estimatedCostUsd: 0,
+        daily: [],
+      },
+      financials: {
+        ...safeResponse.financials,
+        totals: {
+          grossRevenueMinor: 0,
+          successfulPaymentCount: 0,
+          estimatedAiCostUsd: 0,
+          costedRequestCount: 0,
+        },
         daily: [],
       },
     });

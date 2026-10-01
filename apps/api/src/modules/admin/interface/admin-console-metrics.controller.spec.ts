@@ -56,6 +56,22 @@ describe('AdminConsoleMetricsController', () => {
       estimatedCostUsd: 0.75,
       daily: [],
     },
+    financials: {
+      metricsStartAt: '2026-09-24T12:34:56.000Z',
+      requestedRangeStartsBeforeMetrics: true,
+      actualCoveredRange: {
+        from: '2026-09-24T12:34:56.000Z',
+        toExclusive: '2026-09-26T00:00:00.000Z',
+      },
+      currency: 'usd',
+      totals: {
+        grossRevenueMinor: 6_800,
+        successfulPaymentCount: 2,
+        estimatedAiCostUsd: 0.5,
+        costedRequestCount: 2,
+      },
+      daily: [],
+    },
   };
   const metrics = { getMetrics: jest.fn().mockResolvedValue(response) };
 

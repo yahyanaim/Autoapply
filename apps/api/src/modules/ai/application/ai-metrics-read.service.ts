@@ -29,8 +29,26 @@ export class AiMetricsReadService {
     from: Date;
     toExclusive: Date;
   }): Promise<AiMetricsSummary> {
-    this.assertRange(input.from, input.toExclusive);
-    const daily = this.emptyDays(input.from, input.toExclusive);
+    this.assertRange(input.from, input.toExclusive, true);
+    return this.aggregate(input.from, input.toExclusive);
+  }
+
+  async getEstimatedCostMetricsForFinancialWindow(input: {
+    from: Date;
+    toExclusive: Date;
+  }): Promise<AiMetricsSummary> {
+    this.assertRange(input.from, input.toExclusive, false);
+    return this.aggregate(input.from, input.toExclusive);
+  }
+
+  private async aggregate(
+    from: Date,
+    toExclusive: Date,
+  ): Promise<AiMetricsSummary> {
+    const firstDay = new Date(
+      Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
+    );
+    const daily = this.emptyDays(firstDay, toExclusive);
     const byDay = new Map(daily.map((entry) => [entry.day, entry]));
     let cursor: string | undefined;
     let requestCount = 0;
@@ -40,7 +58,7 @@ export class AiMetricsReadService {
     do {
       const rows = await this.prisma.aIRequest.findMany({
         where: {
-          createdAt: { gte: input.from, lt: input.toExclusive },
+          createdAt: { gte: from, lt: toExclusive },
         },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         take: BATCH_SIZE,
@@ -79,15 +97,20 @@ export class AiMetricsReadService {
     };
   }
 
-  private assertRange(from: Date, toExclusive: Date): void {
+  private assertRange(
+    from: Date,
+    toExclusive: Date,
+    requireMidnightFrom: boolean,
+  ): void {
     const rangeMs = toExclusive.getTime() - from.getTime();
     if (
       !Number.isFinite(from.getTime()) ||
       !Number.isFinite(toExclusive.getTime()) ||
-      from.getUTCHours() !== 0 ||
-      from.getUTCMinutes() !== 0 ||
-      from.getUTCSeconds() !== 0 ||
-      from.getUTCMilliseconds() !== 0 ||
+      (requireMidnightFrom &&
+        (from.getUTCHours() !== 0 ||
+          from.getUTCMinutes() !== 0 ||
+          from.getUTCSeconds() !== 0 ||
+          from.getUTCMilliseconds() !== 0)) ||
       toExclusive.getUTCHours() !== 0 ||
       toExclusive.getUTCMinutes() !== 0 ||
       toExclusive.getUTCSeconds() !== 0 ||

@@ -393,6 +393,25 @@ export interface AdminConsoleBillingMovementTotals {
   reactivationCount: number;
 }
 
+export interface AdminConsoleFinancialMetricsDay {
+  /** UTC calendar day. The metrics-boundary day can be partial. */
+  day: string;
+  coverage: 'complete' | 'partial';
+  /** Successful Stripe invoice payments in USD cents. */
+  grossRevenueMinor: number;
+  successfulPaymentCount: number;
+  /** Recorded estimated operational AI cost, never settled provider cost. */
+  estimatedAiCostUsd: number;
+  costedRequestCount: number;
+}
+
+export interface AdminConsoleFinancialMetricsTotals {
+  grossRevenueMinor: number;
+  successfulPaymentCount: number;
+  estimatedAiCostUsd: number;
+  costedRequestCount: number;
+}
+
 export interface AdminConsoleMetricsResponse {
   period: {
     from: string;
@@ -430,5 +449,18 @@ export interface AdminConsoleMetricsResponse {
     costedRequestCount: number;
     estimatedCostUsd: number;
     daily: AdminConsoleMetricsDay[];
+  };
+  financials: {
+    /** No revenue or financial AI-cost history exists before this boundary. */
+    metricsStartAt: string;
+    requestedRangeStartsBeforeMetrics: boolean;
+    actualCoveredRange: {
+      from: string;
+      toExclusive: string;
+    } | null;
+    currency: 'usd';
+    /** Null when the requested range is entirely before metricsStartAt. */
+    totals: AdminConsoleFinancialMetricsTotals | null;
+    daily: AdminConsoleFinancialMetricsDay[];
   };
 }
