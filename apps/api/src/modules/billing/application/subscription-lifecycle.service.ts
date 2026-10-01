@@ -62,29 +62,10 @@ export class SubscriptionLifecycleService {
       select: { id: true, sequence: true, category: true },
     });
 
-    const previousMrr = this.monthlyRecurringRevenue(
-      input.previous,
-      previousPriceUsdMinor,
-    );
-    const nextMrr = this.monthlyRecurringRevenue(
-      input.next,
-      nextPriceUsdMinor,
-    );
-    const previousActive = previousMrr > 0 ? 1 : 0;
-    const nextActive = nextMrr > 0 ? 1 : 0;
     const day = this.utcDay(observedOnly ? input.observedAt : input.effectiveAt);
-    const movement = this.movement(category, previousMrr, nextMrr);
-    const values = {
-      activePaidDelta: nextActive - previousActive,
-      activeProDelta:
-        this.activePlan(input.next, SubscriptionPlan.pro) -
-        this.activePlan(input.previous, SubscriptionPlan.pro),
-      activePremiumDelta:
-        this.activePlan(input.next, SubscriptionPlan.premium) -
-        this.activePlan(input.previous, SubscriptionPlan.premium),
-      monthlyRecurringRevenueDeltaMinor: nextMrr - previousMrr,
-      ...movement,
-    };
+    const values = observedOnly
+      ? this.zeroDelta()
+      : this.metricsDelta(input.previous, input.next, category);
 
     await transaction.billingDailySubscriptionMetric.upsert({
       where: { day_currency: { day, currency: 'usd' } },
@@ -214,6 +195,44 @@ export class SubscriptionLifecycleService {
       churnedMrrMinor: churn ? previousMrr : 0,
       reactivationCount:
         category === SubscriptionLifecycleEventCategory.reactivation ? 1 : 0,
+    };
+  }
+
+  private metricsDelta(
+    previous: SubscriptionLifecycleState,
+    next: SubscriptionLifecycleState,
+    category: SubscriptionLifecycleEventCategory,
+  ) {
+    const previousMrr = this.monthlyRecurringRevenue(
+      previous,
+      this.price(previous.plan),
+    );
+    const nextMrr = this.monthlyRecurringRevenue(next, this.price(next.plan));
+    return {
+      activePaidDelta: (nextMrr > 0 ? 1 : 0) - (previousMrr > 0 ? 1 : 0),
+      activeProDelta:
+        this.activePlan(next, SubscriptionPlan.pro) -
+        this.activePlan(previous, SubscriptionPlan.pro),
+      activePremiumDelta:
+        this.activePlan(next, SubscriptionPlan.premium) -
+        this.activePlan(previous, SubscriptionPlan.premium),
+      monthlyRecurringRevenueDeltaMinor: nextMrr - previousMrr,
+      ...this.movement(category, previousMrr, nextMrr),
+    };
+  }
+
+  private zeroDelta() {
+    return {
+      activePaidDelta: 0,
+      activeProDelta: 0,
+      activePremiumDelta: 0,
+      monthlyRecurringRevenueDeltaMinor: 0,
+      newPaidSubscriptions: 0,
+      expansionMrrMinor: 0,
+      contractionMrrMinor: 0,
+      churnCount: 0,
+      churnedMrrMinor: 0,
+      reactivationCount: 0,
     };
   }
 

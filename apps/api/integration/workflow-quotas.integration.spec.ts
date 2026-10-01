@@ -72,14 +72,20 @@ describe('API integration: workflow quotas and ownership', () => {
   });
 
   afterAll(async () => {
-    await prisma?.stripeWebhookEvent.deleteMany({
-      where: { eventId: { in: stripeEventIds } },
-    });
-    await prisma?.user.deleteMany({ where: { email: { in: emails } } });
-    if (publicJobId) {
-      await prisma?.job.deleteMany({ where: { id: publicJobId } });
+    try {
+      await prisma?.subscriptionLifecycleEvent.deleteMany({
+        where: { sourceStripeEventId: { in: stripeEventIds } },
+      });
+      await prisma?.stripeWebhookEvent.deleteMany({
+        where: { eventId: { in: stripeEventIds } },
+      });
+      await prisma?.user.deleteMany({ where: { email: { in: emails } } });
+      if (publicJobId) {
+        await prisma?.job.deleteMany({ where: { id: publicJobId } });
+      }
+    } finally {
+      await app?.close();
     }
-    await app?.close();
   });
 
   async function register(email: string) {
@@ -399,7 +405,7 @@ describe('API integration: workflow quotas and ownership', () => {
       where: { userId: ownerId },
       data: {
         stripeSubscriptionId,
-        plan: SubscriptionPlan.pro,
+        plan: SubscriptionPlan.free,
         status: SubscriptionStatus.active,
       },
     });
@@ -425,6 +431,11 @@ describe('API integration: workflow quotas and ownership', () => {
     });
     await expect(
       prisma.stripeWebhookEvent.count({ where: { eventId } }),
+    ).resolves.toBe(1);
+    await expect(
+      prisma.subscriptionLifecycleEvent.count({
+        where: { sourceStripeEventId: eventId },
+      }),
     ).resolves.toBe(1);
     await expect(
       prisma.subscription.findUniqueOrThrow({

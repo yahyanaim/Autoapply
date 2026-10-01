@@ -230,6 +230,22 @@ describe('SubscriptionLifecycleService', () => {
         }),
       }),
     );
+    expect(transaction.billingDailySubscriptionMetric.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          activePaidDelta: 0,
+          activeProDelta: 0,
+          activePremiumDelta: 0,
+          monthlyRecurringRevenueDeltaMinor: 0,
+          newPaidSubscriptions: 0,
+          expansionMrrMinor: 0,
+          contractionMrrMinor: 0,
+          churnCount: 0,
+          churnedMrrMinor: 0,
+          reactivationCount: 0,
+        }),
+      }),
+    );
   });
 
   it('uses strict projections and never persists provider payloads or sensitive metadata', async () => {
