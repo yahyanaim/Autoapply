@@ -39,9 +39,16 @@ describe('Admin Console Users pages', () => {
     expect(users).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'safe@example.com', limit: 20 })); rendered.cleanup();
   });
   it('renders safe detail, sessions, and usage through only approved read methods', async () => {
-    const rendered = view(<AdminUserDetailPage userId={safeUser.id} />); await settle(); await settle();
-    expect(rendered.container.textContent).toContain('Usage limits'); expect(rendered.container.textContent).toContain('web'); expect(rendered.container.textContent).not.toContain('session-1');
-    expect(user).toHaveBeenCalledWith(safeUser.id); expect(userSessions).toHaveBeenCalledWith(safeUser.id, { limit: 20 }); expect(userUsageLimits).toHaveBeenCalledWith(safeUser.id);
+    const rendered = view(<AdminUserDetailPage userId={safeUser.id} />);
+    await vi.waitFor(() => {
+      expect(rendered.container.textContent).toContain('Usage limits');
+      expect(rendered.container.textContent).toContain('web');
+      expect(rendered.container.textContent).toContain('1 / 10 · 9 remaining');
+      expect(user).toHaveBeenCalledWith(safeUser.id);
+      expect(userSessions).toHaveBeenCalledWith(safeUser.id, { limit: 20 });
+      expect(userUsageLimits).toHaveBeenCalledWith(safeUser.id);
+    });
+    expect(rendered.container.textContent).not.toContain('session-1');
     rendered.cleanup();
   });
 });
