@@ -75,6 +75,10 @@ enum SubscriptionLifecycleEventCategory {
   observation
 }
 
+enum BillingFinancialEventCategory {
+  gross_revenue
+}
+
 enum AIRequestFeature {
   resume_parse
   job_analyze
@@ -617,6 +621,7 @@ model StripeWebhookEvent {
   processedAt DateTime @default(now())
 
   lifecycleEvent SubscriptionLifecycleEvent?
+  financialEvent BillingFinancialEvent?
 
   @@map("stripe_webhook_events")
 }
@@ -679,6 +684,46 @@ model BillingDailySubscriptionMetric {
   @@unique([day, currency])
   @@index([day])
   @@map("billing_daily_subscription_metrics")
+}
+
+model BillingFinancialMetricsBoundary {
+  id             String   @id
+  metricsStartAt DateTime
+  currency       String   @default("usd")
+  createdAt      DateTime @default(now())
+
+  @@map("billing_financial_metrics_boundaries")
+}
+
+model BillingFinancialEvent {
+  id                  String                        @id @default(cuid())
+  sequence            BigInt                        @unique @default(autoincrement())
+  sourceStripeEventId String                        @unique
+  category            BillingFinancialEventCategory
+  amountMinor         BigInt
+  currency            String                        @default("usd")
+  effectiveAt         DateTime
+  observedAt          DateTime                      @default(now())
+
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([effectiveAt, sequence])
+  @@index([category, effectiveAt])
+  @@map("billing_financial_events")
+}
+
+model BillingDailyFinancialMetric {
+  id                     String   @id @default(cuid())
+  day                    DateTime
+  currency               String   @default("usd")
+  grossRevenueMinor      BigInt   @default(0)
+  successfulPaymentCount Int      @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([day, currency])
+  @@index([day])
+  @@map("billing_daily_financial_metrics")
 }
 
 model AIRequest {

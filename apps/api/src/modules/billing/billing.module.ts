@@ -8,6 +8,8 @@ import { PlanEntitlementGuard } from './interface/guards/plan-entitlement.guard'
 import { BillingUsageReadService } from './application/billing-usage-read.service';
 import { BillingMetricsReadService } from './application/billing-metrics-read.service';
 import { SubscriptionLifecycleService } from './application/subscription-lifecycle.service';
+import { BillingFinancialMetricsRecorderService } from './application/billing-financial-metrics-recorder.service';
+import { BillingFinancialMetricsReadService } from './application/billing-financial-metrics-read.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
@@ -16,6 +18,8 @@ import { SubscriptionLifecycleService } from './application/subscription-lifecyc
     BillingUsageReadService,
     BillingMetricsReadService,
     SubscriptionLifecycleService,
+    BillingFinancialMetricsRecorderService,
+    BillingFinancialMetricsReadService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],
@@ -24,6 +28,7 @@ import { SubscriptionLifecycleService } from './application/subscription-lifecyc
     BillingService,
     BillingUsageReadService,
     BillingMetricsReadService,
+    BillingFinancialMetricsReadService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],

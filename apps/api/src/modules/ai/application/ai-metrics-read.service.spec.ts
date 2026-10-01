@@ -99,6 +99,47 @@ describe('AiMetricsReadService', () => {
     });
   });
 
+  it('uses the exact financial boundary while retaining its partial UTC day', async () => {
+    prisma.aIRequest.findMany.mockResolvedValueOnce([
+      {
+        id: 'request-after-boundary',
+        createdAt: new Date('2026-09-24T12:35:00.000Z'),
+        cost: 0.25,
+      },
+    ]);
+
+    const result = await service.getEstimatedCostMetricsForFinancialWindow({
+      from: new Date('2026-09-24T12:34:56.000Z'),
+      toExclusive: new Date('2026-09-25T00:00:00.000Z'),
+    });
+
+    expect(prisma.aIRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          createdAt: {
+            gte: new Date('2026-09-24T12:34:56.000Z'),
+            lt: new Date('2026-09-25T00:00:00.000Z'),
+          },
+        },
+      }),
+    );
+    expect(result).toEqual({
+      costType: 'estimated',
+      currency: 'usd',
+      requestCount: 1,
+      costedRequestCount: 1,
+      estimatedCostUsd: 0.25,
+      daily: [
+        {
+          day: '2026-09-24',
+          requestCount: 1,
+          costedRequestCount: 1,
+          estimatedCostUsd: 0.25,
+        },
+      ],
+    });
+  });
+
   it.each([
     [
       new Date('2026-09-24T01:00:00.000Z'),

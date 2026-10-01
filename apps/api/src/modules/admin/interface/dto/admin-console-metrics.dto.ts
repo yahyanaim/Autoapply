@@ -110,6 +110,42 @@ class AdminConsoleAiMetricsDto {
   daily!: AdminConsoleAiMetricsDayDto[];
 }
 
+class AdminConsoleFinancialMetricsDayDto {
+  @ApiProperty({ example: '2026-10-01' }) day!: string;
+  @ApiProperty({ enum: ['complete', 'partial'] })
+  coverage!: 'complete' | 'partial';
+  @ApiProperty({ description: 'Successful invoice payments in USD cents' })
+  grossRevenueMinor!: number;
+  @ApiProperty() successfulPaymentCount!: number;
+  @ApiProperty({ description: 'Recorded estimated operational AI cost in USD' })
+  estimatedAiCostUsd!: number;
+  @ApiProperty() costedRequestCount!: number;
+}
+
+class AdminConsoleFinancialMetricsTotalsDto {
+  @ApiProperty() grossRevenueMinor!: number;
+  @ApiProperty() successfulPaymentCount!: number;
+  @ApiProperty({ description: 'Recorded estimated operational AI cost in USD' })
+  estimatedAiCostUsd!: number;
+  @ApiProperty() costedRequestCount!: number;
+}
+
+class AdminConsoleFinancialMetricsDto {
+  @ApiProperty({
+    format: 'date-time',
+    description: 'No financial metrics exist before this deployment boundary',
+  })
+  metricsStartAt!: string;
+  @ApiProperty() requestedRangeStartsBeforeMetrics!: boolean;
+  @ApiProperty({ type: AdminConsoleBillingCoveredRangeDto, nullable: true })
+  actualCoveredRange!: AdminConsoleBillingCoveredRangeDto | null;
+  @ApiProperty({ enum: ['usd'] }) currency!: 'usd';
+  @ApiProperty({ type: AdminConsoleFinancialMetricsTotalsDto, nullable: true })
+  totals!: AdminConsoleFinancialMetricsTotalsDto | null;
+  @ApiProperty({ type: () => [AdminConsoleFinancialMetricsDayDto] })
+  daily!: AdminConsoleFinancialMetricsDayDto[];
+}
+
 export class AdminConsoleMetricsResponseDto {
   @ApiProperty({ type: AdminConsoleMetricsPeriodDto })
   period!: AdminConsoleMetricsPeriodDto;
@@ -117,4 +153,6 @@ export class AdminConsoleMetricsResponseDto {
   billing!: AdminConsoleBillingMetricsDto;
   @ApiProperty({ type: AdminConsoleAiMetricsDto })
   ai!: AdminConsoleAiMetricsDto;
+  @ApiProperty({ type: AdminConsoleFinancialMetricsDto })
+  financials!: AdminConsoleFinancialMetricsDto;
 }

@@ -32,6 +32,17 @@ sanitizedUser.mfaEnabled;
 
 const metrics: Promise<AdminConsoleMetricsResponse> =
   client.adminConsole.metrics({ from: '2026-09-01', to: '2026-09-25' });
+declare const metricsResponse: AdminConsoleMetricsResponse;
+metricsResponse.financials.totals?.grossRevenueMinor satisfies
+  | number
+  | undefined;
+metricsResponse.financials.totals?.estimatedAiCostUsd satisfies
+  | number
+  | undefined;
+// @ts-expect-error The typed client never exposes payment identities.
+metricsResponse.financials.paymentId;
+// @ts-expect-error Contribution margin is outside Phase 4D.1.
+metricsResponse.financials.contributionMargin;
 
 const users: Promise<AdminConsoleUsersResponse> = client.adminConsole.users({
   cursor: 'opaque-cursor',
