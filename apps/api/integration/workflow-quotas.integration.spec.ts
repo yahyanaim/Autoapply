@@ -148,7 +148,7 @@ describe('API integration: workflow quotas and ownership', () => {
     await prisma.application.deleteMany({ where: { userId: ownerId } });
     await prisma.usageLimit.update({
       where: { userId: ownerId },
-      data: { applicationsUsed: 0, applicationsMax: 1 },
+      data: { applicationsUsed: 9, applicationsMax: 10 },
     });
 
     const responses = await Promise.all([
@@ -177,7 +177,7 @@ describe('API integration: workflow quotas and ownership', () => {
         where: { userId: ownerId },
         select: { applicationsUsed: true },
       }),
-    ).resolves.toEqual({ applicationsUsed: 1 });
+    ).resolves.toEqual({ applicationsUsed: 10 });
   });
 
   it('returns the same application for a retried idempotent request', async () => {
