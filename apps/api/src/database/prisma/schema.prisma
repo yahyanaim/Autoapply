@@ -79,6 +79,51 @@ enum BillingFinancialEventCategory {
   gross_revenue
 }
 
+enum BillingRefundStatus {
+  pending
+  requires_action
+  succeeded
+  failed
+  canceled
+}
+
+enum BillingRefundCurrencySupport {
+  usd
+  unsupported
+}
+
+enum BillingDisputeStatus {
+  warning_needs_response
+  warning_under_review
+  warning_closed
+  needs_response
+  under_review
+  won
+  lost
+}
+
+enum BillingDisputeObservationType {
+  created
+  updated
+  closed
+  funds_withdrawn
+  funds_reinstated
+}
+
+enum BillingDisputeObservationResolution {
+  status_only
+  movement_recorded
+  duplicate_movement
+  missing_authoritative_transaction
+  unsupported_currency
+  pre_boundary
+}
+
+enum BillingDisputeMovementKind {
+  withdrawal
+  reinstatement
+}
+
 enum QuotaGrantCategory {
   applications
   ai_requests
@@ -640,6 +685,10 @@ model StripeWebhookEvent {
 
   lifecycleEvent SubscriptionLifecycleEvent?
   financialEvent BillingFinancialEvent?
+  refundObservation BillingRefundObservation?
+  refundEffect BillingRefundEffect?
+  disputeObservation BillingDisputeObservation?
+  disputeEffect BillingDisputeEffect?
 
   @@map("stripe_webhook_events")
 }
@@ -742,6 +791,161 @@ model BillingDailyFinancialMetric {
   @@unique([day, currency])
   @@index([day])
   @@map("billing_daily_financial_metrics")
+}
+
+model BillingRefundMetricsBoundary {
+  id             String   @id
+  metricsStartAt DateTime
+  currency       String   @default("usd")
+  createdAt      DateTime @default(now())
+
+  @@map("billing_refund_metrics_boundaries")
+}
+
+model BillingRefund {
+  id                          String                       @id @default(cuid())
+  stripeRefundId              String                       @unique
+  chargeId                    String?
+  paymentIntentId             String?
+  amountMinor                 BigInt
+  currency                    String
+  currencySupport             BillingRefundCurrencySupport
+  providerCreatedAt           DateTime
+  firstSucceededSourceEventId String?
+  firstSucceededAt            DateTime?
+  createdAt                   DateTime                     @default(now())
+  observations                BillingRefundObservation[]
+  effect                      BillingRefundEffect?
+
+  @@index([chargeId])
+  @@index([paymentIntentId])
+  @@map("billing_refunds")
+}
+
+model BillingRefundObservation {
+  id                  String              @id @default(cuid())
+  refundId            String
+  sourceStripeEventId String              @unique
+  status              BillingRefundStatus
+  eventAt             DateTime
+  observedAt          DateTime            @default(now())
+
+  refund      BillingRefund      @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([refundId, eventAt])
+  @@map("billing_refund_observations")
+}
+
+model BillingRefundEffect {
+  id                  String   @id @default(cuid())
+  refundId            String   @unique
+  sourceStripeEventId String   @unique
+  amountMinor         BigInt
+  currency            String   @default("usd")
+  effectiveAt         DateTime
+  createdAt           DateTime @default(now())
+
+  refund      BillingRefund      @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([effectiveAt])
+  @@map("billing_refund_effects")
+}
+
+model BillingDailyRefundMetric {
+  id                      String   @id @default(cuid())
+  day                     DateTime
+  currency                String   @default("usd")
+  refundAdjustmentMinor   BigInt   @default(0)
+  successfulRefundCount   Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([day, currency])
+  @@index([day])
+  @@map("billing_daily_refund_metrics")
+}
+
+model BillingDisputeMetricsBoundary {
+  id             String   @id
+  metricsStartAt DateTime
+  currency       String   @default("usd")
+  createdAt      DateTime @default(now())
+
+  @@map("billing_dispute_metrics_boundaries")
+}
+
+model BillingDispute {
+  id                   String               @id @default(cuid())
+  stripeDisputeId      String               @unique
+  chargeId             String?
+  paymentIntentId      String?
+  currency             String
+  providerCreatedAt    DateTime
+  currentStatus        BillingDisputeStatus
+  currentStatusEventAt DateTime
+  currentStatusEventId String
+  createdAt            DateTime             @default(now())
+  observations         BillingDisputeObservation[]
+  effects              BillingDisputeEffect[]
+
+  @@index([chargeId])
+  @@index([paymentIntentId])
+  @@map("billing_disputes")
+}
+
+model BillingDisputeObservation {
+  id                   String                              @id @default(cuid())
+  disputeId            String
+  sourceStripeEventId  String                              @unique
+  type                 BillingDisputeObservationType
+  status               BillingDisputeStatus
+  resolution           BillingDisputeObservationResolution
+  balanceTransactionId String?
+  eventAt              DateTime
+  observedAt           DateTime                            @default(now())
+
+  dispute     BillingDispute     @relation(fields: [disputeId], references: [id], onDelete: Restrict)
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([disputeId, eventAt])
+  @@map("billing_dispute_observations")
+}
+
+model BillingDisputeEffect {
+  id                   String                     @id @default(cuid())
+  disputeId            String
+  sourceStripeEventId  String                     @unique
+  balanceTransactionId String                     @unique
+  kind                 BillingDisputeMovementKind
+  amountMinor          BigInt
+  currency             String                     @default("usd")
+  effectiveAt          DateTime
+  createdAt            DateTime                   @default(now())
+
+  dispute     BillingDispute     @relation(fields: [disputeId], references: [id], onDelete: Restrict)
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@unique([disputeId, kind])
+  @@index([effectiveAt])
+  @@map("billing_dispute_effects")
+}
+
+model BillingDailyDisputeMetric {
+  id                 String   @id @default(cuid())
+  day                DateTime
+  currency           String   @default("usd")
+  withdrawnMinor     BigInt   @default(0)
+  reinstatedMinor    BigInt   @default(0)
+  withdrawalCount    Int      @default(0)
+  reinstatementCount Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([day, currency])
+  @@index([day])
+  @@map("billing_daily_dispute_metrics")
 }
 
 model AIRequest {

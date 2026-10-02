@@ -5,6 +5,7 @@ import { BillingUsageReadService } from './application/billing-usage-read.servic
 import { BillingMetricsReadService } from './application/billing-metrics-read.service';
 import { SubscriptionLifecycleService } from './application/subscription-lifecycle.service';
 import { BillingFinancialMetricsReadService } from './application/billing-financial-metrics-read.service';
+import { BillingDisputeMetricsReadService } from './application/billing-dispute-metrics-read.service';
 import { BillingFinancialMetricsRecorderService } from './application/billing-financial-metrics-recorder.service';
 import { BillingQuotaService } from './application/billing-quota.service';
 
@@ -18,6 +19,7 @@ describe('BillingModule', () => {
         BillingMetricsReadService,
         SubscriptionLifecycleService,
         BillingFinancialMetricsReadService,
+        BillingDisputeMetricsReadService,
         BillingFinancialMetricsRecorderService,
         BillingQuotaService,
       ]),
@@ -27,6 +29,7 @@ describe('BillingModule', () => {
         BillingUsageReadService,
         BillingMetricsReadService,
         BillingFinancialMetricsReadService,
+        BillingDisputeMetricsReadService,
         BillingQuotaService,
       ]),
     );
@@ -36,6 +39,7 @@ describe('BillingModule', () => {
         BillingUsageReadService,
         BillingMetricsReadService,
         BillingFinancialMetricsReadService,
+        BillingDisputeMetricsReadService,
         BillingFinancialMetricsRecorderService,
         BillingQuotaService,
         { provide: PrismaService, useValue: { user: { findUnique: jest.fn() } } },
@@ -54,6 +58,9 @@ describe('BillingModule', () => {
     );
     expect(moduleRef.get(BillingFinancialMetricsReadService)).toBeInstanceOf(
       BillingFinancialMetricsReadService,
+    );
+    expect(moduleRef.get(BillingDisputeMetricsReadService)).toBeInstanceOf(
+      BillingDisputeMetricsReadService,
     );
     expect(moduleRef.get(BillingFinancialMetricsRecorderService)).toBeInstanceOf(
       BillingFinancialMetricsRecorderService,

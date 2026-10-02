@@ -10,6 +10,8 @@ import { BillingMetricsReadService } from './application/billing-metrics-read.se
 import { SubscriptionLifecycleService } from './application/subscription-lifecycle.service';
 import { BillingFinancialMetricsRecorderService } from './application/billing-financial-metrics-recorder.service';
 import { BillingFinancialMetricsReadService } from './application/billing-financial-metrics-read.service';
+import { BillingRefundMetricsReadService } from './application/billing-refund-metrics-read.service';
+import { BillingDisputeMetricsReadService } from './application/billing-dispute-metrics-read.service';
 import { BillingQuotaService } from './application/billing-quota.service';
 
 @Module({
@@ -21,6 +23,8 @@ import { BillingQuotaService } from './application/billing-quota.service';
     SubscriptionLifecycleService,
     BillingFinancialMetricsRecorderService,
     BillingFinancialMetricsReadService,
+    BillingRefundMetricsReadService,
+    BillingDisputeMetricsReadService,
     BillingQuotaService,
     StripeAdapter,
     PlanEntitlementGuard,
@@ -31,6 +35,8 @@ import { BillingQuotaService } from './application/billing-quota.service';
     BillingUsageReadService,
     BillingMetricsReadService,
     BillingFinancialMetricsReadService,
+    BillingRefundMetricsReadService,
+    BillingDisputeMetricsReadService,
     BillingQuotaService,
     StripeAdapter,
     PlanEntitlementGuard,

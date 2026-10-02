@@ -14,6 +14,7 @@ import {
 } from './subscription-lifecycle.service';
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { BillingFinancialMetricsRecorderService } from './billing-financial-metrics-recorder.service';
+import { isDisputeMovementEvent, selectDisputeMovement } from './billing-dispute-movement';
 
 @Injectable()
 export class BillingService {
@@ -67,6 +68,18 @@ export class BillingService {
     if (processed) return { received: true, duplicate: true };
 
     const currentSubscription = await this.loadCurrentStripeSubscription(event);
+    let retrievedDispute: Stripe.Dispute | undefined;
+    if (isDisputeMovementEvent(event.type) &&
+      !selectDisputeMovement(event.data?.object, event.type)) {
+      const dispute = event.data?.object as Partial<Stripe.Dispute> | undefined;
+      if (!dispute || typeof dispute.id !== 'string' ||
+        !/^du_[A-Za-z0-9]+$/.test(dispute.id)) {
+        throw new BadRequestException('Invalid dispute webhook');
+      }
+      // A transient Stripe failure occurs before the event ledger transaction,
+      // so webhook retry remains possible without a misleading observation.
+      retrievedDispute = await this.stripeAdapter.retrieveDispute(dispute.id);
+    }
     try {
       await this.prisma.$transaction(async (transaction) => {
         await transaction.stripeWebhookEvent.create({
@@ -77,6 +90,7 @@ export class BillingService {
           event,
           currentSubscription,
           this.clock.now(),
+          retrievedDispute,
         );
       });
     } catch (error) {
@@ -97,8 +111,31 @@ export class BillingService {
     event: Stripe.Event,
     currentSubscription?: Stripe.Subscription,
     observedAt: Date = this.clock.now(),
+    retrievedDispute?: Stripe.Dispute,
   ) {
     switch (event.type) {
+      case 'charge.dispute.created':
+      case 'charge.dispute.updated':
+      case 'charge.dispute.closed':
+      case 'charge.dispute.funds_withdrawn':
+      case 'charge.dispute.funds_reinstated': {
+        await this.financialMetrics.recordDisputeInTransaction(
+          transaction,
+          event,
+          observedAt,
+          retrievedDispute,
+        );
+        break;
+      }
+      case 'refund.created':
+      case 'refund.updated': {
+        await this.financialMetrics.recordRefundInTransaction(
+          transaction,
+          event,
+          observedAt,
+        );
+        break;
+      }
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
         const userId = session.metadata?.userId;
