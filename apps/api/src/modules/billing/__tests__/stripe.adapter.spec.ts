@@ -20,6 +20,7 @@ describe('StripeAdapter pricing integrity', () => {
     adapter = new StripeAdapter(config);
     stripe = {
       prices: { retrieve: jest.fn() },
+      disputes: { retrieve: jest.fn() },
       checkout: {
         sessions: {
           create: jest.fn().mockResolvedValue({
@@ -103,5 +104,12 @@ describe('StripeAdapter pricing integrity', () => {
         },
       } as never),
     ).toBe('free');
+  });
+
+  it('retrieves a dispute through the configured Stripe client when movement evidence is absent', async () => {
+    const dispute = { id: 'du_safe', balance_transactions: [] };
+    stripe.disputes.retrieve.mockResolvedValue(dispute);
+    await expect(adapter.retrieveDispute('du_safe')).resolves.toBe(dispute);
+    expect(stripe.disputes.retrieve).toHaveBeenCalledWith('du_safe');
   });
 });

@@ -78,6 +78,10 @@ export class StripeAdapter {
     return this.getClient().subscriptions.retrieve(stripeSubscriptionId);
   }
 
+  async retrieveDispute(stripeDisputeId: string): Promise<Stripe.Dispute> {
+    return this.getClient().disputes.retrieve(stripeDisputeId);
+  }
+
   resolveSubscriptionPlan(
     subscription: Stripe.Subscription,
   ): SubscriptionPlan {
