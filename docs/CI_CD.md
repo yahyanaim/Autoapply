@@ -24,6 +24,24 @@ Every pull request to `main` runs:
    browser critical-flow test, and production builds;
 5. dependency-diff review and CodeQL analysis.
 
+### Temporary dependency-audit risk acceptance
+
+The single native pnpm `auditConfig.ignoreGhsas` entry for
+`GHSA-vfj7-8cjw-p6xm` (`CVE-2026-93687`, `braces@3.0.3`) is **risk acceptance,
+not remediation**. No patched release exists. The assessed API and Dashboard
+production dependency closures exclude `braces`; no route from attacker-controlled
+input to a runtime brace pattern was found. Build and test tooling still contains
+the affected package, and the extension's production dependency graph includes
+Tailwind's transitive copy. The actual Docker image contents were not inspectable
+in the assessment.
+
+Owner: `@yahyanaim`. Expiry: **2026-11-03 UTC**. Track
+[micromatch/braces#70](https://github.com/micromatch/braces/issues/70). Remove
+the exception immediately when a compatible patched release is published and
+validated, or if a runtime exposure is found. The audit-policy guard fails CI
+after expiry or if any other advisory is added to the ignore list. The ordinary
+`pnpm audit --audit-level=low` still evaluates every other advisory.
+
 GitHub branch protection for `main` requires these checks before a merge:
 
 - `Quality, tests, and production builds`

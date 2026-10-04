@@ -11,6 +11,7 @@ describe('AdminMetricsService', () => {
     getEstimatedCostMetricsForFinancialWindow: jest.fn(),
   };
   const financials = { getMetrics: jest.fn() };
+  const stripeFees = { getMetrics: jest.fn() };
   let service: AdminMetricsService;
 
   beforeEach(() => {
@@ -65,6 +66,17 @@ describe('AdminMetricsService', () => {
         },
       ],
     });
+    stripeFees.getMetrics.mockResolvedValue({
+      metricsStartAt: new Date('2026-09-24T12:34:56.000Z'),
+      requestedRangeStartsBeforeMetrics: true,
+      actualCoveredRange: {
+        from: new Date('2026-09-24T12:34:56.000Z'),
+        toExclusive: new Date('2026-09-26T00:00:00.000Z'),
+      },
+      currency: 'usd',
+      totals: { feeMinor: 42, feeEffectCount: 1 },
+      daily: [{ day: '2026-09-24', coverage: 'partial', feeMinor: 42, feeEffectCount: 1 }],
+    });
     ai.getEstimatedCostMetricsForFinancialWindow.mockResolvedValue({
       costType: 'estimated',
       currency: 'usd',
@@ -84,6 +96,7 @@ describe('AdminMetricsService', () => {
       billing as never,
       financials as never,
       ai as never,
+      stripeFees as never,
     );
   });
 
@@ -153,6 +166,17 @@ describe('AdminMetricsService', () => {
             costedRequestCount: 2,
           },
         ],
+      },
+      stripeFees: {
+        metricsStartAt: '2026-09-24T12:34:56.000Z',
+        requestedRangeStartsBeforeMetrics: true,
+        actualCoveredRange: {
+          from: '2026-09-24T12:34:56.000Z',
+          toExclusive: '2026-09-26T00:00:00.000Z',
+        },
+        currency: 'usd',
+        totals: { feeMinor: 42, feeEffectCount: 1 },
+        daily: [{ day: '2026-09-24', coverage: 'partial', feeMinor: 42, feeEffectCount: 1 }],
       },
     });
     expect(billing.getCurrentMetrics).toHaveBeenCalledTimes(1);
@@ -244,7 +268,43 @@ describe('AdminMetricsService', () => {
     });
 
     expect(JSON.stringify(result)).not.toMatch(
-      /stripe|invoice|customer|email|userId|provider|model|prompt|resume|cv|token|credential|secret|paymentInstrument/i,
+      /txn_[a-z0-9]+|in_[a-z0-9]+|cus_[a-z0-9]+|customer|email|userId|provider|model|prompt|resume|cv|token|credential|secret|paymentInstrument/i,
+    );
+  });
+
+  it('allow-lists Stripe fee fields even if the owning reader returns sensitive extras', async () => {
+    stripeFees.getMetrics.mockResolvedValueOnce({
+      metricsStartAt: new Date('2026-09-24T12:34:56.000Z'),
+      requestedRangeStartsBeforeMetrics: false,
+      actualCoveredRange: {
+        from: new Date('2026-09-24T12:34:56.000Z'),
+        toExclusive: new Date('2026-09-26T00:00:00.000Z'),
+        providerResponse: 'top-secret-coverage',
+      },
+      currency: 'usd',
+      totals: { feeMinor: 42, feeEffectCount: 1, balanceTransactionId: 'txn_topsecret' },
+      daily: [{
+        day: '2026-09-24', coverage: 'partial', feeMinor: 42, feeEffectCount: 1,
+        customerId: 'cus_topsecret', metadata: { token: 'daily-secret' },
+      }],
+      stripeEventId: 'evt_topsecret',
+      credentials: 'top-secret-credential',
+    });
+
+    const result = await service.getMetrics({ from: '2026-09-24', to: '2026-09-25' });
+    expect(result.stripeFees).toEqual({
+      metricsStartAt: '2026-09-24T12:34:56.000Z',
+      requestedRangeStartsBeforeMetrics: false,
+      actualCoveredRange: {
+        from: '2026-09-24T12:34:56.000Z',
+        toExclusive: '2026-09-26T00:00:00.000Z',
+      },
+      currency: 'usd',
+      totals: { feeMinor: 42, feeEffectCount: 1 },
+      daily: [{ day: '2026-09-24', coverage: 'partial', feeMinor: 42, feeEffectCount: 1 }],
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /top-secret|topsecret|daily-secret|balanceTransactionId|customerId|metadata|credentials|stripeEventId/i,
     );
   });
 });

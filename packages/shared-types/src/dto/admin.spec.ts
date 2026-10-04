@@ -209,6 +209,10 @@ const metricsRequest: AdminConsoleMetricsRequest = {
   to: '2026-09-25',
 };
 declare const metrics: AdminConsoleMetricsResponse;
+metrics.stripeFees.totals?.feeMinor satisfies number | undefined;
+metrics.stripeFees.daily[0]?.coverage satisfies 'complete' | 'partial' | undefined;
+// @ts-expect-error Aggregate metrics never contain payment or provider identifiers.
+metrics.stripeFees.stripeEventId;
 metrics.period.timeZone satisfies 'UTC';
 metrics.period.maximumDays satisfies 90;
 metrics.billing.currency satisfies 'usd';

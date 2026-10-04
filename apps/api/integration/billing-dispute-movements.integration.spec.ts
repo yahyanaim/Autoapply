@@ -84,6 +84,7 @@ describe('Billing dispute movements PostgreSQL integration', () => {
       { retrieveDispute } as never,
       new SubscriptionLifecycleService(),
       new BillingFinancialMetricsRecorderService(),
+      { prepare: async () => null } as never,
       { now: () => new Date(future.getTime() + DAY_MS) } as never,
     );
     reader = new BillingDisputeMetricsReadService(prisma);
@@ -232,7 +233,7 @@ describe('Billing dispute movements PostgreSQL integration', () => {
           } });
           throw new Error('synthetic dispute persistence failure');
         },
-      } as never);
+      } as never, { prepare: async () => null } as never);
     await expect(rollbackBilling.handleWebhook(failing)).rejects.toThrow('synthetic dispute persistence failure');
     expect(await prisma.stripeWebhookEvent.findUnique({ where: { eventId: failing.id } })).toBeNull();
     expect(await prisma.billingDispute.findUnique({ where: { stripeDisputeId: 'du_rollbacktemporary' } })).toBeNull();

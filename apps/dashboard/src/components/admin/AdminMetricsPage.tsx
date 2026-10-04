@@ -76,6 +76,7 @@ export function AdminMetricsPage() {
   const data = metrics.data;
   const history = data.billing.history;
   const financials = data.financials;
+  const stripeFees = data.stripeFees;
   const zero =
     data.billing.activePaidSubscriptions === 0 &&
     data.billing.monthlyRecurringRevenueMinor === 0 &&
@@ -90,7 +91,9 @@ export function AdminMetricsPage() {
     (!financials.totals ||
       (financials.totals.grossRevenueMinor === 0 &&
         financials.totals.successfulPaymentCount === 0 &&
-        financials.totals.costedRequestCount === 0));
+        financials.totals.costedRequestCount === 0)) &&
+    (!stripeFees.totals ||
+      (stripeFees.totals.feeMinor === 0 && stripeFees.totals.feeEffectCount === 0));
   const maxDailyRequests = Math.max(
     1,
     ...data.ai.daily.map((entry) => entry.requestCount),
@@ -252,6 +255,53 @@ export function AdminMetricsPage() {
                     </tr>
                   ))}
                 </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </article>
+
+      <article className="border border-stone-200 bg-white p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="font-semibold">Recorded Stripe fees</h2>
+            <p className="text-xs text-gray-500">
+              Future-only coverage from {new Date(stripeFees.metricsStartAt).toISOString()}
+            </p>
+          </div>
+          <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-gray-600">USD · UTC</span>
+        </div>
+        {stripeFees.requestedRangeStartsBeforeMetrics ? (
+          <p role="status" className="mt-4 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Stripe fee data before this boundary is unavailable, not zero.
+          </p>
+        ) : null}
+        {!stripeFees.actualCoveredRange || !stripeFees.totals ? (
+          <p className="mt-4 border border-stone-200 bg-stone-50 p-4 text-sm">
+            Recorded Stripe fees are unavailable for this pre-boundary range.
+          </p>
+        ) : (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <MetricCard label="Recorded Stripe fees" value={usd.format(stripeFees.totals.feeMinor / 100)} detail="Authoritative Balance Transaction fees · not an estimate" />
+              <MetricCard label="Fee effects" value={stripeFees.totals.feeEffectCount.toLocaleString()} detail="Distinct recorded Balance Transactions" />
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table aria-label="Daily recorded Stripe fees" className="min-w-full border-collapse text-left text-xs">
+                <thead><tr className="border-b border-stone-200 text-gray-500">
+                  <th className="px-2 py-2 font-medium">UTC day</th>
+                  <th className="px-2 py-2 text-right font-medium">Coverage</th>
+                  <th className="px-2 py-2 text-right font-medium">Recorded fees</th>
+                  <th className="px-2 py-2 text-right font-medium">Fee effects</th>
+                </tr></thead>
+                <tbody>{stripeFees.daily.map((entry) => (
+                  <tr key={entry.day} className="border-b border-stone-100">
+                    <td className="px-2 py-2 font-medium">{entry.day}</td>
+                    <td className="px-2 py-2 text-right capitalize text-gray-500">{entry.coverage}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.feeMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{entry.feeEffectCount.toLocaleString()}</td>
+                  </tr>
+                ))}</tbody>
               </table>
             </div>
           </>

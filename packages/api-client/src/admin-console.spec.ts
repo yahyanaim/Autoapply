@@ -42,6 +42,10 @@ metricsResponse.financials.totals?.grossRevenueMinor satisfies
 metricsResponse.financials.totals?.estimatedAiCostUsd satisfies
   | number
   | undefined;
+metricsResponse.stripeFees.totals?.feeMinor satisfies number | undefined;
+metricsResponse.stripeFees.daily[0]?.feeEffectCount satisfies number | undefined;
+// @ts-expect-error Fee metrics expose no Stripe transaction identity.
+metricsResponse.stripeFees.balanceTransactionId;
 // @ts-expect-error The typed client never exposes payment identities.
 metricsResponse.financials.paymentId;
 // @ts-expect-error Contribution margin is outside Phase 4D.1.

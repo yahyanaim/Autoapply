@@ -146,6 +146,30 @@ class AdminConsoleFinancialMetricsDto {
   daily!: AdminConsoleFinancialMetricsDayDto[];
 }
 
+class AdminConsoleStripeFeeTotalsDto {
+  @ApiProperty({ description: 'Recorded Stripe fees in USD minor units; may be negative for corrections' })
+  feeMinor!: number;
+  @ApiProperty() feeEffectCount!: number;
+}
+
+class AdminConsoleStripeFeeDayDto extends AdminConsoleStripeFeeTotalsDto {
+  @ApiProperty({ example: '2026-10-03' }) day!: string;
+  @ApiProperty({ enum: ['complete', 'partial'] }) coverage!: 'complete' | 'partial';
+}
+
+class AdminConsoleStripeFeeMetricsDto {
+  @ApiProperty({ format: 'date-time', description: 'Future-only Stripe fee boundary' })
+  metricsStartAt!: string;
+  @ApiProperty() requestedRangeStartsBeforeMetrics!: boolean;
+  @ApiProperty({ type: AdminConsoleBillingCoveredRangeDto, nullable: true })
+  actualCoveredRange!: AdminConsoleBillingCoveredRangeDto | null;
+  @ApiProperty({ enum: ['usd'] }) currency!: 'usd';
+  @ApiProperty({ type: AdminConsoleStripeFeeTotalsDto, nullable: true })
+  totals!: AdminConsoleStripeFeeTotalsDto | null;
+  @ApiProperty({ type: () => [AdminConsoleStripeFeeDayDto] })
+  daily!: AdminConsoleStripeFeeDayDto[];
+}
+
 export class AdminConsoleMetricsResponseDto {
   @ApiProperty({ type: AdminConsoleMetricsPeriodDto })
   period!: AdminConsoleMetricsPeriodDto;
@@ -155,4 +179,6 @@ export class AdminConsoleMetricsResponseDto {
   ai!: AdminConsoleAiMetricsDto;
   @ApiProperty({ type: AdminConsoleFinancialMetricsDto })
   financials!: AdminConsoleFinancialMetricsDto;
+  @ApiProperty({ type: AdminConsoleStripeFeeMetricsDto })
+  stripeFees!: AdminConsoleStripeFeeMetricsDto;
 }

@@ -15,6 +15,7 @@ import {
 import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { BillingFinancialMetricsRecorderService } from './billing-financial-metrics-recorder.service';
 import { isDisputeMovementEvent, selectDisputeMovement } from './billing-dispute-movement';
+import { BillingStripeFeeService, PreparedStripeFee } from './billing-stripe-fee.service';
 
 @Injectable()
 export class BillingService {
@@ -23,6 +24,7 @@ export class BillingService {
     private readonly stripeAdapter: StripeAdapter,
     private readonly lifecycle: SubscriptionLifecycleService,
     private readonly financialMetrics: BillingFinancialMetricsRecorderService,
+    private readonly stripeFees: BillingStripeFeeService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
   ) {}
 
@@ -80,6 +82,7 @@ export class BillingService {
       // so webhook retry remains possible without a misleading observation.
       retrievedDispute = await this.stripeAdapter.retrieveDispute(dispute.id);
     }
+    const feeEvidence = await this.stripeFees.prepare(event, retrievedDispute);
     try {
       await this.prisma.$transaction(async (transaction) => {
         await transaction.stripeWebhookEvent.create({
@@ -91,6 +94,7 @@ export class BillingService {
           currentSubscription,
           this.clock.now(),
           retrievedDispute,
+          feeEvidence,
         );
       });
     } catch (error) {
@@ -112,6 +116,7 @@ export class BillingService {
     currentSubscription?: Stripe.Subscription,
     observedAt: Date = this.clock.now(),
     retrievedDispute?: Stripe.Dispute,
+    feeEvidence?: PreparedStripeFee | null,
   ) {
     switch (event.type) {
       case 'charge.dispute.created':
@@ -347,6 +352,9 @@ export class BillingService {
         }
         break;
       }
+    }
+    if (feeEvidence) {
+      await this.stripeFees.recordInTransaction(transaction, event.id, feeEvidence, observedAt);
     }
   }
 

@@ -24,6 +24,7 @@ import { BillingMetricsReadService } from '../billing/application/billing-metric
 import { AiMetricsReadService } from '../ai/application/ai-metrics-read.service';
 import { AIModule } from '../ai/ai.module';
 import { BillingFinancialMetricsReadService } from '../billing/application/billing-financial-metrics-read.service';
+import { BillingStripeFeeMetricsReadService } from '../billing/application/billing-stripe-fee-metrics-read.service';
 
 describe('AdminModule', () => {
   it('registers and compiles the mutation foundation without circular dependencies', async () => {
@@ -72,6 +73,7 @@ describe('AdminModule', () => {
         { provide: ResumeRequeueCommandService, useValue: {} },
         { provide: BillingMetricsReadService, useValue: {} },
         { provide: BillingFinancialMetricsReadService, useValue: {} },
+        { provide: BillingStripeFeeMetricsReadService, useValue: {} },
         { provide: AiMetricsReadService, useValue: {} },
       ],
     })
