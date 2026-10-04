@@ -72,6 +72,7 @@ describe('Billing future-only financial metrics PostgreSQL integration', () => {
       stripe as never,
       new SubscriptionLifecycleService(),
       new BillingFinancialMetricsRecorderService(),
+      { prepare: async () => null } as never,
       { now: () => new Date(eventDay.getTime() + 2 * DAY_MS) } as never,
     );
     readService = new BillingFinancialMetricsReadService(prisma);
@@ -167,6 +168,7 @@ describe('Billing future-only financial metrics PostgreSQL integration', () => {
       } as never,
       new SubscriptionLifecycleService(),
       throwingRecorder as never,
+      { prepare: async () => null } as never,
       { now: () => new Date(eventDay.getTime() + DAY_MS) } as never,
     );
     await expect(

@@ -124,6 +124,16 @@ enum BillingDisputeMovementKind {
   reinstatement
 }
 
+enum BillingStripeFeeResolution {
+  recorded
+  duplicate_balance_transaction
+  zero_fee
+  unsupported_currency
+  pre_boundary
+  missing_authoritative_transaction
+  missing_authoritative_fee
+}
+
 enum QuotaGrantCategory {
   applications
   ai_requests
@@ -689,6 +699,8 @@ model StripeWebhookEvent {
   refundEffect BillingRefundEffect?
   disputeObservation BillingDisputeObservation?
   disputeEffect BillingDisputeEffect?
+  stripeFeeObservation BillingStripeFeeObservation?
+  stripeFeeEffect BillingStripeFeeEffect?
 
   @@map("stripe_webhook_events")
 }
@@ -946,6 +958,57 @@ model BillingDailyDisputeMetric {
   @@unique([day, currency])
   @@index([day])
   @@map("billing_daily_dispute_metrics")
+}
+
+model BillingStripeFeeMetricsBoundary {
+  id             String   @id
+  metricsStartAt DateTime
+  currency       String   @default("usd")
+  createdAt      DateTime @default(now())
+
+  @@map("billing_stripe_fee_metrics_boundaries")
+}
+
+model BillingStripeFeeObservation {
+  id                   String                     @id @default(cuid())
+  sourceStripeEventId  String                     @unique
+  resolution           BillingStripeFeeResolution
+  balanceTransactionId String?
+  observedAt           DateTime                   @default(now())
+
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([observedAt])
+  @@map("billing_stripe_fee_observations")
+}
+
+model BillingStripeFeeEffect {
+  id                   String   @id @default(cuid())
+  sourceStripeEventId  String   @unique
+  balanceTransactionId String   @unique
+  feeMinor             BigInt
+  currency             String
+  effectiveAt          DateTime
+  createdAt            DateTime @default(now())
+
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@index([effectiveAt, currency])
+  @@map("billing_stripe_fee_effects")
+}
+
+model BillingDailyStripeFeeMetric {
+  id             String   @id @default(cuid())
+  day            DateTime
+  currency       String   @default("usd")
+  feeMinor       BigInt   @default(0)
+  feeEffectCount Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([day, currency])
+  @@index([day])
+  @@map("billing_daily_stripe_fee_metrics")
 }
 
 model AIRequest {

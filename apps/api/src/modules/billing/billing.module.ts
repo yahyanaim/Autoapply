@@ -13,6 +13,8 @@ import { BillingFinancialMetricsReadService } from './application/billing-financ
 import { BillingRefundMetricsReadService } from './application/billing-refund-metrics-read.service';
 import { BillingDisputeMetricsReadService } from './application/billing-dispute-metrics-read.service';
 import { BillingQuotaService } from './application/billing-quota.service';
+import { BillingStripeFeeService } from './application/billing-stripe-fee.service';
+import { BillingStripeFeeMetricsReadService } from './application/billing-stripe-fee-metrics-read.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
@@ -26,6 +28,8 @@ import { BillingQuotaService } from './application/billing-quota.service';
     BillingRefundMetricsReadService,
     BillingDisputeMetricsReadService,
     BillingQuotaService,
+    BillingStripeFeeService,
+    BillingStripeFeeMetricsReadService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],
@@ -38,6 +42,7 @@ import { BillingQuotaService } from './application/billing-quota.service';
     BillingRefundMetricsReadService,
     BillingDisputeMetricsReadService,
     BillingQuotaService,
+    BillingStripeFeeMetricsReadService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],

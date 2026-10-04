@@ -82,6 +82,22 @@ export class StripeAdapter {
     return this.getClient().disputes.retrieve(stripeDisputeId);
   }
 
+  async retrievePaymentIntent(id: string): Promise<Stripe.PaymentIntent> {
+    return this.getClient().paymentIntents.retrieve(id);
+  }
+
+  async retrieveCharge(id: string): Promise<Stripe.Charge> {
+    return this.getClient().charges.retrieve(id);
+  }
+
+  async retrieveRefund(id: string): Promise<Stripe.Refund> {
+    return this.getClient().refunds.retrieve(id);
+  }
+
+  async retrieveBalanceTransaction(id: string): Promise<Stripe.BalanceTransaction> {
+    return this.getClient().balanceTransactions.retrieve(id);
+  }
+
   resolveSubscriptionPlan(
     subscription: Stripe.Subscription,
   ): SubscriptionPlan {

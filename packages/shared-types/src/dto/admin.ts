@@ -437,6 +437,19 @@ export interface AdminConsoleFinancialMetricsTotals {
   costedRequestCount: number;
 }
 
+export interface AdminConsoleStripeFeeMetricsDay {
+  day: string;
+  coverage: 'complete' | 'partial';
+  /** Exact recorded Stripe BalanceTransaction.fee, USD minor units. */
+  feeMinor: number;
+  feeEffectCount: number;
+}
+
+export interface AdminConsoleStripeFeeMetricsTotals {
+  feeMinor: number;
+  feeEffectCount: number;
+}
+
 export interface AdminConsoleMetricsResponse {
   period: {
     from: string;
@@ -487,5 +500,13 @@ export interface AdminConsoleMetricsResponse {
     /** Null when the requested range is entirely before metricsStartAt. */
     totals: AdminConsoleFinancialMetricsTotals | null;
     daily: AdminConsoleFinancialMetricsDay[];
+  };
+  stripeFees: {
+    metricsStartAt: string;
+    requestedRangeStartsBeforeMetrics: boolean;
+    actualCoveredRange: { from: string; toExclusive: string } | null;
+    currency: 'usd';
+    totals: AdminConsoleStripeFeeMetricsTotals | null;
+    daily: AdminConsoleStripeFeeMetricsDay[];
   };
 }

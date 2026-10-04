@@ -65,6 +65,7 @@ describe('Billing subscription lifecycle PostgreSQL integration', () => {
       stripe as never,
       lifecycle,
       new BillingFinancialMetricsRecorderService(),
+      { prepare: async () => null } as never,
       { now: () => new Date(rangeFrom.getTime() + 120_000) } as never,
     );
     metrics = new BillingMetricsReadService(prisma, {
@@ -262,6 +263,7 @@ describe('Billing subscription lifecycle PostgreSQL integration', () => {
       } as never,
       throwingLifecycle as never,
       new BillingFinancialMetricsRecorderService(),
+      { prepare: async () => null } as never,
       { now: () => new Date(rangeFrom.getTime() + 240_000) } as never,
     );
 

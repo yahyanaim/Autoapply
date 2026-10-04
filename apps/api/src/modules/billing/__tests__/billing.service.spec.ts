@@ -5,6 +5,7 @@ import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
 import { NotFoundException } from '@nestjs/common';
 import { SubscriptionLifecycleService } from '../application/subscription-lifecycle.service';
 import { BillingFinancialMetricsRecorderService } from '../application/billing-financial-metrics-recorder.service';
+import { BillingStripeFeeService } from '../application/billing-stripe-fee.service';
 
 describe('BillingService', () => {
   let service: BillingService;
@@ -60,6 +61,10 @@ describe('BillingService', () => {
           provide: BillingFinancialMetricsRecorderService,
           useValue: financialMetricsMock,
         },
+        { provide: BillingStripeFeeService, useValue: {
+          prepare: jest.fn().mockResolvedValue(null),
+          recordInTransaction: jest.fn(),
+        } },
       ],
     }).compile();
 

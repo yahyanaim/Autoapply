@@ -105,6 +105,17 @@ const safeResponse = {
       },
     ],
   },
+  stripeFees: {
+    metricsStartAt: '2026-09-24T12:34:56.000Z',
+    requestedRangeStartsBeforeMetrics: true,
+    actualCoveredRange: {
+      from: '2026-09-24T12:34:56.000Z',
+      toExclusive: '2026-09-26T00:00:00.000Z',
+    },
+    currency: 'usd' as const,
+    totals: { feeMinor: -25, feeEffectCount: 2 },
+    daily: [{ day: '2026-09-24', coverage: 'partial' as const, feeMinor: -25, feeEffectCount: 2 }],
+  },
 };
 
 function view(node: ReactNode) {
@@ -152,6 +163,10 @@ describe('AdminMetricsPage', () => {
     expect(rendered.container.textContent).toContain('Future-only financial metrics');
     expect(rendered.container.textContent).toContain('Gross revenue');
     expect(rendered.container.textContent).toContain('Successful payments');
+    expect(rendered.container.textContent).toContain('Recorded Stripe fees');
+    expect(rendered.container.textContent).toContain('Fee effects');
+    expect(rendered.container.textContent).toContain('-$0.25');
+    expect(rendered.required('[aria-label="Daily recorded Stripe fees"]').textContent).toContain('partial');
     expect(rendered.container.textContent).toContain('$68.00');
     expect(rendered.container.textContent).toContain(
       'data before the metrics boundary is unavailable',
@@ -168,7 +183,7 @@ describe('AdminMetricsPage', () => {
     ).toBeTruthy();
     expect(rendered.required('[aria-label="Daily AI metrics chart"]')).toBeTruthy();
     expect(rendered.container.textContent).not.toMatch(
-      /stripe|invoice|customer|email|userId|provider|model|prompt|resume|cv|token|credential|secret|payment instrument|margin/i,
+      /txn_[a-z0-9]+|in_[a-z0-9]+|cus_[a-z0-9]+|customer|email|userId|provider|model|prompt|resume|cv|token|credential|secret|payment instrument|margin/i,
     );
     expect(metrics).toHaveBeenCalledTimes(1);
     expect(
@@ -229,6 +244,24 @@ describe('AdminMetricsPage', () => {
         '[aria-label="Daily future financial metrics"]',
       ),
     ).toBeNull();
+    rendered.cleanup();
+  });
+
+  it('keeps wholly pre-boundary fee coverage unavailable rather than showing fabricated zeroes', async () => {
+    metrics.mockResolvedValueOnce({
+      ...safeResponse,
+      stripeFees: {
+        ...safeResponse.stripeFees,
+        actualCoveredRange: null,
+        totals: null,
+        daily: [],
+      },
+    });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain('unavailable for this pre-boundary range');
+    expect(rendered.container.querySelector('[aria-label="Daily recorded Stripe fees"]')).toBeNull();
     rendered.cleanup();
   });
 
@@ -297,6 +330,11 @@ describe('AdminMetricsPage', () => {
           estimatedAiCostUsd: 0,
           costedRequestCount: 0,
         },
+        daily: [],
+      },
+      stripeFees: {
+        ...safeResponse.stripeFees,
+        totals: { feeMinor: 0, feeEffectCount: 0 },
         daily: [],
       },
     });

@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { AiMetricsReadService } from '../../ai/application/ai-metrics-read.service';
 import { BillingMetricsReadService } from '../../billing/application/billing-metrics-read.service';
 import { BillingFinancialMetricsReadService } from '../../billing/application/billing-financial-metrics-read.service';
+import { BillingStripeFeeMetricsReadService } from '../../billing/application/billing-stripe-fee-metrics-read.service';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const MAX_ADMIN_METRICS_RANGE_DAYS = 90;
@@ -13,6 +14,7 @@ export class AdminMetricsService {
     private readonly billing: BillingMetricsReadService,
     private readonly financials: BillingFinancialMetricsReadService,
     private readonly ai: AiMetricsReadService,
+    private readonly stripeFees: BillingStripeFeeMetricsReadService,
   ) {}
 
   async getMetrics(input: { from: string; to: string }) {
@@ -28,11 +30,12 @@ export class AdminMetricsService {
       throw new BadRequestException('Invalid metrics UTC date range');
     }
 
-    const [billing, billingHistory, ai, financials] = await Promise.all([
+    const [billing, billingHistory, ai, financials, stripeFees] = await Promise.all([
       this.billing.getCurrentMetrics(),
       this.billing.getHistoricalMetrics({ from, toExclusive }),
       this.ai.getEstimatedCostMetrics({ from, toExclusive }),
       this.financials.getMetrics({ from, toExclusive }),
+      this.stripeFees.getMetrics({ from, toExclusive }),
     ]);
     const financialAi = financials.actualCoveredRange
       ? await this.ai.getEstimatedCostMetricsForFinancialWindow(
@@ -98,6 +101,29 @@ export class AdminMetricsService {
             costedRequestCount: aiDay?.costedRequestCount ?? 0,
           };
         }),
+      },
+      stripeFees: {
+        metricsStartAt: stripeFees.metricsStartAt.toISOString(),
+        requestedRangeStartsBeforeMetrics: stripeFees.requestedRangeStartsBeforeMetrics,
+        actualCoveredRange: stripeFees.actualCoveredRange
+          ? {
+              from: stripeFees.actualCoveredRange.from.toISOString(),
+              toExclusive: stripeFees.actualCoveredRange.toExclusive.toISOString(),
+            }
+          : null,
+        currency: stripeFees.currency,
+        totals: stripeFees.totals
+          ? {
+              feeMinor: stripeFees.totals.feeMinor,
+              feeEffectCount: stripeFees.totals.feeEffectCount,
+            }
+          : null,
+        daily: stripeFees.daily.map((entry) => ({
+          day: entry.day,
+          coverage: entry.coverage,
+          feeMinor: entry.feeMinor,
+          feeEffectCount: entry.feeEffectCount,
+        })),
       },
     };
   }

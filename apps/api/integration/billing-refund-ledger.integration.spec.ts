@@ -35,6 +35,7 @@ describe('Billing refund ledger PostgreSQL integration', () => {
     billing = new BillingService(
       prisma, {} as never, new SubscriptionLifecycleService(),
       new BillingFinancialMetricsRecorderService(),
+      { prepare: async () => null } as never,
       { now: () => new Date(future.getTime() + DAY_MS) } as never,
     );
     reader = new BillingRefundMetricsReadService(prisma);
@@ -179,7 +180,7 @@ describe('Billing refund ledger PostgreSQL integration', () => {
         } });
         throw new Error('synthetic refund persistence failure');
       },
-    } as never);
+    } as never, { prepare: async () => null } as never);
     await expect(failing.handleWebhook(failure)).rejects.toThrow('synthetic refund persistence failure');
     expect(await prisma.stripeWebhookEvent.findUnique({ where: { eventId: failure.id } })).toBeNull();
     expect(await prisma.billingRefund.findUnique({ where: { stripeRefundId: 're_rollbacktemporary' } })).toBeNull();
