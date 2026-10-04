@@ -13,7 +13,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "audit:dependencies": "pnpm audit --audit-level=low",
+    "audit:dependencies": "node --test scripts/audit-policy.test.mjs && node scripts/audit-policy.mjs && pnpm audit --audit-level=low",
     "check": "pnpm generate && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm audit:dependencies"
   },
   "pnpm": {
