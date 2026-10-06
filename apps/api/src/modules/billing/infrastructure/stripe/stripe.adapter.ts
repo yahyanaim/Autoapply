@@ -98,6 +98,10 @@ export class StripeAdapter {
     return this.getClient().balanceTransactions.retrieve(id);
   }
 
+  async retrieveEvent(id: string): Promise<Stripe.Event> {
+    return this.getClient().events.retrieve(id);
+  }
+
   resolveSubscriptionPlan(
     subscription: Stripe.Subscription,
   ): SubscriptionPlan {

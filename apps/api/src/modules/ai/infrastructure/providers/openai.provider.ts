@@ -7,6 +7,7 @@ import {
   AIResponse,
   PromptTemplate,
 } from '../../domain/ai-provider.interface';
+import { AiAttemptNotDispatchedError } from '../../application/ai-provider-attempt';
 
 @Injectable()
 export class OpenAIProvider implements AIProvider {
@@ -15,6 +16,19 @@ export class OpenAIProvider implements AIProvider {
 
   constructor(private readonly configService: ConfigService) {
     this.model = this.configService.get<string>('OPENAI_MODEL', 'gpt-4o-mini');
+  }
+
+  assertReadyForDispatch(): void {
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (typeof apiKey !== 'string' || !apiKey.trim() ||
+      typeof this.model !== 'string' || !this.model.trim()) {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
+    try {
+      this.client ??= new OpenAI({ apiKey, maxRetries: 0 });
+    } catch {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
   }
 
   async complete(
@@ -57,6 +71,9 @@ export class OpenAIProvider implements AIProvider {
         input: usage?.prompt_tokens ?? 0,
         output: usage?.completion_tokens ?? 0,
       },
+      usageReported: Number.isSafeInteger(usage?.prompt_tokens) &&
+        Number.isSafeInteger(usage?.completion_tokens) &&
+        (usage?.prompt_tokens ?? -1) >= 0 && (usage?.completion_tokens ?? -1) >= 0,
       model: response.model,
     };
   }

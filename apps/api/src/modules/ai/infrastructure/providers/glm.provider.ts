@@ -7,6 +7,7 @@ import {
   PromptTemplate,
 } from "../../domain/ai-provider.interface";
 import { parseExternalHttpsBaseUrl } from "../../../../shared/config/external-endpoint";
+import { AiAttemptNotDispatchedError } from "../../application/ai-provider-attempt";
 
 const MAX_RESPONSE_BYTES_PER_TOKEN = 32;
 
@@ -18,6 +19,22 @@ const MAX_RESPONSE_BYTES_PER_TOKEN = 32;
 @Injectable()
 export class GlmProvider implements AIProvider {
   constructor(private readonly config: ConfigService) {}
+
+  assertReadyForDispatch(): void {
+    const apiKey = this.config.get<string>("GLM_FREE_PLAN_API_KEY");
+    const baseUrl = this.config.get<string>("GLM_FREE_PLAN_BASE_URL");
+    const model = this.config.get<string>("GLM_FREE_PLAN_MODEL");
+    if (typeof apiKey !== 'string' || !apiKey.trim() ||
+      typeof baseUrl !== 'string' || !baseUrl.trim() ||
+      typeof model !== 'string' || !model.trim()) {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
+    try {
+      this.endpoint(baseUrl);
+    } catch {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
+  }
 
   async complete(
     prompt: PromptTemplate,
@@ -117,6 +134,9 @@ export class GlmProvider implements AIProvider {
         input: nonNegativeInteger(usage.prompt_tokens),
         output: nonNegativeInteger(usage.completion_tokens),
       },
+      usageReported: Number.isSafeInteger(usage.prompt_tokens) &&
+        Number.isSafeInteger(usage.completion_tokens) &&
+        (usage.prompt_tokens as number) >= 0 && (usage.completion_tokens as number) >= 0,
     };
   }
 }

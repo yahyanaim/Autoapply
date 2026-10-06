@@ -80,6 +80,26 @@ const safeResponse = {
       },
     ],
   },
+  financialEvidenceCoverage: {
+    status: 'unresolved' as const,
+    boundary: '2026-09-24T12:34:56.000Z',
+    activationAt: '2026-09-24T12:35:00.000Z',
+    asOf: '2026-09-25T12:00:00.000Z',
+    requestedRange: { from: '2026-09-01T00:00:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
+    actualCoveredRange: { from: '2026-09-24T12:35:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
+    unresolvedCaseCount: 1,
+    evidencedZeroCount: 0,
+  },
+  estimatedAiCostCoverage: {
+    status: 'partial' as const,
+    boundary: '2026-09-24T12:34:56.000Z',
+    activationAt: '2026-09-24T12:35:00.000Z',
+    asOf: '2026-09-25T12:00:00.000Z',
+    requestedRange: { from: '2026-09-01T00:00:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
+    actualCoveredRange: { from: '2026-09-24T12:35:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
+    unresolvedRequestCount: 0,
+    costType: 'estimated' as const,
+  },
   financials: {
     metricsStartAt: '2026-09-24T12:34:56.000Z',
     requestedRangeStartsBeforeMetrics: true,
@@ -164,6 +184,9 @@ describe('AdminMetricsPage', () => {
     expect(rendered.container.textContent).toContain('Gross revenue');
     expect(rendered.container.textContent).toContain('Successful payments');
     expect(rendered.container.textContent).toContain('Recorded Stripe fees');
+    expect(rendered.container.textContent).toContain('Recorded financial evidence: unresolved');
+    expect(rendered.container.textContent).toContain('Estimated AI cost coverage: partial');
+    expect(rendered.container.textContent).toContain('Not payout or bank reconciliation');
     expect(rendered.container.textContent).toContain('Fee effects');
     expect(rendered.container.textContent).toContain('-$0.25');
     expect(rendered.required('[aria-label="Daily recorded Stripe fees"]').textContent).toContain('partial');

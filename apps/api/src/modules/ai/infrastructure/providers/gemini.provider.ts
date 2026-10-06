@@ -7,6 +7,7 @@ import {
   AIResponse,
   PromptTemplate,
 } from '../../domain/ai-provider.interface';
+import { AiAttemptNotDispatchedError } from '../../application/ai-provider-attempt';
 
 @Injectable()
 export class GeminiProvider implements AIProvider {
@@ -18,6 +19,19 @@ export class GeminiProvider implements AIProvider {
       'GOOGLE_AI_MODEL',
       'gemini-1.5-flash',
     );
+  }
+
+  assertReadyForDispatch(): void {
+    const apiKey = this.configService.get<string>('GOOGLE_AI_API_KEY');
+    if (typeof apiKey !== 'string' || !apiKey.trim() ||
+      typeof this.model !== 'string' || !this.model.trim()) {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
+    try {
+      this.genAI ??= new GoogleGenerativeAI(apiKey);
+    } catch {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
   }
 
   async complete(
@@ -56,6 +70,10 @@ export class GeminiProvider implements AIProvider {
         input: inputTokenCount,
         output: outputTokenCount,
       },
+      usageReported: Number.isSafeInteger(response.usageMetadata?.promptTokenCount) &&
+        Number.isSafeInteger(response.usageMetadata?.candidatesTokenCount) &&
+        (response.usageMetadata?.promptTokenCount ?? -1) >= 0 &&
+        (response.usageMetadata?.candidatesTokenCount ?? -1) >= 0,
       model: this.model,
     };
   }

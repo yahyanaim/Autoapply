@@ -15,6 +15,8 @@ import { BillingDisputeMetricsReadService } from './application/billing-dispute-
 import { BillingQuotaService } from './application/billing-quota.service';
 import { BillingStripeFeeService } from './application/billing-stripe-fee.service';
 import { BillingStripeFeeMetricsReadService } from './application/billing-stripe-fee-metrics-read.service';
+import { BillingFinancialCompletenessService } from './application/billing-financial-completeness.service';
+import { BillingEvidenceRetryService } from './application/billing-evidence-retry.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
@@ -30,6 +32,8 @@ import { BillingStripeFeeMetricsReadService } from './application/billing-stripe
     BillingQuotaService,
     BillingStripeFeeService,
     BillingStripeFeeMetricsReadService,
+    BillingFinancialCompletenessService,
+    BillingEvidenceRetryService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],
@@ -43,6 +47,7 @@ import { BillingStripeFeeMetricsReadService } from './application/billing-stripe
     BillingDisputeMetricsReadService,
     BillingQuotaService,
     BillingStripeFeeMetricsReadService,
+    BillingFinancialCompletenessService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],

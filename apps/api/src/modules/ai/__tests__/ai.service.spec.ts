@@ -9,6 +9,12 @@ import { AIRequestFeature, JobStatus } from '@prisma/client';
 import { AIService } from '../application/ai.service';
 import { calculateMatchScore } from '../domain/match-score';
 
+const costLedgerDouble = {
+  beginAttempt: jest.fn().mockResolvedValue('synthetic-attempt'),
+  estimateMicroUsd: jest.fn().mockReturnValue(0n),
+  finalizeAttempt: jest.fn().mockResolvedValue(undefined),
+};
+
 describe('AIService resume ownership and readiness', () => {
   const prisma = {
     resume: { findFirst: jest.fn() },
@@ -47,6 +53,7 @@ describe('AIService resume ownership and readiness', () => {
     {} as never,
     matchScoreCache as never,
     quota as never,
+    costLedgerDouble as never,
   );
 
   beforeEach(() => {
@@ -365,6 +372,7 @@ describe('AIService request budgets', () => {
       promptService as never,
       {} as never,
       { reserve: jest.fn(), release: jest.fn() } as never,
+      costLedgerDouble as never,
     );
 
     await expect(
@@ -409,6 +417,7 @@ describe('AIService request budgets', () => {
       } as never,
       {} as never,
       { reserve: jest.fn(), release: jest.fn() } as never,
+      costLedgerDouble as never,
     );
 
     await expect(
@@ -448,6 +457,7 @@ describe('AIService quota summary', () => {
           },
         }),
       } as never,
+      costLedgerDouble as never,
       { now: () => new Date('2026-07-27T12:00:00.000Z') } as never,
     );
 
@@ -515,6 +525,7 @@ describe('AIService plan-aware execution and quota rollback', () => {
       { loadTemplate: jest.fn().mockReturnValue('System\n## Resume\n{{resume}}') } as never,
       {} as never,
       quota as never,
+      costLedgerDouble as never,
     );
     return { prisma, router, service, quota };
   }

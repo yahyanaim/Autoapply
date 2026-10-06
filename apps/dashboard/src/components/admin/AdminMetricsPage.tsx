@@ -112,6 +112,26 @@ export function AdminMetricsPage() {
         </p>
       </header>
 
+      {data.financialEvidenceCoverage && data.estimatedAiCostCoverage ? (
+        <div className="grid gap-3 border border-stone-200 bg-white p-4 text-sm sm:grid-cols-2">
+          <p>
+            <span className="font-medium">Recorded financial evidence: </span>
+            <span className="capitalize">{data.financialEvidenceCoverage.status}</span>
+            <span className="block text-xs text-gray-500">
+              Known ingested events as of {new Date(data.financialEvidenceCoverage.asOf).toISOString()}.
+              Not payout or bank reconciliation.
+            </span>
+          </p>
+          <p>
+            <span className="font-medium">Estimated AI cost coverage: </span>
+            <span className="capitalize">{data.estimatedAiCostCoverage.status}</span>
+            <span className="block text-xs text-gray-500">
+              Future-only estimate; unknown cost is unresolved, never zero.
+            </span>
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-end gap-3 border border-stone-200 bg-white p-4">
         <label className="grid gap-1 text-xs font-medium text-gray-600">
           UTC from

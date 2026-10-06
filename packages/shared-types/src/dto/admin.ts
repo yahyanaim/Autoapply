@@ -509,4 +509,21 @@ export interface AdminConsoleMetricsResponse {
     totals: AdminConsoleStripeFeeMetricsTotals | null;
     daily: AdminConsoleStripeFeeMetricsDay[];
   };
+  financialEvidenceCoverage: AdminConsoleCoverage & {
+    unresolvedCaseCount: number;
+    evidencedZeroCount: number;
+  };
+  estimatedAiCostCoverage: AdminConsoleCoverage & {
+    unresolvedRequestCount: number;
+    costType: 'estimated';
+  };
+}
+
+export interface AdminConsoleCoverage {
+  status: 'full' | 'partial' | 'unresolved' | 'unavailable';
+  boundary: string;
+  activationAt: string | null;
+  asOf: string;
+  requestedRange: { from: string; toExclusive: string };
+  actualCoveredRange: { from: string; toExclusive: string } | null;
 }

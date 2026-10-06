@@ -1,5 +1,6 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { AIProviderFactory } from '../infrastructure/providers/provider.factory';
+import { AiAttemptNotDispatchedError } from '../application/ai-provider-attempt';
 
 describe('AIProviderFactory resilience', () => {
   const prompt = {
@@ -13,6 +14,7 @@ describe('AIProviderFactory resilience', () => {
     model: 'test-model',
     tokensUsed: { input: 1, output: 1 },
   };
+  const attempts = { run: (_providerName: string, invoke: () => Promise<typeof response>) => invoke() };
 
   function factory(
     openai: { complete: jest.Mock },
@@ -31,9 +33,9 @@ describe('AIProviderFactory resilience', () => {
     };
     return new AIProviderFactory(
       config as never,
-      openai as never,
-      claude as never,
-      { complete: jest.fn() } as never,
+      { ...openai, assertReadyForDispatch: jest.fn() } as never,
+      { ...claude, assertReadyForDispatch: jest.fn() } as never,
+      { assertReadyForDispatch: jest.fn(), complete: jest.fn() } as never,
       {
         getRequestId: jest.fn().mockReturnValue('request-test'),
         getUserId: jest.fn().mockReturnValue('user-test'),
@@ -46,7 +48,7 @@ describe('AIProviderFactory resilience', () => {
     const claude = { complete: jest.fn() };
 
     await expect(
-      factory(openai, claude).completeWithFallback(prompt, { name: 'Ada' }),
+      factory(openai, claude).completeWithFallback(prompt, { name: 'Ada' }, attempts),
     ).resolves.toEqual({ response, providerName: 'openai' });
     expect(claude.complete).not.toHaveBeenCalled();
   });
@@ -56,7 +58,7 @@ describe('AIProviderFactory resilience', () => {
     const claude = { complete: jest.fn().mockResolvedValue(response) };
 
     await expect(
-      factory(openai, claude).completeWithFallback(prompt, {}),
+      factory(openai, claude).completeWithFallback(prompt, {}, attempts),
     ).resolves.toEqual({ response, providerName: 'claude' });
   });
 
@@ -65,9 +67,9 @@ describe('AIProviderFactory resilience', () => {
     const claude = { complete: jest.fn().mockResolvedValue(response) };
     const resilientFactory = factory(openai, claude);
 
-    await resilientFactory.completeWithFallback(prompt, {});
-    await resilientFactory.completeWithFallback(prompt, {});
-    await resilientFactory.completeWithFallback(prompt, {});
+    await resilientFactory.completeWithFallback(prompt, {}, attempts);
+    await resilientFactory.completeWithFallback(prompt, {}, attempts);
+    await resilientFactory.completeWithFallback(prompt, {}, attempts);
 
     expect(openai.complete).toHaveBeenCalledTimes(2);
     expect(claude.complete).toHaveBeenCalledTimes(3);
@@ -78,8 +80,18 @@ describe('AIProviderFactory resilience', () => {
     const claude = { complete: jest.fn().mockRejectedValue(new Error('outage')) };
 
     await expect(
-      factory(openai, claude).completeWithFallback(prompt, {}),
+      factory(openai, claude).completeWithFallback(prompt, {}, attempts),
     ).rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it('classifies an unsupported provider as not dispatched without entering attempt capture', async () => {
+    const invalid = factory({ complete: jest.fn() }, { complete: jest.fn() }, {
+      AI_PROVIDER: 'unsupported', AI_FALLBACK_PROVIDERS: '',
+    });
+    expect(() => invalid.create()).toThrow(AiAttemptNotDispatchedError);
+    const recorder = { run: jest.fn() };
+    await expect(invalid.completeWithFallback(prompt, {}, recorder)).rejects.toThrow(ServiceUnavailableException);
+    expect(recorder.run).not.toHaveBeenCalled();
   });
 
   it('caps paid fallback attempts before another provider can be charged', async () => {
@@ -90,7 +102,7 @@ describe('AIProviderFactory resilience', () => {
       factory(openai, claude, {
         AI_FALLBACK_PROVIDERS: 'claude,gemini',
         AI_MAX_PROVIDER_ATTEMPTS: 1,
-      }).completeWithFallback(prompt, {}),
+      }).completeWithFallback(prompt, {}, attempts),
     ).rejects.toThrow(ServiceUnavailableException);
 
     expect(openai.complete).toHaveBeenCalledTimes(1);
@@ -106,7 +118,7 @@ describe('AIProviderFactory resilience', () => {
         AI_MAX_FALLBACK_TOTAL_COST_USD: 0.01,
         AI_OUTPUT_COST_PER_MILLION: 1_000,
         AI_MAX_OUTPUT_TOKENS: 2_048,
-      }).completeWithFallback(prompt, {}),
+      }).completeWithFallback(prompt, {}, attempts),
     ).rejects.toThrow('AI provider execution budget is unavailable');
 
     expect(openai.complete).not.toHaveBeenCalled();
@@ -132,7 +144,7 @@ describe('AIProviderFactory resilience', () => {
 
     await factory(openai, claude, {
       OPENAI_MAX_OUTPUT_TOKENS: 512,
-    }).completeWithFallback(prompt, {});
+    }).completeWithFallback(prompt, {}, attempts);
 
     expect(openai.complete).toHaveBeenCalledWith(
       prompt,
@@ -155,7 +167,7 @@ describe('AIProviderFactory resilience', () => {
       CLAUDE_OUTPUT_COST_PER_MILLION: 5,
     });
 
-    await resilientFactory.completeWithFallback(prompt, {});
+    await resilientFactory.completeWithFallback(prompt, {}, attempts);
 
     expect(claude.complete).toHaveBeenCalledWith(
       prompt,

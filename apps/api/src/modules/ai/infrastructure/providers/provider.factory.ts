@@ -17,6 +17,7 @@ import { GeminiProvider } from './gemini.provider';
 import { RequestContextService } from '../../../../shared/observability/request-context.service';
 import { SystemClock } from '../../../../shared/adapters/system-clock.adapter';
 import { serializeSafeLog } from '../../../../shared/observability/safe-log';
+import { AiAttemptNotDispatchedError, AiAttemptRecordingError, type AiProviderAttemptRunner } from '../../application/ai-provider-attempt';
 
 @Injectable()
 export class AIProviderFactory {
@@ -44,9 +45,7 @@ export class AIProviderFactory {
     const name = providerName ?? this.getProviderName();
     const provider = this.providers.get(name);
     if (!provider) {
-      throw new ServiceUnavailableException(
-        `Unknown AI provider: ${name}. Available: ${[...this.providers.keys()].join(', ')}`,
-      );
+      throw new AiAttemptNotDispatchedError('unsupported_provider');
     }
     return provider;
   }
@@ -54,6 +53,7 @@ export class AIProviderFactory {
   async completeWithFallback(
     prompt: PromptTemplate,
     context: Record<string, unknown>,
+    attempts: AiProviderAttemptRunner,
   ): Promise<{ response: AIResponse; providerName: string }> {
     const attempted: string[] = [];
     const deadline = this.clock.nowMs() + this.getFallbackTimeoutMs();
@@ -88,12 +88,15 @@ export class AIProviderFactory {
           prompt,
           context,
           options,
+          attempts,
         );
         return { response, providerName };
       } catch (error) {
+        if (error instanceof AiAttemptRecordingError) throw error;
         this.logger.warn(
           serializeSafeLog({
-            event: 'ai_provider_failed',
+            event: error instanceof AiAttemptNotDispatchedError
+              ? 'ai_provider_not_dispatched' : 'ai_provider_failed',
             component: 'ai',
             requestId: this.requestContext.getRequestId(),
             provider: providerName,
@@ -128,6 +131,7 @@ export class AIProviderFactory {
     prompt: PromptTemplate,
     context: Record<string, unknown>,
     options: AIExecutionOptions,
+    attempts: AiProviderAttemptRunner,
   ): Promise<AIResponse> {
     const state = this.circuitStates.get(providerName) ?? {
       failures: 0,
@@ -138,24 +142,25 @@ export class AIProviderFactory {
 
     const now = this.clock.nowMs();
     if (state.openUntil > now) {
-      throw new Error('Circuit is open');
+      throw new AiAttemptNotDispatchedError('circuit_open');
     }
     const probing = state.failures >= this.getFailureThreshold();
     if (probing && state.probeInFlight) {
-      throw new Error('Circuit recovery probe is already running');
+      throw new AiAttemptNotDispatchedError('probe_busy');
     }
+    const provider = this.create(providerName);
+    provider.assertReadyForDispatch();
     if (probing) state.probeInFlight = true;
 
     try {
-      const response = await this.create(providerName).complete(
-        prompt,
-        context,
-        options,
+      const response = await attempts.run(providerName, () =>
+        provider.complete(prompt, context, options),
       );
       state.failures = 0;
       state.openUntil = 0;
       return response;
     } catch (error) {
+      if (error instanceof AiAttemptRecordingError) throw error;
       state.failures += 1;
       if (state.failures >= this.getFailureThreshold()) {
         state.openUntil = now + this.getResetTimeoutMs();

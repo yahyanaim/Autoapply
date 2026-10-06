@@ -8,6 +8,8 @@ export interface PromptTemplate {
 export interface AIResponse {
   content: string;
   tokensUsed: { input: number; output: number };
+  /** True only when the provider supplied valid usage for both token counts. */
+  usageReported?: boolean;
   model: string;
 }
 
@@ -21,6 +23,8 @@ export interface AIExecutionOptions {
 }
 
 export interface AIProvider {
+  /** Validate deterministic configuration before durable attempt capture. Never dispatch here. */
+  assertReadyForDispatch(): void;
   complete(
     prompt: PromptTemplate,
     context: Record<string, unknown>,

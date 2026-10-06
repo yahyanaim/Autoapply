@@ -12,6 +12,7 @@ import { BillingModule } from '../billing/billing.module';
 import { MatchScoreCacheService } from './application/match-score-cache.service';
 import { IdempotencyModule } from '../../shared/idempotency/idempotency.module';
 import { AiMetricsReadService } from './application/ai-metrics-read.service';
+import { AiCostLedgerService } from './application/ai-cost-ledger.service';
 
 @Module({
   imports: [BillingModule, IdempotencyModule],
@@ -26,6 +27,7 @@ import { AiMetricsReadService } from './application/ai-metrics-read.service';
     PlanAwareAiRouter,
     MatchScoreCacheService,
     AiMetricsReadService,
+    AiCostLedgerService,
   ],
   controllers: [AIController],
   exports: [
@@ -34,6 +36,7 @@ import { AiMetricsReadService } from './application/ai-metrics-read.service';
     PlanAwareAiRouter,
     MatchScoreCacheService,
     AiMetricsReadService,
+    AiCostLedgerService,
   ],
 })
 export class AIModule {}
