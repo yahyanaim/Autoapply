@@ -16,6 +16,7 @@ import { SystemClock } from '../../../shared/adapters/system-clock.adapter';
 import { BillingFinancialMetricsRecorderService } from './billing-financial-metrics-recorder.service';
 import { isDisputeMovementEvent, selectDisputeMovement } from './billing-dispute-movement';
 import { BillingStripeFeeService, PreparedStripeFee } from './billing-stripe-fee.service';
+import { BillingFinancialCompletenessService } from './billing-financial-completeness.service';
 
 @Injectable()
 export class BillingService {
@@ -26,6 +27,7 @@ export class BillingService {
     private readonly financialMetrics: BillingFinancialMetricsRecorderService,
     private readonly stripeFees: BillingStripeFeeService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
+    @Optional() private readonly completeness?: BillingFinancialCompletenessService,
   ) {}
 
   async createCheckoutSession(userId: string, plan: SubscriptionPlan) {
@@ -68,6 +70,9 @@ export class BillingService {
       select: { id: true },
     });
     if (processed) return { received: true, duplicate: true };
+
+    // Persist a minimal recovery case before any external provider lookup.
+    await this.completeness?.begin(event);
 
     const currentSubscription = await this.loadCurrentStripeSubscription(event);
     let retrievedDispute: Stripe.Dispute | undefined;
@@ -356,6 +361,7 @@ export class BillingService {
     if (feeEvidence) {
       await this.stripeFees.recordInTransaction(transaction, event.id, feeEvidence, observedAt);
     }
+    await this.completeness?.completeInTransaction(transaction, event.id, feeEvidence);
   }
 
   private async loadCurrentStripeSubscription(

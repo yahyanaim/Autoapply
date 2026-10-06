@@ -134,6 +134,31 @@ enum BillingStripeFeeResolution {
   missing_authoritative_fee
 }
 
+enum BillingEvidenceComponent {
+  stripe_fee
+  dispute_movement
+}
+
+enum BillingEvidenceState {
+  pending
+  resolved_effect
+  resolved_zero
+  excluded_non_usd
+  excluded_pre_boundary
+  excluded_duplicate
+}
+
+enum AiCostIntentState {
+  pending
+  costed
+  uncosted
+}
+
+enum AiCostEventKind {
+  estimate
+  resolution
+}
+
 enum QuotaGrantCategory {
   applications
   ai_requests
@@ -1009,6 +1034,99 @@ model BillingDailyStripeFeeMetric {
   @@unique([day, currency])
   @@index([day])
   @@map("billing_daily_stripe_fee_metrics")
+}
+
+model BillingCombinedMetricsBoundary {
+  id                 String    @id
+  metricsStartAt     DateTime
+  captureActivatedAt DateTime?
+  currency           String    @default("usd")
+  createdAt          DateTime  @default(now())
+
+  @@map("billing_combined_metrics_boundaries")
+}
+
+model BillingFinancialEvidenceCase {
+  id                  String                   @id @default(cuid())
+  sourceStripeEventId String
+  component           BillingEvidenceComponent
+  eventType           String
+  providerReference   String?
+  state               BillingEvidenceState     @default(pending)
+  effectiveAt         DateTime?
+  attempts            Int                      @default(0)
+  nextAttemptAt       DateTime                 @default(now())
+  leaseExpiresAt      DateTime?
+  fencingToken        Int                      @default(0)
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  resolutions         BillingEvidenceResolution[]
+
+  @@unique([sourceStripeEventId, component])
+  @@index([state, nextAttemptAt, leaseExpiresAt])
+  @@index([effectiveAt, component])
+  @@map("billing_financial_evidence_cases")
+}
+
+model BillingEvidenceResolution {
+  id          String               @id @default(cuid())
+  caseId      String
+  state       BillingEvidenceState
+  effectiveAt DateTime?
+  createdAt   DateTime             @default(now())
+  case        BillingFinancialEvidenceCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+
+  @@unique([caseId, state])
+  @@index([caseId, createdAt])
+  @@map("billing_evidence_resolutions")
+}
+
+model AiCostMetricsBoundary {
+  id                 String    @id
+  metricsStartAt     DateTime
+  captureActivatedAt DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@map("ai_cost_metrics_boundaries")
+}
+
+model AiCostIntent {
+  id               String            @id
+  startedAt        DateTime          @default(now())
+  state            AiCostIntentState @default(pending)
+  effectiveAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  events           AiCostEvent[]
+
+  @@index([state, startedAt])
+  @@index([effectiveAt])
+  @@map("ai_cost_intents")
+}
+
+model AiCostEvent {
+  id                 String          @id @default(cuid())
+  intentId           String
+  kind               AiCostEventKind
+  estimatedMicroUsd  BigInt
+  effectiveAt        DateTime
+  createdAt          DateTime        @default(now())
+  intent             AiCostIntent    @relation(fields: [intentId], references: [id], onDelete: Restrict)
+
+  @@unique([intentId, kind])
+  @@index([effectiveAt])
+  @@map("ai_cost_events")
+}
+
+model AiDailyCostMetric {
+  id                    String   @id @default(cuid())
+  day                   DateTime @unique
+  estimatedMicroUsd     BigInt   @default(0)
+  costedRequestCount    Int      @default(0)
+  uncostedRequestCount  Int      @default(0)
+  updatedAt             DateTime @updatedAt
+
+  @@map("ai_daily_cost_metrics")
 }
 
 model AIRequest {

@@ -44,6 +44,8 @@ import { accessibleFreshJobWhere } from '../../job/domain/job-visibility';
 import { serializeSafeLog } from '../../../shared/observability/safe-log';
 import { BillingQuotaService } from '../../billing/application/billing-quota.service';
 import { UNLIMITED_PLAN_LIMIT } from '../../billing/domain/plan-limits';
+import { AiCostLedgerService } from './ai-cost-ledger.service';
+import { AiAttemptRecordingError, type AiProviderAttemptRunner } from './ai-provider-attempt';
 
 @Injectable()
 export class AIService {
@@ -56,6 +58,7 @@ export class AIService {
     private readonly promptService: PromptService,
     private readonly matchScoreCache: MatchScoreCacheService,
     private readonly quota: BillingQuotaService,
+    private readonly costLedger: AiCostLedgerService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
     @Optional() private readonly config: ConfigService = new ConfigService(),
   ) {}
@@ -107,6 +110,40 @@ export class AIService {
         });
       }
       const startTime = this.clock.nowMs();
+      const attempts: AiProviderAttemptRunner = {
+        run: async (providerName, invoke) => {
+          let intentId: string;
+          try {
+            intentId = await this.costLedger.beginAttempt();
+          } catch {
+            throw new AiAttemptRecordingError();
+          }
+          // Transport failure or ambiguous acceptance leaves this durable
+          // intent pending. Never turn it into an evidenced zero-cost event.
+          const response = await invoke();
+          // A free user entitlement is not proof that GLM provider spend is zero.
+          const providerPriced = providerName !== 'glm';
+          const inputRate = providerPriced ? this.providerFactory.getInputCostPerMillion(providerName) : 0;
+          const outputRate = providerPriced ? this.providerFactory.getOutputCostPerMillion(providerName) : 0;
+          const pricesKnown = providerPriced && response.usageReported === true &&
+            ((response.tokensUsed.input === 0 || inputRate > 0) &&
+              (response.tokensUsed.output === 0 || outputRate > 0));
+          try {
+            await this.costLedger.finalizeAttempt({
+              intentId,
+              effectiveAt: this.clock.now(),
+              estimatedMicroUsd: pricesKnown
+                ? this.costLedger.estimateMicroUsd(
+                    response.tokensUsed.input, response.tokensUsed.output, inputRate, outputRate,
+                  )
+                : null,
+            });
+          } catch {
+            throw new AiAttemptRecordingError();
+          }
+          return response;
+        },
+      };
       const completion = await this.planAwareRouter.complete(
         executionRoute,
         {
@@ -116,6 +153,7 @@ export class AIService {
           userPrompt,
         },
         params,
+        attempts,
       );
       const response = completion.response;
       const latencyMs = this.clock.nowMs() - startTime;
@@ -133,8 +171,7 @@ export class AIService {
         response.tokensUsed.output,
       );
 
-      await this.prisma.aIRequest.create({
-        data: {
+      const requestData = {
           userId,
           feature,
           provider: completion.providerName,
@@ -144,8 +181,8 @@ export class AIService {
           cost,
           latencyMs,
           inputHash,
-        },
-      });
+      };
+      await this.prisma.aIRequest.create({ data: requestData });
 
       return { content: response.content, model: response.model };
     } catch (error) {

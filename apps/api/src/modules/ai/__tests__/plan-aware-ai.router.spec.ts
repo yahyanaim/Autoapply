@@ -16,10 +16,11 @@ const response = {
   model: "glm-test",
   tokensUsed: { input: 1, output: 1 },
 };
+const attempts = { run: (_providerName: string, invoke: () => Promise<typeof response>) => invoke() };
 
 describe("PlanAwareAiRouter", () => {
   const subscription = { findUnique: jest.fn() };
-  const glm = { complete: jest.fn() };
+  const glm = { assertReadyForDispatch: jest.fn(), complete: jest.fn() };
   const paidFactory = {
     completeWithFallback: jest.fn(),
     getMaxInputBytes: jest.fn().mockReturnValue(100_000),
@@ -62,7 +63,7 @@ describe("PlanAwareAiRouter", () => {
 
     const route = await router.resolve("user-free");
     await expect(
-      router.complete(route, prompt, { resumeText: "synthetic" }),
+      router.complete(route, prompt, { resumeText: "synthetic" }, attempts),
     ).resolves.toEqual(
       expect.objectContaining({ providerName: "glm", boundary: "free" }),
     );
@@ -90,7 +91,7 @@ describe("PlanAwareAiRouter", () => {
     );
 
     const route = await router.resolve("user-free");
-    await expect(router.complete(route, prompt, {})).rejects.toThrow(
+    await expect(router.complete(route, prompt, {}, attempts)).rejects.toThrow(
       ServiceUnavailableException,
     );
     expect(paidFactory.completeWithFallback).not.toHaveBeenCalled();
@@ -105,10 +106,10 @@ describe("PlanAwareAiRouter", () => {
       });
 
       const route = await router.resolve(`user-${plan}`);
-      await router.complete(route, prompt, {});
+      await router.complete(route, prompt, {}, attempts);
 
       expect(route.boundary).toBe("paid");
-      expect(paidFactory.completeWithFallback).toHaveBeenCalledWith(prompt, {});
+      expect(paidFactory.completeWithFallback).toHaveBeenCalledWith(prompt, {}, attempts);
       expect(glm.complete).not.toHaveBeenCalled();
     },
   );

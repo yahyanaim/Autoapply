@@ -170,6 +170,32 @@ class AdminConsoleStripeFeeMetricsDto {
   daily!: AdminConsoleStripeFeeDayDto[];
 }
 
+class AdminConsoleCoverageRangeDto {
+  @ApiProperty({ format: 'date-time' }) from!: string;
+  @ApiProperty({ format: 'date-time' }) toExclusive!: string;
+}
+
+class AdminConsoleCoverageDto {
+  @ApiProperty({ enum: ['full', 'partial', 'unresolved', 'unavailable'] })
+  status!: 'full' | 'partial' | 'unresolved' | 'unavailable';
+  @ApiProperty({ format: 'date-time' }) boundary!: string;
+  @ApiProperty({ format: 'date-time', nullable: true }) activationAt!: string | null;
+  @ApiProperty({ format: 'date-time' }) asOf!: string;
+  @ApiProperty({ type: AdminConsoleCoverageRangeDto }) requestedRange!: AdminConsoleCoverageRangeDto;
+  @ApiProperty({ type: AdminConsoleCoverageRangeDto, nullable: true })
+  actualCoveredRange!: AdminConsoleCoverageRangeDto | null;
+}
+
+class AdminConsoleFinancialEvidenceCoverageDto extends AdminConsoleCoverageDto {
+  @ApiProperty() unresolvedCaseCount!: number;
+  @ApiProperty() evidencedZeroCount!: number;
+}
+
+class AdminConsoleEstimatedAiCostCoverageDto extends AdminConsoleCoverageDto {
+  @ApiProperty() unresolvedRequestCount!: number;
+  @ApiProperty({ enum: ['estimated'] }) costType!: 'estimated';
+}
+
 export class AdminConsoleMetricsResponseDto {
   @ApiProperty({ type: AdminConsoleMetricsPeriodDto })
   period!: AdminConsoleMetricsPeriodDto;
@@ -181,4 +207,8 @@ export class AdminConsoleMetricsResponseDto {
   financials!: AdminConsoleFinancialMetricsDto;
   @ApiProperty({ type: AdminConsoleStripeFeeMetricsDto })
   stripeFees!: AdminConsoleStripeFeeMetricsDto;
+  @ApiProperty({ type: AdminConsoleFinancialEvidenceCoverageDto })
+  financialEvidenceCoverage!: AdminConsoleFinancialEvidenceCoverageDto;
+  @ApiProperty({ type: AdminConsoleEstimatedAiCostCoverageDto })
+  estimatedAiCostCoverage!: AdminConsoleEstimatedAiCostCoverageDto;
 }

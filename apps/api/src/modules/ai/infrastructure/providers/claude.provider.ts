@@ -7,6 +7,7 @@ import {
   AIResponse,
   PromptTemplate,
 } from '../../domain/ai-provider.interface';
+import { AiAttemptNotDispatchedError } from '../../application/ai-provider-attempt';
 
 @Injectable()
 export class ClaudeProvider implements AIProvider {
@@ -18,6 +19,19 @@ export class ClaudeProvider implements AIProvider {
       'ANTHROPIC_MODEL',
       'claude-sonnet-4-20250514',
     );
+  }
+
+  assertReadyForDispatch(): void {
+    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    if (typeof apiKey !== 'string' || !apiKey.trim() ||
+      typeof this.model !== 'string' || !this.model.trim()) {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
+    try {
+      this.client ??= new Anthropic({ apiKey, maxRetries: 0 });
+    } catch {
+      throw new AiAttemptNotDispatchedError('configuration_unavailable');
+    }
   }
 
   async complete(
@@ -57,6 +71,9 @@ export class ClaudeProvider implements AIProvider {
         input: response.usage.input_tokens,
         output: response.usage.output_tokens,
       },
+      usageReported: Number.isSafeInteger(response.usage.input_tokens) &&
+        Number.isSafeInteger(response.usage.output_tokens) &&
+        response.usage.input_tokens >= 0 && response.usage.output_tokens >= 0,
       model: response.model,
     };
   }

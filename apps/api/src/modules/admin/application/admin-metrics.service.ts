@@ -3,6 +3,8 @@ import { AiMetricsReadService } from '../../ai/application/ai-metrics-read.servi
 import { BillingMetricsReadService } from '../../billing/application/billing-metrics-read.service';
 import { BillingFinancialMetricsReadService } from '../../billing/application/billing-financial-metrics-read.service';
 import { BillingStripeFeeMetricsReadService } from '../../billing/application/billing-stripe-fee-metrics-read.service';
+import { BillingFinancialCompletenessService } from '../../billing/application/billing-financial-completeness.service';
+import { AiCostLedgerService } from '../../ai/application/ai-cost-ledger.service';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const MAX_ADMIN_METRICS_RANGE_DAYS = 90;
@@ -15,6 +17,8 @@ export class AdminMetricsService {
     private readonly financials: BillingFinancialMetricsReadService,
     private readonly ai: AiMetricsReadService,
     private readonly stripeFees: BillingStripeFeeMetricsReadService,
+    private readonly completeness: BillingFinancialCompletenessService,
+    private readonly aiCostLedger: AiCostLedgerService,
   ) {}
 
   async getMetrics(input: { from: string; to: string }) {
@@ -45,6 +49,25 @@ export class AdminMetricsService {
     const aiByDay = new Map(
       financialAi?.daily.map((entry) => [entry.day, entry]) ?? [],
     );
+    const [financialCoverage, aiCostCoverage] = await Promise.all([
+      this.completeness.getCoverage({ from, toExclusive }),
+      this.aiCostLedger.getCoverage({ from, toExclusive }),
+    ]);
+
+    const safeCoverage = (value: typeof financialCoverage | typeof aiCostCoverage) => ({
+      status: value.status,
+      boundary: value.boundary.toISOString(),
+      activationAt: value.activationAt?.toISOString() ?? null,
+      asOf: value.asOf.toISOString(),
+      requestedRange: {
+        from: value.requestedRange.from.toISOString(),
+        toExclusive: value.requestedRange.toExclusive.toISOString(),
+      },
+      actualCoveredRange: value.actualCoveredRange ? {
+        from: value.actualCoveredRange.from.toISOString(),
+        toExclusive: value.actualCoveredRange.toExclusive.toISOString(),
+      } : null,
+    });
 
     return {
       period: {
@@ -54,8 +77,14 @@ export class AdminMetricsService {
         maximumDays: MAX_ADMIN_METRICS_RANGE_DAYS,
       },
       billing: {
-        ...billing,
         asOf: billing.asOf.toISOString(),
+        currency: billing.currency,
+        activePaidSubscriptions: billing.activePaidSubscriptions,
+        activePaidSubscriptionsByPlan: {
+          pro: billing.activePaidSubscriptionsByPlan.pro,
+          premium: billing.activePaidSubscriptionsByPlan.premium,
+        },
+        monthlyRecurringRevenueMinor: billing.monthlyRecurringRevenueMinor,
         history: {
           historyAvailableFrom:
             billingHistory.historyAvailableFrom.toISOString(),
@@ -68,11 +97,65 @@ export class AdminMetricsService {
                   billingHistory.actualCoveredRange.toExclusive.toISOString(),
               }
             : null,
-          totals: billingHistory.totals,
-          daily: billingHistory.daily,
+          totals: billingHistory.totals ? {
+            newPaidSubscriptions: billingHistory.totals.newPaidSubscriptions,
+            expansionMrrMinor: billingHistory.totals.expansionMrrMinor,
+            contractionMrrMinor: billingHistory.totals.contractionMrrMinor,
+            churnCount: billingHistory.totals.churnCount,
+            churnedMrrMinor: billingHistory.totals.churnedMrrMinor,
+            reactivationCount: billingHistory.totals.reactivationCount,
+          } : null,
+          daily: billingHistory.daily.map((entry) => ({
+            day: entry.day,
+            coverage: entry.coverage,
+            activePaidSubscriptions: entry.activePaidSubscriptions,
+            activePaidSubscriptionsByPlan: {
+              pro: entry.activePaidSubscriptionsByPlan.pro,
+              premium: entry.activePaidSubscriptionsByPlan.premium,
+            },
+            monthlyRecurringRevenueMinor: entry.monthlyRecurringRevenueMinor,
+            newPaidSubscriptions: entry.newPaidSubscriptions,
+            expansionMrrMinor: entry.expansionMrrMinor,
+            contractionMrrMinor: entry.contractionMrrMinor,
+            churnCount: entry.churnCount,
+            churnedMrrMinor: entry.churnedMrrMinor,
+            reactivationCount: entry.reactivationCount,
+          })),
         },
       },
-      ai,
+      ai: {
+        costType: ai.costType,
+        currency: ai.currency,
+        requestCount: ai.requestCount,
+        costedRequestCount: ai.costedRequestCount,
+        estimatedCostUsd: ai.estimatedCostUsd,
+        daily: ai.daily.map((entry) => ({
+          day: entry.day,
+          requestCount: entry.requestCount,
+          costedRequestCount: entry.costedRequestCount,
+          estimatedCostUsd: entry.estimatedCostUsd,
+        })),
+      },
+      financialEvidenceCoverage: {
+        status: financialCoverage.status,
+        boundary: financialCoverage.boundary.toISOString(),
+        activationAt: financialCoverage.activationAt?.toISOString() ?? null,
+        asOf: financialCoverage.asOf.toISOString(),
+        requestedRange: safeCoverage(financialCoverage).requestedRange,
+        actualCoveredRange: safeCoverage(financialCoverage).actualCoveredRange,
+        unresolvedCaseCount: financialCoverage.unresolvedCaseCount,
+        evidencedZeroCount: financialCoverage.evidencedZeroCount,
+      },
+      estimatedAiCostCoverage: {
+        status: aiCostCoverage.status,
+        boundary: aiCostCoverage.boundary.toISOString(),
+        activationAt: aiCostCoverage.activationAt?.toISOString() ?? null,
+        asOf: aiCostCoverage.asOf.toISOString(),
+        requestedRange: safeCoverage(aiCostCoverage).requestedRange,
+        actualCoveredRange: safeCoverage(aiCostCoverage).actualCoveredRange,
+        unresolvedRequestCount: aiCostCoverage.unresolvedRequestCount,
+        costType: 'estimated' as const,
+      },
       financials: {
         metricsStartAt: financials.metricsStartAt.toISOString(),
         requestedRangeStartsBeforeMetrics:
@@ -88,7 +171,8 @@ export class AdminMetricsService {
         totals:
           financials.totals && financialAi
             ? {
-                ...financials.totals,
+                grossRevenueMinor: financials.totals.grossRevenueMinor,
+                successfulPaymentCount: financials.totals.successfulPaymentCount,
                 estimatedAiCostUsd: financialAi.estimatedCostUsd,
                 costedRequestCount: financialAi.costedRequestCount,
               }
@@ -96,7 +180,10 @@ export class AdminMetricsService {
         daily: financials.daily.map((entry) => {
           const aiDay = aiByDay.get(entry.day);
           return {
-            ...entry,
+            day: entry.day,
+            coverage: entry.coverage,
+            grossRevenueMinor: entry.grossRevenueMinor,
+            successfulPaymentCount: entry.successfulPaymentCount,
             estimatedAiCostUsd: aiDay?.estimatedCostUsd ?? 0,
             costedRequestCount: aiDay?.costedRequestCount ?? 0,
           };

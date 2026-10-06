@@ -42,6 +42,7 @@ describe("GlmProvider", () => {
       content: '{"skills":[]}',
       model: "glm-test-model",
       tokensUsed: { input: 12, output: 4 },
+      usageReported: true,
     });
     expect(fetch).toHaveBeenCalledWith(
       "https://glm.example.test/v1/chat/completions",

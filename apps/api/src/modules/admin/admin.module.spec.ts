@@ -25,6 +25,8 @@ import { AiMetricsReadService } from '../ai/application/ai-metrics-read.service'
 import { AIModule } from '../ai/ai.module';
 import { BillingFinancialMetricsReadService } from '../billing/application/billing-financial-metrics-read.service';
 import { BillingStripeFeeMetricsReadService } from '../billing/application/billing-stripe-fee-metrics-read.service';
+import { BillingFinancialCompletenessService } from '../billing/application/billing-financial-completeness.service';
+import { AiCostLedgerService } from '../ai/application/ai-cost-ledger.service';
 
 describe('AdminModule', () => {
   it('registers and compiles the mutation foundation without circular dependencies', async () => {
@@ -75,6 +77,8 @@ describe('AdminModule', () => {
         { provide: BillingFinancialMetricsReadService, useValue: {} },
         { provide: BillingStripeFeeMetricsReadService, useValue: {} },
         { provide: AiMetricsReadService, useValue: {} },
+        { provide: BillingFinancialCompletenessService, useValue: {} },
+        { provide: AiCostLedgerService, useValue: {} },
       ],
     })
       .compile();

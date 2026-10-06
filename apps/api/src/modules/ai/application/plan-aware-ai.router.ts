@@ -13,6 +13,8 @@ import {
 } from "../domain/ai-provider.interface";
 import { AIProviderFactory } from "../infrastructure/providers/provider.factory";
 import { GlmProvider } from "../infrastructure/providers/glm.provider";
+import type { AiProviderAttemptRunner } from './ai-provider-attempt';
+import { AiAttemptNotDispatchedError } from './ai-provider-attempt';
 
 export type AiExecutionBoundary = "free" | "paid";
 
@@ -92,19 +94,32 @@ export class PlanAwareAiRouter {
     route: ResolvedAiExecution,
     prompt: PromptTemplate,
     context: Record<string, unknown>,
+    attempts: AiProviderAttemptRunner,
   ): Promise<RoutedAiCompletion> {
     if (route.boundary === "free") {
       const provider = this.freeProvider();
-      const response = await provider.complete(prompt, context, {
+      try {
+        provider.assertReadyForDispatch();
+      } catch (error) {
+        if (!(error instanceof AiAttemptNotDispatchedError)) throw error;
+        throw new ServiceUnavailableException({
+          statusCode: 503,
+          code: 'FREE_AI_TEMPORARILY_UNAVAILABLE',
+          retryable: false,
+          message: 'The Free AI service is temporarily unavailable. Please retry.',
+        });
+      }
+      const response = await attempts.run('glm', () => provider.complete(prompt, context, {
         timeoutMs: this.config.get<number>("GLM_FREE_PLAN_TIMEOUT_MS", 30_000),
         maxOutputTokens: route.maxOutputTokens,
-      });
+      }));
       return { response, providerName: "glm", boundary: "free" };
     }
 
     const result = await this.paidProviderFactory.completeWithFallback(
       prompt,
       context,
+      attempts,
     );
     return { ...result, boundary: "paid" };
   }
