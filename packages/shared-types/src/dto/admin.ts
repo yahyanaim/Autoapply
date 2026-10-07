@@ -450,6 +450,31 @@ export interface AdminConsoleStripeFeeMetricsTotals {
   feeEffectCount: number;
 }
 
+export interface AdminConsoleRecordedFinancialAmounts {
+  /** All signed components are USD cents; refunds and withdrawals are already negative. */
+  grossRevenueMinor: number;
+  refundAdjustmentMinor: number;
+  disputeWithdrawalMinor: number;
+  disputeReinstatementMinor: number;
+  recordedStripeFeeMinor: number;
+  recordedNetRevenueMinor: number;
+  /** Integer micro-USD, never settled provider cost or net profit. */
+  estimatedAiCostMicroUsd: number;
+  estimatedContributionMarginMicroUsd: number;
+}
+
+export interface AdminConsoleRecordedFinancialDay extends AdminConsoleRecordedFinancialAmounts {
+  day: string;
+  coverage: 'complete' | 'partial';
+}
+
+export interface AdminConsoleRecordedFinancials extends Omit<AdminConsoleCoverage, 'boundary' | 'activationAt'> {
+  currency: 'usd';
+  costType: 'estimated';
+  totals: AdminConsoleRecordedFinancialAmounts | null;
+  daily: AdminConsoleRecordedFinancialDay[];
+}
+
 export interface AdminConsoleMetricsResponse {
   period: {
     from: string;
@@ -517,6 +542,8 @@ export interface AdminConsoleMetricsResponse {
     unresolvedRequestCount: number;
     costType: 'estimated';
   };
+  /** Known ingested evidence only; not provider-wide or bank reconciliation. */
+  recordedFinancials: AdminConsoleRecordedFinancials;
 }
 
 export interface AdminConsoleCoverage {

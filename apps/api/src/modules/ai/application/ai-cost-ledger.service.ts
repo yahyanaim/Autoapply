@@ -178,4 +178,61 @@ export class AiCostLedgerService {
       costType: 'estimated' as const,
     };
   }
+
+  async getRecordedBoundary() {
+    const boundary = await this.prisma.aiCostMetricsBoundary.findUniqueOrThrow({
+      where: { id: AI_COST_BOUNDARY_ID },
+      select: { metricsStartAt: true, captureActivatedAt: true },
+    });
+    return {
+      from: boundary.captureActivatedAt && boundary.captureActivatedAt > boundary.metricsStartAt
+        ? boundary.captureActivatedAt : boundary.metricsStartAt,
+      active: boundary.captureActivatedAt !== null,
+    };
+  }
+
+  /** Exact micro-USD estimates for an already-clipped common interval. */
+  async getRecordedWindow(input: { from: Date; toExclusive: Date }) {
+    const duration = input.toExclusive.getTime() - input.from.getTime();
+    if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_DAYS * DAY_MS) {
+      throw new Error('Invalid recorded AI cost window');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const unresolvedRequestCount = await tx.aiCostIntent.count({
+        where: { startedAt: { lt: input.toExclusive }, OR: [
+          { state: AiCostIntentState.pending },
+          { state: AiCostIntentState.uncosted,
+            effectiveAt: { gte: input.from, lt: input.toExclusive } },
+        ] },
+      });
+      if (unresolvedRequestCount > 0) {
+        return { unresolvedRequestCount, daily: [] as Array<{ day: string; estimatedMicroUsd: bigint }> };
+      }
+      const firstDay = utcDay(input.from);
+      const lastDay = utcDay(new Date(input.toExclusive.getTime() - 1));
+      const fullFrom = input.from.getTime() === firstDay.getTime()
+        ? firstDay : new Date(firstDay.getTime() + DAY_MS);
+      const fullTo = input.toExclusive.getTime() % DAY_MS === 0
+        ? input.toExclusive : lastDay;
+      const rows = fullFrom < fullTo ? await tx.aiDailyCostMetric.findMany({
+        where: { day: { gte: fullFrom, lt: fullTo } },
+        select: { day: true, estimatedMicroUsd: true }, take: MAX_DAYS,
+      }) : [];
+      const byDay = new Map(rows.map((row) => [row.day.getTime(), row.estimatedMicroUsd]));
+      const daily: Array<{ day: string; estimatedMicroUsd: bigint }> = [];
+      for (let at = firstDay.getTime(); at <= lastDay.getTime(); at += DAY_MS) {
+        const from = new Date(Math.max(at, input.from.getTime()));
+        const toExclusive = new Date(Math.min(at + DAY_MS, input.toExclusive.getTime()));
+        const partial = from.getTime() !== at || toExclusive.getTime() !== at + DAY_MS;
+        const estimatedMicroUsd = partial
+          ? (await tx.aiCostEvent.aggregate({
+            where: { effectiveAt: { gte: from, lt: toExclusive } },
+            _sum: { estimatedMicroUsd: true },
+          }))._sum.estimatedMicroUsd ?? 0n
+          : byDay.get(at) ?? 0n;
+        daily.push({ day: new Date(at).toISOString().slice(0, 10), estimatedMicroUsd });
+      }
+      return { unresolvedRequestCount, daily };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
 }

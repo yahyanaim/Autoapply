@@ -136,6 +136,61 @@ const safeResponse = {
     totals: { feeMinor: -25, feeEffectCount: 2 },
     daily: [{ day: '2026-09-24', coverage: 'partial' as const, feeMinor: -25, feeEffectCount: 2 }],
   },
+  recordedFinancials: {
+    status: 'partial' as const,
+    currency: 'usd' as const,
+    costType: 'estimated' as const,
+    asOf: '2026-09-25T12:00:00.000Z',
+    requestedRange: { from: '2026-09-01T00:00:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
+    actualCoveredRange: { from: '2026-09-24T12:35:00.000Z', toExclusive: '2026-09-25T12:00:00.000Z' },
+    totals: { grossRevenueMinor: 6_800, refundAdjustmentMinor: -1_000,
+      disputeWithdrawalMinor: -500, disputeReinstatementMinor: 200,
+      recordedStripeFeeMinor: -25, recordedNetRevenueMinor: 5_525,
+      estimatedAiCostMicroUsd: 500_000, estimatedContributionMarginMicroUsd: 54_750_000 },
+    daily: [{ day: '2026-09-24', coverage: 'partial' as const,
+      grossRevenueMinor: 6_800, refundAdjustmentMinor: -1_000,
+      disputeWithdrawalMinor: -500, disputeReinstatementMinor: 200,
+      recordedStripeFeeMinor: -25, recordedNetRevenueMinor: 5_525,
+      estimatedAiCostMicroUsd: 500_000, estimatedContributionMarginMicroUsd: 54_750_000 }],
+  },
+};
+
+const zeroMetricsResponse = {
+  ...safeResponse,
+  period: { ...safeResponse.period, from: '2026-09-25', to: '2026-09-25' },
+  billing: {
+    ...safeResponse.billing,
+    activePaidSubscriptions: 0,
+    activePaidSubscriptionsByPlan: { pro: 0, premium: 0 },
+    monthlyRecurringRevenueMinor: 0,
+    history: { ...safeResponse.billing.history, totals: {
+      newPaidSubscriptions: 0, expansionMrrMinor: 0,
+      contractionMrrMinor: 0, churnCount: 0, churnedMrrMinor: 0,
+      reactivationCount: 0,
+    }, daily: [] },
+  },
+  ai: { ...safeResponse.ai, requestCount: 0, costedRequestCount: 0,
+    estimatedCostUsd: 0, daily: [] },
+  financials: { ...safeResponse.financials, totals: {
+    grossRevenueMinor: 0, successfulPaymentCount: 0,
+    estimatedAiCostUsd: 0, costedRequestCount: 0,
+  }, daily: [] },
+  stripeFees: { ...safeResponse.stripeFees,
+    totals: { feeMinor: 0, feeEffectCount: 0 }, daily: [] },
+  recordedFinancials: {
+    ...safeResponse.recordedFinancials,
+    status: 'full' as const,
+    asOf: '2026-09-27T00:00:00.000Z',
+    requestedRange: { from: '2026-09-25T00:00:00.000Z',
+      toExclusive: '2026-09-26T00:00:00.000Z' },
+    actualCoveredRange: { from: '2026-09-25T00:00:00.000Z',
+      toExclusive: '2026-09-26T00:00:00.000Z' },
+    totals: { grossRevenueMinor: 0, refundAdjustmentMinor: 0,
+      disputeWithdrawalMinor: 0, disputeReinstatementMinor: 0,
+      recordedStripeFeeMinor: 0, recordedNetRevenueMinor: 0,
+      estimatedAiCostMicroUsd: 0, estimatedContributionMarginMicroUsd: 0 },
+    daily: [],
+  },
 };
 
 function view(node: ReactNode) {
@@ -184,6 +239,11 @@ describe('AdminMetricsPage', () => {
     expect(rendered.container.textContent).toContain('Gross revenue');
     expect(rendered.container.textContent).toContain('Successful payments');
     expect(rendered.container.textContent).toContain('Recorded Stripe fees');
+    expect(rendered.container.textContent).toContain('Recorded Net Revenue');
+    expect(rendered.container.textContent).toContain('Estimated Contribution Margin');
+    expect(rendered.container.textContent).toContain('$55.25');
+    expect(rendered.container.textContent).toContain('$54.75');
+    expect(rendered.required('[aria-label="Daily recorded net revenue and estimated contribution margin"]').textContent).toContain('partial');
     expect(rendered.container.textContent).toContain('Recorded financial evidence: unresolved');
     expect(rendered.container.textContent).toContain('Estimated AI cost coverage: partial');
     expect(rendered.container.textContent).toContain('Not payout or bank reconciliation');
@@ -206,7 +266,7 @@ describe('AdminMetricsPage', () => {
     ).toBeTruthy();
     expect(rendered.required('[aria-label="Daily AI metrics chart"]')).toBeTruthy();
     expect(rendered.container.textContent).not.toMatch(
-      /txn_[a-z0-9]+|in_[a-z0-9]+|cus_[a-z0-9]+|customer|email|userId|provider|model|prompt|resume|cv|token|credential|secret|payment instrument|margin/i,
+      /txn_[a-z0-9]+|in_[a-z0-9]+|cus_[a-z0-9]+|customer|email|userId|provider|model|prompt|resume|cv|token|credential|secret|payment instrument/i,
     );
     expect(metrics).toHaveBeenCalledTimes(1);
     expect(
@@ -214,6 +274,89 @@ describe('AdminMetricsPage', () => {
         (await import('@/lib/api/admin-api-client')).adminApiClient.adminConsole,
       ),
     ).toEqual(['metrics']);
+    rendered.cleanup();
+  });
+
+  it.each([
+    ['unavailable', 'Combined financial metrics are unavailable before all future-only capture boundaries activate.'],
+    ['unresolved', 'Combined monetary totals are withheld, not zero.'],
+  ] as const)('withholds monetary cards when combined coverage is %s', async (status, message) => {
+    metrics.mockResolvedValueOnce({ ...zeroMetricsResponse, recordedFinancials: {
+      ...zeroMetricsResponse.recordedFinancials, status,
+      actualCoveredRange: status === 'unavailable' ? null : zeroMetricsResponse.recordedFinancials.actualCoveredRange,
+      totals: null, daily: [],
+    } });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain(message);
+    expect(rendered.container.textContent).not.toContain('No metrics recorded');
+    expect(rendered.container.textContent).not.toContain('evt_private');
+    rendered.cleanup();
+  });
+
+  it('labels a fully covered combined range without implying reconciliation', async () => {
+    metrics.mockResolvedValueOnce({ ...safeResponse, recordedFinancials: {
+      ...safeResponse.recordedFinancials, status: 'full' as const,
+    } });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain('full coverage');
+    expect(rendered.container.textContent).toContain('Not reconciled revenue');
+    expect(rendered.container.textContent).toContain('Estimated Contribution Margin');
+    rendered.cleanup();
+  });
+
+  it('does not show an empty state when only a recorded adjustment remains', async () => {
+    metrics.mockResolvedValueOnce({ ...zeroMetricsResponse,
+      recordedFinancials: { ...zeroMetricsResponse.recordedFinancials,
+        totals: { ...zeroMetricsResponse.recordedFinancials.totals,
+          refundAdjustmentMinor: -200, recordedNetRevenueMinor: -200,
+          estimatedContributionMarginMicroUsd: -2_000_000 } },
+    });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain('Recorded Net Revenue');
+    expect(rendered.container.textContent).not.toContain('No metrics recorded');
+    rendered.cleanup();
+  });
+
+  it('does not show an empty state when signed components offset to zero', async () => {
+    metrics.mockResolvedValueOnce({ ...zeroMetricsResponse,
+      recordedFinancials: { ...zeroMetricsResponse.recordedFinancials,
+        totals: { ...zeroMetricsResponse.recordedFinancials.totals,
+          disputeWithdrawalMinor: -100, disputeReinstatementMinor: 100 } },
+    });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain('Recorded Net Revenue');
+    expect(rendered.container.textContent).not.toContain('No metrics recorded');
+    rendered.cleanup();
+  });
+
+  it('shows an empty state for a fully covered range with every metric zero', async () => {
+    metrics.mockResolvedValueOnce(zeroMetricsResponse);
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain('full coverage');
+    expect(rendered.container.textContent).toContain('No metrics recorded');
+    rendered.cleanup();
+  });
+
+  it('does not show an empty state for an all-zero but only partially covered range', async () => {
+    metrics.mockResolvedValueOnce({ ...zeroMetricsResponse,
+      recordedFinancials: { ...zeroMetricsResponse.recordedFinancials,
+        status: 'partial' as const },
+    });
+    const rendered = view(<AdminMetricsPage />);
+    await settle();
+    await settle();
+    expect(rendered.container.textContent).toContain('partial coverage');
+    expect(rendered.container.textContent).not.toContain('No metrics recorded');
     rendered.cleanup();
   });
 
@@ -312,60 +455,11 @@ describe('AdminMetricsPage', () => {
     rendered.cleanup();
   });
 
-  it('renders loading, zero, error retry, and feature-flag-disabled states', async () => {
+  it('renders loading, error retry, and feature-flag-disabled states', async () => {
     metrics.mockReturnValue(new Promise(() => undefined));
     const loading = view(<AdminMetricsPage />);
     expect(loading.required('[aria-label="Loading metrics"]')).toBeTruthy();
     loading.cleanup();
-
-    metrics.mockResolvedValueOnce({
-      ...safeResponse,
-      billing: {
-        ...safeResponse.billing,
-        activePaidSubscriptions: 0,
-        activePaidSubscriptionsByPlan: { pro: 0, premium: 0 },
-        monthlyRecurringRevenueMinor: 0,
-        history: {
-          ...safeResponse.billing.history,
-          totals: {
-            newPaidSubscriptions: 0,
-            expansionMrrMinor: 0,
-            contractionMrrMinor: 0,
-            churnCount: 0,
-            churnedMrrMinor: 0,
-            reactivationCount: 0,
-          },
-          daily: [],
-        },
-      },
-      ai: {
-        ...safeResponse.ai,
-        requestCount: 0,
-        costedRequestCount: 0,
-        estimatedCostUsd: 0,
-        daily: [],
-      },
-      financials: {
-        ...safeResponse.financials,
-        totals: {
-          grossRevenueMinor: 0,
-          successfulPaymentCount: 0,
-          estimatedAiCostUsd: 0,
-          costedRequestCount: 0,
-        },
-        daily: [],
-      },
-      stripeFees: {
-        ...safeResponse.stripeFees,
-        totals: { feeMinor: 0, feeEffectCount: 0 },
-        daily: [],
-      },
-    });
-    const zero = view(<AdminMetricsPage />);
-    await settle();
-    await settle();
-    expect(zero.container.textContent).toContain('No metrics recorded');
-    zero.cleanup();
 
     metrics
       .mockRejectedValueOnce(new Error('safe failure'))

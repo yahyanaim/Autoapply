@@ -77,23 +77,38 @@ export function AdminMetricsPage() {
   const history = data.billing.history;
   const financials = data.financials;
   const stripeFees = data.stripeFees;
+  const recorded = data.recordedFinancials;
   const zero =
+    recorded.status === 'full' &&
+    recorded.totals !== null &&
     data.billing.activePaidSubscriptions === 0 &&
     data.billing.monthlyRecurringRevenueMinor === 0 &&
     data.ai.requestCount === 0 &&
-    (!history.totals ||
-      (history.totals.newPaidSubscriptions === 0 &&
-        history.totals.expansionMrrMinor === 0 &&
-        history.totals.contractionMrrMinor === 0 &&
-        history.totals.churnCount === 0 &&
-        history.totals.churnedMrrMinor === 0 &&
-        history.totals.reactivationCount === 0)) &&
-    (!financials.totals ||
-      (financials.totals.grossRevenueMinor === 0 &&
-        financials.totals.successfulPaymentCount === 0 &&
-        financials.totals.costedRequestCount === 0)) &&
-    (!stripeFees.totals ||
-      (stripeFees.totals.feeMinor === 0 && stripeFees.totals.feeEffectCount === 0));
+    data.ai.costedRequestCount === 0 &&
+    data.ai.estimatedCostUsd === 0 &&
+    history.totals !== null &&
+    history.totals.newPaidSubscriptions === 0 &&
+    history.totals.expansionMrrMinor === 0 &&
+    history.totals.contractionMrrMinor === 0 &&
+    history.totals.churnCount === 0 &&
+    history.totals.churnedMrrMinor === 0 &&
+    history.totals.reactivationCount === 0 &&
+    financials.totals !== null &&
+    financials.totals.grossRevenueMinor === 0 &&
+    financials.totals.successfulPaymentCount === 0 &&
+    financials.totals.estimatedAiCostUsd === 0 &&
+    financials.totals.costedRequestCount === 0 &&
+    stripeFees.totals !== null &&
+    stripeFees.totals.feeMinor === 0 &&
+    stripeFees.totals.feeEffectCount === 0 &&
+    recorded.totals.grossRevenueMinor === 0 &&
+    recorded.totals.refundAdjustmentMinor === 0 &&
+    recorded.totals.disputeWithdrawalMinor === 0 &&
+    recorded.totals.disputeReinstatementMinor === 0 &&
+    recorded.totals.recordedStripeFeeMinor === 0 &&
+    recorded.totals.recordedNetRevenueMinor === 0 &&
+    recorded.totals.estimatedAiCostMicroUsd === 0 &&
+    recorded.totals.estimatedContributionMarginMicroUsd === 0;
   const maxDailyRequests = Math.max(
     1,
     ...data.ai.daily.map((entry) => entry.requestCount),
@@ -187,6 +202,75 @@ export function AdminMetricsPage() {
           detail="Operational estimate · not settled cost"
         />
       </div>
+
+      <article className="border border-stone-200 bg-white p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <h2 className="font-semibold">Recorded Net Revenue and Estimated Contribution Margin</h2>
+            <p className="mt-1 text-xs text-gray-500">
+              Known ingested events as of {new Date(recorded.asOf).toISOString()} · USD · UTC.
+              Not reconciled revenue, settled cost, or Net Profit.
+            </p>
+          </div>
+          <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium capitalize text-gray-600">
+            {recorded.status} coverage
+          </span>
+        </div>
+        {recorded.actualCoveredRange ? (
+          <p className="mt-3 text-xs text-gray-600">
+            Covered interval: {new Date(recorded.actualCoveredRange.from).toISOString()} to{' '}
+            {new Date(recorded.actualCoveredRange.toExclusive).toISOString()} (exclusive)
+          </p>
+        ) : null}
+        {recorded.status === 'unavailable' ? (
+          <p role="status" className="mt-4 border border-stone-200 bg-stone-50 p-4 text-sm">
+            Combined financial metrics are unavailable before all future-only capture boundaries activate.
+          </p>
+        ) : recorded.status === 'unresolved' ? (
+          <p role="status" className="mt-4 border border-amber-200 bg-amber-50 p-4 text-sm">
+            Known financial or AI cost evidence is unresolved. Combined monetary totals are withheld, not zero.
+          </p>
+        ) : recorded.totals ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Recorded Net Revenue" value={usd.format(recorded.totals.recordedNetRevenueMinor / 100)} detail="Signed payments, refunds, dispute movements, and recorded Stripe fees" />
+              <MetricCard label="Recorded estimated AI cost" value={estimatedUsd.format(recorded.totals.estimatedAiCostMicroUsd / 1_000_000)} detail="Durable micro-USD estimates · not settled cost" />
+              <MetricCard label="Estimated Contribution Margin" value={estimatedUsd.format(recorded.totals.estimatedContributionMarginMicroUsd / 1_000_000)} detail="Recorded Net Revenue minus estimated AI cost · not Net Profit" />
+              <MetricCard label="Recorded components · gross" value={usd.format(recorded.totals.grossRevenueMinor / 100)} detail={`Refunds ${usd.format(recorded.totals.refundAdjustmentMinor / 100)} · dispute withdrawals ${usd.format(recorded.totals.disputeWithdrawalMinor / 100)} · reinstatements ${usd.format(recorded.totals.disputeReinstatementMinor / 100)} · fees ${usd.format(recorded.totals.recordedStripeFeeMinor / 100)}`} />
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table aria-label="Daily recorded net revenue and estimated contribution margin" className="min-w-full border-collapse text-left text-xs">
+                <thead><tr className="border-b border-stone-200 text-gray-500">
+                  <th className="px-2 py-2 font-medium">UTC day</th>
+                  <th className="px-2 py-2 text-right font-medium">Coverage</th>
+                  <th className="px-2 py-2 text-right font-medium">Gross</th>
+                  <th className="px-2 py-2 text-right font-medium">Refunds</th>
+                  <th className="px-2 py-2 text-right font-medium">Dispute out</th>
+                  <th className="px-2 py-2 text-right font-medium">Dispute back</th>
+                  <th className="px-2 py-2 text-right font-medium">Fees</th>
+                  <th className="px-2 py-2 text-right font-medium">Net Revenue</th>
+                  <th className="px-2 py-2 text-right font-medium">Estimated AI cost</th>
+                  <th className="px-2 py-2 text-right font-medium">Estimated margin</th>
+                </tr></thead>
+                <tbody>{recorded.daily.map((entry) => (
+                  <tr key={entry.day} className="border-b border-stone-100">
+                    <td className="px-2 py-2 font-medium">{entry.day}</td>
+                    <td className="px-2 py-2 text-right capitalize">{entry.coverage}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.grossRevenueMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.refundAdjustmentMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.disputeWithdrawalMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.disputeReinstatementMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.recordedStripeFeeMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{usd.format(entry.recordedNetRevenueMinor / 100)}</td>
+                    <td className="px-2 py-2 text-right">{estimatedUsd.format(entry.estimatedAiCostMicroUsd / 1_000_000)}</td>
+                    <td className="px-2 py-2 text-right">{estimatedUsd.format(entry.estimatedContributionMarginMicroUsd / 1_000_000)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </>
+        ) : null}
+      </article>
 
       <article className="border border-stone-200 bg-white p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">

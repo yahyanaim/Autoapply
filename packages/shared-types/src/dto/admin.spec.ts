@@ -210,6 +210,9 @@ const metricsRequest: AdminConsoleMetricsRequest = {
 };
 declare const metrics: AdminConsoleMetricsResponse;
 metrics.stripeFees.totals?.feeMinor satisfies number | undefined;
+metrics.recordedFinancials.totals?.recordedNetRevenueMinor satisfies number | undefined;
+metrics.recordedFinancials.totals?.estimatedContributionMarginMicroUsd satisfies number | undefined;
+metrics.recordedFinancials.status satisfies 'full' | 'partial' | 'unresolved' | 'unavailable';
 metrics.stripeFees.daily[0]?.coverage satisfies 'complete' | 'partial' | undefined;
 // @ts-expect-error Aggregate metrics never contain payment or provider identifiers.
 metrics.stripeFees.stripeEventId;

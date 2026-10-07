@@ -5,6 +5,7 @@ import { BillingFinancialMetricsReadService } from '../../billing/application/bi
 import { BillingStripeFeeMetricsReadService } from '../../billing/application/billing-stripe-fee-metrics-read.service';
 import { BillingFinancialCompletenessService } from '../../billing/application/billing-financial-completeness.service';
 import { AiCostLedgerService } from '../../ai/application/ai-cost-ledger.service';
+import { BillingRecordedNetRevenueService } from '../../billing/application/billing-recorded-net-revenue.service';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const MAX_ADMIN_METRICS_RANGE_DAYS = 90;
@@ -19,6 +20,7 @@ export class AdminMetricsService {
     private readonly stripeFees: BillingStripeFeeMetricsReadService,
     private readonly completeness: BillingFinancialCompletenessService,
     private readonly aiCostLedger: AiCostLedgerService,
+    private readonly recordedRevenue: BillingRecordedNetRevenueService,
   ) {}
 
   async getMetrics(input: { from: string; to: string }) {
@@ -53,6 +55,7 @@ export class AdminMetricsService {
       this.completeness.getCoverage({ from, toExclusive }),
       this.aiCostLedger.getCoverage({ from, toExclusive }),
     ]);
+    const recordedFinancials = await this.getRecordedFinancials(from, toExclusive);
 
     const safeCoverage = (value: typeof financialCoverage | typeof aiCostCoverage) => ({
       status: value.status,
@@ -156,6 +159,7 @@ export class AdminMetricsService {
         unresolvedRequestCount: aiCostCoverage.unresolvedRequestCount,
         costType: 'estimated' as const,
       },
+      recordedFinancials,
       financials: {
         metricsStartAt: financials.metricsStartAt.toISOString(),
         requestedRangeStartsBeforeMetrics:
@@ -213,6 +217,80 @@ export class AdminMetricsService {
         })),
       },
     };
+  }
+
+  private async getRecordedFinancials(from: Date, toExclusive: Date) {
+    const asOf = new Date();
+    const [billingBoundary, aiBoundary] = await Promise.all([
+      this.recordedRevenue.getBoundary(), this.aiCostLedger.getRecordedBoundary(),
+    ]);
+    const start = new Date(Math.max(from.getTime(), billingBoundary.from.getTime(),
+      aiBoundary.from.getTime()));
+    const end = new Date(Math.min(toExclusive.getTime(), asOf.getTime()));
+    const actualCoveredRange = billingBoundary.active && aiBoundary.active && start < end
+      ? { from: start, toExclusive: end } : null;
+    const base = {
+      currency: 'usd' as const,
+      costType: 'estimated' as const,
+      asOf: asOf.toISOString(),
+      requestedRange: { from: from.toISOString(), toExclusive: toExclusive.toISOString() },
+      actualCoveredRange: actualCoveredRange ? {
+        from: actualCoveredRange.from.toISOString(),
+        toExclusive: actualCoveredRange.toExclusive.toISOString(),
+      } : null,
+    };
+    if (!actualCoveredRange) {
+      return { ...base, status: 'unavailable' as const, totals: null, daily: [] };
+    }
+    const [billing, ai] = await Promise.all([
+      this.recordedRevenue.getWindow(actualCoveredRange),
+      this.aiCostLedger.getRecordedWindow(actualCoveredRange),
+    ]);
+    if (billing.unresolvedCaseCount > 0 || ai.unresolvedRequestCount > 0) {
+      return { ...base, status: 'unresolved' as const, totals: null, daily: [] };
+    }
+    if (billing.daily.length !== ai.daily.length ||
+      billing.daily.some((day, index) => day.day !== ai.daily[index]?.day)) {
+      throw new Error('Recorded financial day alignment failed');
+    }
+    const safe = (value: bigint): number => {
+      const result = Number(value);
+      if (!Number.isSafeInteger(result)) throw new Error('Recorded financial amount exceeds safe response range');
+      return result;
+    };
+    const daily = billing.daily.map((day, index) => {
+      const estimatedAiCostMicroUsd = ai.daily[index].estimatedMicroUsd;
+      // One cent is exactly 10,000 micro-USD. Both ledgers are integers;
+      // composition introduces no floating-point sum or additional rounding.
+      const estimatedContributionMarginMicroUsd = day.recordedNetRevenueMinor * 10_000n -
+        estimatedAiCostMicroUsd;
+      return {
+        day: day.day,
+        coverage: day.coverage,
+        grossRevenueMinor: safe(day.grossRevenueMinor),
+        refundAdjustmentMinor: safe(day.refundAdjustmentMinor),
+        disputeWithdrawalMinor: safe(day.disputeWithdrawalMinor),
+        disputeReinstatementMinor: safe(day.disputeReinstatementMinor),
+        recordedStripeFeeMinor: safe(day.stripeFeeMinor),
+        recordedNetRevenueMinor: safe(day.recordedNetRevenueMinor),
+        estimatedAiCostMicroUsd: safe(estimatedAiCostMicroUsd),
+        estimatedContributionMarginMicroUsd: safe(estimatedContributionMarginMicroUsd),
+      };
+    });
+    const totals = {
+      grossRevenueMinor: safe(billing.daily.reduce((sum, day) => sum + day.grossRevenueMinor, 0n)),
+      refundAdjustmentMinor: safe(billing.daily.reduce((sum, day) => sum + day.refundAdjustmentMinor, 0n)),
+      disputeWithdrawalMinor: safe(billing.daily.reduce((sum, day) => sum + day.disputeWithdrawalMinor, 0n)),
+      disputeReinstatementMinor: safe(billing.daily.reduce((sum, day) => sum + day.disputeReinstatementMinor, 0n)),
+      recordedStripeFeeMinor: safe(billing.daily.reduce((sum, day) => sum + day.stripeFeeMinor, 0n)),
+      recordedNetRevenueMinor: safe(billing.daily.reduce((sum, day) => sum + day.recordedNetRevenueMinor, 0n)),
+      estimatedAiCostMicroUsd: safe(ai.daily.reduce((sum, day) => sum + day.estimatedMicroUsd, 0n)),
+      estimatedContributionMarginMicroUsd: safe(daily.reduce((sum, day) =>
+        sum + BigInt(day.estimatedContributionMarginMicroUsd), 0n)),
+    };
+    return { ...base,
+      status: from < start || toExclusive > asOf ? 'partial' as const : 'full' as const,
+      totals, daily };
   }
 
   private parseUtcDay(value: string): Date {

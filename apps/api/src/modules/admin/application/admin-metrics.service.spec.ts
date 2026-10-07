@@ -13,10 +13,13 @@ describe('AdminMetricsService', () => {
   const financials = { getMetrics: jest.fn() };
   const stripeFees = { getMetrics: jest.fn() };
   const completeness = { getCoverage: jest.fn() };
-  const aiCostLedger = { getCoverage: jest.fn() };
+  const aiCostLedger = { getCoverage: jest.fn(), getRecordedBoundary: jest.fn(),
+    getRecordedWindow: jest.fn() };
+  const recordedRevenue = { getBoundary: jest.fn(), getWindow: jest.fn() };
   let service: AdminMetricsService;
 
   beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-25T12:00:00.000Z'));
     jest.clearAllMocks();
     billing.getCurrentMetrics.mockResolvedValue({
       asOf: new Date('2026-09-25T12:00:00.000Z'),
@@ -109,6 +112,28 @@ describe('AdminMetricsService', () => {
       unresolvedCaseCount: 0, evidencedZeroCount: 1 });
     aiCostLedger.getCoverage.mockResolvedValue({ ...coverage,
       unresolvedRequestCount: 0, costType: 'estimated', userId: 'private-user' });
+    recordedRevenue.getBoundary.mockResolvedValue({
+      from: new Date('2026-09-24T12:35:00.000Z'), active: true,
+    });
+    aiCostLedger.getRecordedBoundary.mockResolvedValue({
+      from: new Date('2026-09-24T12:35:00.000Z'), active: true,
+    });
+    recordedRevenue.getWindow.mockResolvedValue({ unresolvedCaseCount: 0, daily: [
+      { day: '2026-09-24', coverage: 'partial', grossRevenueMinor: 6_800n,
+        refundAdjustmentMinor: -1_000n, disputeWithdrawalMinor: -500n,
+        disputeReinstatementMinor: 200n, stripeFeeMinor: -25n,
+        recordedNetRevenueMinor: 5_525n },
+      { day: '2026-09-25', coverage: 'partial', grossRevenueMinor: 0n,
+        refundAdjustmentMinor: 0n, disputeWithdrawalMinor: 0n,
+        disputeReinstatementMinor: 0n, stripeFeeMinor: 0n,
+        recordedNetRevenueMinor: 0n },
+    ] });
+    aiCostLedger.getRecordedWindow.mockResolvedValue({
+      unresolvedRequestCount: 0, daily: [
+        { day: '2026-09-24', estimatedMicroUsd: 500_000n },
+        { day: '2026-09-25', estimatedMicroUsd: 0n },
+      ],
+    });
     service = new AdminMetricsService(
       billing as never,
       financials as never,
@@ -116,8 +141,11 @@ describe('AdminMetricsService', () => {
       stripeFees as never,
       completeness as never,
       aiCostLedger as never,
+      recordedRevenue as never,
     );
   });
+
+  afterEach(() => jest.useRealTimers());
 
   it('delegates once to each owning service with strict inclusive UTC days', async () => {
     await expect(
@@ -174,6 +202,29 @@ describe('AdminMetricsService', () => {
         requestedRange: { from: '2026-09-23T00:00:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
         actualCoveredRange: { from: '2026-09-24T12:35:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
         unresolvedRequestCount: 0, costType: 'estimated',
+      },
+      recordedFinancials: {
+        currency: 'usd', costType: 'estimated',
+        asOf: '2026-09-25T12:00:00.000Z',
+        status: 'partial',
+        requestedRange: { from: '2026-09-23T00:00:00.000Z', toExclusive: '2026-09-26T00:00:00.000Z' },
+        actualCoveredRange: { from: '2026-09-24T12:35:00.000Z', toExclusive: '2026-09-25T12:00:00.000Z' },
+        totals: { grossRevenueMinor: 6_800, refundAdjustmentMinor: -1_000,
+          disputeWithdrawalMinor: -500, disputeReinstatementMinor: 200,
+          recordedStripeFeeMinor: -25, recordedNetRevenueMinor: 5_525,
+          estimatedAiCostMicroUsd: 500_000, estimatedContributionMarginMicroUsd: 54_750_000 },
+        daily: [
+          { day: '2026-09-24', coverage: 'partial', grossRevenueMinor: 6_800,
+            refundAdjustmentMinor: -1_000, disputeWithdrawalMinor: -500,
+            disputeReinstatementMinor: 200, recordedStripeFeeMinor: -25,
+            recordedNetRevenueMinor: 5_525, estimatedAiCostMicroUsd: 500_000,
+            estimatedContributionMarginMicroUsd: 54_750_000 },
+          { day: '2026-09-25', coverage: 'partial', grossRevenueMinor: 0,
+            refundAdjustmentMinor: 0, disputeWithdrawalMinor: 0,
+            disputeReinstatementMinor: 0, recordedStripeFeeMinor: 0,
+            recordedNetRevenueMinor: 0, estimatedAiCostMicroUsd: 0,
+            estimatedContributionMarginMicroUsd: 0 },
+        ],
       },
       financials: {
         metricsStartAt: '2026-09-24T12:34:56.000Z',
@@ -313,6 +364,68 @@ describe('AdminMetricsService', () => {
     );
   });
 
+  it('withholds combined totals for unresolved Billing evidence or unknown AI cost', async () => {
+    recordedRevenue.getWindow.mockResolvedValueOnce({ unresolvedCaseCount: 1,
+      daily: [], paymentId: 'synthetic-private-marker' });
+    const billingPending = await service.getMetrics({ from: '2026-09-24', to: '2026-09-25' });
+    expect(billingPending.recordedFinancials).toEqual(expect.objectContaining({
+      status: 'unresolved', totals: null, daily: [],
+    }));
+    expect(JSON.stringify(billingPending)).not.toContain('synthetic-private-marker');
+
+    aiCostLedger.getRecordedWindow.mockResolvedValueOnce({ unresolvedRequestCount: 1,
+      daily: [], prompt: 'synthetic-private-marker' });
+    const aiPending = await service.getMetrics({ from: '2026-09-24', to: '2026-09-25' });
+    expect(aiPending.recordedFinancials).toEqual(expect.objectContaining({
+      status: 'unresolved', totals: null, daily: [],
+    }));
+    expect(JSON.stringify(aiPending)).not.toContain('synthetic-private-marker');
+  });
+
+  it('never fabricates pre-boundary or inactive combined history', async () => {
+    recordedRevenue.getBoundary.mockResolvedValueOnce({
+      from: new Date('2026-09-26T00:00:00.000Z'), active: true,
+    });
+    const before = await service.getMetrics({ from: '2026-09-24', to: '2026-09-25' });
+    expect(before.recordedFinancials.status).toBe('unavailable');
+    expect(before.recordedFinancials.totals).toBeNull();
+    recordedRevenue.getBoundary.mockResolvedValueOnce({
+      from: new Date('2026-09-24T00:00:00.000Z'), active: false,
+    });
+    const inactive = await service.getMetrics({ from: '2026-09-24', to: '2026-09-25' });
+    expect(inactive.recordedFinancials.status).toBe('unavailable');
+    expect(recordedRevenue.getWindow).not.toHaveBeenCalled();
+  });
+
+  it('does not call either monetary reader for a wholly future UTC window', async () => {
+    const result = await service.getMetrics({ from: '2026-09-26', to: '2026-09-26' });
+    expect(result.recordedFinancials).toEqual(expect.objectContaining({
+      status: 'unavailable', actualCoveredRange: null, totals: null, daily: [],
+    }));
+    expect(recordedRevenue.getWindow).not.toHaveBeenCalled();
+    expect(aiCostLedger.getRecordedWindow).not.toHaveBeenCalled();
+  });
+
+  it('marks a fully historical evidenced window full', async () => {
+    recordedRevenue.getBoundary.mockResolvedValueOnce({
+      from: new Date('2026-09-01T00:00:00.000Z'), active: true,
+    });
+    aiCostLedger.getRecordedBoundary.mockResolvedValueOnce({
+      from: new Date('2026-09-01T00:00:00.000Z'), active: true,
+    });
+    recordedRevenue.getWindow.mockResolvedValueOnce({ unresolvedCaseCount: 0,
+      daily: [{ day: '2026-09-23', coverage: 'complete', grossRevenueMinor: 0n,
+        refundAdjustmentMinor: 0n, disputeWithdrawalMinor: 0n,
+        disputeReinstatementMinor: 0n, stripeFeeMinor: 0n, recordedNetRevenueMinor: 0n }],
+    });
+    aiCostLedger.getRecordedWindow.mockResolvedValueOnce({ unresolvedRequestCount: 0,
+      daily: [{ day: '2026-09-23', estimatedMicroUsd: 0n }],
+    });
+    const result = await service.getMetrics({ from: '2026-09-23', to: '2026-09-23' });
+    expect(result.recordedFinancials.status).toBe('full');
+    expect(result.recordedFinancials.totals?.recordedNetRevenueMinor).toBe(0);
+  });
+
   it('allow-lists Stripe fee fields even if the owning reader returns sensitive extras', async () => {
     stripeFees.getMetrics.mockResolvedValueOnce({
       metricsStartAt: new Date('2026-09-24T12:34:56.000Z'),
@@ -411,6 +524,20 @@ describe('AdminMetricsService', () => {
       requestedRange: { ...costCoverage.requestedRange, token: privateValue },
       actualCoveredRange: { ...costCoverage.actualCoveredRange, token: privateValue },
     });
+    const recordedWindow = await recordedRevenue.getWindow();
+    recordedRevenue.getWindow.mockResolvedValueOnce({ ...recordedWindow,
+      stripeSecret: privateValue,
+      daily: recordedWindow.daily.map((entry: Record<string, unknown>) => ({
+        ...entry, providerPayload: privateValue,
+      })),
+    });
+    const aiWindow = await aiCostLedger.getRecordedWindow();
+    aiCostLedger.getRecordedWindow.mockResolvedValueOnce({ ...aiWindow,
+      prompt: privateValue,
+      daily: aiWindow.daily.map((entry: Record<string, unknown>) => ({
+        ...entry, token: privateValue,
+      })),
+    });
 
     const result = await service.getMetrics({ from: '2026-09-24', to: '2026-09-25' });
     expect(JSON.stringify(result)).not.toContain(privateValue);
@@ -418,5 +545,6 @@ describe('AdminMetricsService', () => {
     expect(result.ai.daily).toHaveLength(1);
     expect(result.financials.daily).toHaveLength(1);
     expect(result.stripeFees.daily).toHaveLength(1);
+    expect(result.recordedFinancials.daily).toHaveLength(2);
   });
 });
