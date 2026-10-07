@@ -6,6 +6,8 @@ describe('AiCostLedgerService', () => {
       findUniqueOrThrow: jest.fn(), updateMany: jest.fn(),
     },
     aiCostIntent: { create: jest.fn(), count: jest.fn() },
+    aiDailyCostMetric: { findMany: jest.fn() },
+    aiCostEvent: { aggregate: jest.fn() },
     $transaction: jest.fn(),
   };
   const service = new AiCostLedgerService(prisma as never, {
@@ -14,6 +16,7 @@ describe('AiCostLedgerService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.$transaction.mockImplementation((work: (tx: typeof prisma) => unknown) => work(prisma));
     prisma.aiCostMetricsBoundary.findUniqueOrThrow.mockResolvedValue({
       metricsStartAt: new Date('2026-10-04T00:00:00.000Z'),
       captureActivatedAt: new Date('2026-10-04T12:00:00.000Z'),
@@ -21,6 +24,8 @@ describe('AiCostLedgerService', () => {
     prisma.aiCostMetricsBoundary.updateMany.mockResolvedValue({ count: 1 });
     prisma.aiCostIntent.create.mockResolvedValue({});
     prisma.aiCostIntent.count.mockResolvedValue(0);
+    prisma.aiDailyCostMetric.findMany.mockResolvedValue([]);
+    prisma.aiCostEvent.aggregate.mockResolvedValue({ _sum: { estimatedMicroUsd: null } });
   });
 
   it('rounds decimal USD to micro-units once per attempt and rejects invalid costs', () => {
@@ -114,5 +119,34 @@ describe('AiCostLedgerService', () => {
     });
     expect(future.status).toBe('unavailable');
     expect(future.actualCoveredRange).toBeNull();
+  });
+
+  it('reads integer micro-USD with an intraday cut and withholds unresolved cost', async () => {
+    expect(await service.getRecordedBoundary()).toEqual({
+      from: new Date('2026-10-04T12:00:00Z'), active: true,
+    });
+    const range = { from: new Date('2026-10-04T12:00:00Z'),
+      toExclusive: new Date('2026-10-04T18:00:00Z') };
+    prisma.aiCostIntent.count.mockResolvedValueOnce(1);
+    expect(await service.getRecordedWindow(range)).toEqual({ unresolvedRequestCount: 1, daily: [] });
+    expect(prisma.aiCostEvent.aggregate).not.toHaveBeenCalled();
+    prisma.aiCostEvent.aggregate.mockResolvedValueOnce({ _sum: { estimatedMicroUsd: 1_234_567n } });
+    expect(await service.getRecordedWindow(range)).toEqual({ unresolvedRequestCount: 0,
+      daily: [{ day: '2026-10-04', estimatedMicroUsd: 1_234_567n }] });
+    expect(prisma.aiCostEvent.aggregate).toHaveBeenCalledWith({
+      where: { effectiveAt: { gte: range.from, lt: range.toExclusive } },
+      _sum: { estimatedMicroUsd: true },
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function),
+      { isolationLevel: 'RepeatableRead' });
+  });
+
+  it('uses the durable daily micro-USD aggregate for a complete historical day', async () => {
+    prisma.aiDailyCostMetric.findMany.mockResolvedValueOnce([{ day: new Date('2026-10-05T00:00:00Z'),
+      estimatedMicroUsd: 1_234_567n }]);
+    const result = await service.getRecordedWindow({ from: new Date('2026-10-05T00:00:00Z'),
+      toExclusive: new Date('2026-10-06T00:00:00Z') });
+    expect(result.daily).toEqual([{ day: '2026-10-05', estimatedMicroUsd: 1_234_567n }]);
+    expect(prisma.aiCostEvent.aggregate).not.toHaveBeenCalled();
   });
 });

@@ -196,6 +196,37 @@ class AdminConsoleEstimatedAiCostCoverageDto extends AdminConsoleCoverageDto {
   @ApiProperty({ enum: ['estimated'] }) costType!: 'estimated';
 }
 
+class AdminConsoleRecordedFinancialAmountsDto {
+  @ApiProperty({ description: 'Successful USD invoice payments, cents' }) grossRevenueMinor!: number;
+  @ApiProperty({ description: 'Signed successful refund adjustment, cents' }) refundAdjustmentMinor!: number;
+  @ApiProperty({ description: 'Signed dispute withdrawals, cents' }) disputeWithdrawalMinor!: number;
+  @ApiProperty({ description: 'Signed dispute reinstatements, cents' }) disputeReinstatementMinor!: number;
+  @ApiProperty({ description: 'Signed recorded Stripe fees, cents' }) recordedStripeFeeMinor!: number;
+  @ApiProperty({ description: 'Recorded Net Revenue, cents; not reconciled revenue' }) recordedNetRevenueMinor!: number;
+  @ApiProperty({ description: 'Recorded estimated AI cost, integer micro-USD' }) estimatedAiCostMicroUsd!: number;
+  @ApiProperty({ description: 'Estimated Contribution Margin, integer micro-USD; not Net Profit' }) estimatedContributionMarginMicroUsd!: number;
+}
+
+class AdminConsoleRecordedFinancialDayDto extends AdminConsoleRecordedFinancialAmountsDto {
+  @ApiProperty({ example: '2026-10-07' }) day!: string;
+  @ApiProperty({ enum: ['complete', 'partial'] }) coverage!: 'complete' | 'partial';
+}
+
+class AdminConsoleRecordedFinancialsDto {
+  @ApiProperty({ enum: ['full', 'partial', 'unresolved', 'unavailable'] })
+  status!: 'full' | 'partial' | 'unresolved' | 'unavailable';
+  @ApiProperty({ enum: ['usd'] }) currency!: 'usd';
+  @ApiProperty({ enum: ['estimated'] }) costType!: 'estimated';
+  @ApiProperty({ format: 'date-time' }) asOf!: string;
+  @ApiProperty({ type: AdminConsoleCoverageRangeDto }) requestedRange!: AdminConsoleCoverageRangeDto;
+  @ApiProperty({ type: AdminConsoleCoverageRangeDto, nullable: true })
+  actualCoveredRange!: AdminConsoleCoverageRangeDto | null;
+  @ApiProperty({ type: AdminConsoleRecordedFinancialAmountsDto, nullable: true })
+  totals!: AdminConsoleRecordedFinancialAmountsDto | null;
+  @ApiProperty({ type: () => [AdminConsoleRecordedFinancialDayDto] })
+  daily!: AdminConsoleRecordedFinancialDayDto[];
+}
+
 export class AdminConsoleMetricsResponseDto {
   @ApiProperty({ type: AdminConsoleMetricsPeriodDto })
   period!: AdminConsoleMetricsPeriodDto;
@@ -211,4 +242,6 @@ export class AdminConsoleMetricsResponseDto {
   financialEvidenceCoverage!: AdminConsoleFinancialEvidenceCoverageDto;
   @ApiProperty({ type: AdminConsoleEstimatedAiCostCoverageDto })
   estimatedAiCostCoverage!: AdminConsoleEstimatedAiCostCoverageDto;
+  @ApiProperty({ type: AdminConsoleRecordedFinancialsDto })
+  recordedFinancials!: AdminConsoleRecordedFinancialsDto;
 }
