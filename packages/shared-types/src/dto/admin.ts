@@ -554,3 +554,42 @@ export interface AdminConsoleCoverage {
   requestedRange: { from: string; toExclusive: string };
   actualCoveredRange: { from: string; toExclusive: string } | null;
 }
+
+export type AdminConsoleBillingCompletenessStatus =
+  | 'completed' | 'incomplete' | 'failed' | 'unavailable';
+
+export type AdminConsoleBillingCompletenessFinding =
+  | 'missing_receipt' | 'missing_gross_effect'
+  | 'missing_refund_observation' | 'missing_refund_effect'
+  | 'missing_dispute_observation' | 'missing_fee_observation'
+  | 'missing_recorded_fee_effect' | 'missing_dispute_effect'
+  | 'unresolved_evidence';
+
+export interface AdminConsoleBillingCompletenessRequest {
+  from: string;
+  to: string;
+  scanId?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+/** Provider and payment IDs are deliberately absent from this projection. */
+export interface AdminConsoleBillingCompletenessResponse {
+  scanId: string;
+  status: AdminConsoleBillingCompletenessStatus;
+  reason: string | null;
+  requestedRange: { from: string; toExclusive: string };
+  attemptedRange: { from: string; toExclusive: string } | null;
+  verifiedCoveredRange: { from: string; toExclusive: string } | null;
+  asOf: string;
+  completedAt: string | null;
+  scannedEventCount: number;
+  findings: Array<{
+    id: string;
+    eventType: string;
+    eventAt: string;
+    finding: AdminConsoleBillingCompletenessFinding;
+  }>;
+  limit: number;
+  nextCursor: string | null;
+}

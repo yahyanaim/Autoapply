@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma/prisma.service';
 import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
-import { Prisma, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
+import { BillingInvoiceFinancialOutcomeStatus, Prisma, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import Stripe from 'stripe';
 import { PLAN_LIMITS } from '../domain/plan-limits';
 import {
@@ -208,7 +208,15 @@ export class BillingService {
           typeof invoice.subscription === 'string'
             ? invoice.subscription
             : invoice.subscription?.id;
-        if (!stripeSubscriptionId) break;
+        if (!stripeSubscriptionId) {
+          if (event.type === 'invoice.payment_succeeded') {
+            await transaction.billingInvoiceFinancialOutcome.create({ data: {
+              sourceStripeEventId: event.id,
+              status: BillingInvoiceFinancialOutcomeStatus.excluded_no_local_subscription,
+            } });
+          }
+          break;
+        }
         const subscription = await transaction.subscription.findFirst({
           where: { stripeSubscriptionId },
           select: { id: true, userId: true, plan: true, status: true },
@@ -258,6 +266,10 @@ export class BillingService {
                 observedAt,
               },
             );
+            await transaction.billingInvoiceFinancialOutcome.create({ data: {
+              sourceStripeEventId: event.id,
+              status: BillingInvoiceFinancialOutcomeStatus.eligible,
+            } });
           }
           if (currentSubscription) {
             const { status, effectivePlan } =
@@ -287,6 +299,11 @@ export class BillingService {
               observedAt,
             });
           }
+        } else if (event.type === 'invoice.payment_succeeded') {
+          await transaction.billingInvoiceFinancialOutcome.create({ data: {
+            sourceStripeEventId: event.id,
+            status: BillingInvoiceFinancialOutcomeStatus.excluded_no_local_subscription,
+          } });
         }
         break;
       }

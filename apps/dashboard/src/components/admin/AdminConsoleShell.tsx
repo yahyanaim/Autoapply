@@ -10,6 +10,7 @@ const navigation = [
   { label: 'Users', href: '/admin/console/users', icon: Users, enabled: true },
   { label: 'Activity Log', href: '/admin/console/activity-logs', icon: FileText, enabled: true },
   { label: 'Metrics', href: '/admin/console/metrics', icon: ChartNoAxesCombined, enabled: true },
+  { label: 'Financial checks', href: '/admin/console/billing-completeness', icon: ClipboardList, enabled: true },
   { label: 'Jobs', href: '/admin/console/jobs', icon: BriefcaseBusiness, enabled: true },
   { label: 'Resume Failures', href: '/admin/console/resume-failures', icon: FileWarning, enabled: true },
   { label: 'Beta Gate', href: '/admin/console/beta-gate', icon: ShieldCheck, enabled: true },

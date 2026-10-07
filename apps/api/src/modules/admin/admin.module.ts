@@ -29,6 +29,8 @@ import { AIModule } from '../ai/ai.module';
 import { AdminMetricsService } from './application/admin-metrics.service';
 import { AdminConsoleMetricsController } from './interface/admin-console-metrics.controller';
 import { AdminQuotaService } from './application/admin-quota.service';
+import { AdminBillingCompletenessService } from './application/admin-billing-completeness.service';
+import { AdminConsoleBillingCompletenessController } from './interface/admin-console-billing-completeness.controller';
 
 @Module({
   imports: [
@@ -56,6 +58,7 @@ import { AdminQuotaService } from './application/admin-quota.service';
     AdminResumesService,
     AdminMetricsService,
     AdminQuotaService,
+    AdminBillingCompletenessService,
   ],
   controllers: [
     AdminController,
@@ -66,6 +69,7 @@ import { AdminQuotaService } from './application/admin-quota.service';
     AdminConsoleOverviewController,
     AdminConsoleOperationsController,
     AdminConsoleMetricsController,
+    AdminConsoleBillingCompletenessController,
   ],
   exports: [AdminService, AdminMutationExecutor, AdminUsersService],
 })

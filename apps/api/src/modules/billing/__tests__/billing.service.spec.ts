@@ -27,6 +27,7 @@ describe('BillingService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
       },
+      billingInvoiceFinancialOutcome: { create: jest.fn() },
       $transaction: jest.fn((callback: (transaction: any) => unknown) =>
         callback(prismaMock),
       ),
@@ -182,6 +183,21 @@ describe('BillingService', () => {
         effectiveAt: new Date('2023-11-14T22:13:20.000Z'),
         observedAt: expect.any(Date),
       });
+      expect(prismaMock.billingInvoiceFinancialOutcome.create).toHaveBeenCalledWith({ data: {
+        sourceStripeEventId: 'evt_paid', status: 'eligible',
+      } });
+    });
+
+    it('persists a non-monetary outcome for a successful invoice with no local subscription', async () => {
+      prismaMock.subscription.findFirst.mockResolvedValue(null);
+      stripeMock.retrieveSubscription.mockResolvedValue({ id: 'sub_external', status: 'active', ...period });
+      await service.handleWebhook({ id: 'evt_excluded', type: 'invoice.payment_succeeded',
+        created: 1_700_000_000, data: { object: { id: 'in_external', subscription: 'sub_external',
+          payment_intent: 'pi_external', amount_paid: 1_900, currency: 'usd' } } } as never);
+      expect(financialMetricsMock.recordSuccessfulInvoiceInTransaction).not.toHaveBeenCalled();
+      expect(prismaMock.billingInvoiceFinancialOutcome.create).toHaveBeenCalledWith({ data: {
+        sourceStripeEventId: 'evt_excluded', status: 'excluded_no_local_subscription',
+      } });
     });
 
     it('does not create financial metrics for failed or unsupported events', async () => {
