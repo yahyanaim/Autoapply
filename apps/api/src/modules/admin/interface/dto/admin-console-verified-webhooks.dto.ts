@@ -36,6 +36,23 @@ class DeliveryDto {
   @ApiProperty({ format: 'date-time' }) observedAt!: string;
   @ApiProperty({ format: 'date-time', nullable: true }) finishedAt!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true }) resolvedAt!: string | null;
+  @ApiProperty() retryEligible!: boolean;
+  @ApiProperty({ enum: ['none', 'pending', 'processed', 'needs_review'] }) retryStatus!: string;
+}
+
+export class AdminConsoleVerifiedWebhookRetryParamDto {
+  @ApiProperty({ pattern: '^c[a-z0-9]{24}$' })
+  @Matches(/^c[a-z0-9]{24}$/) id!: string;
+}
+
+// The Admin may select only an opaque local delivery; it cannot supply event
+// identity, provider evidence, amount, currency, or time.
+export class AdminConsoleVerifiedWebhookRetryBodyDto {}
+
+export class AdminConsoleVerifiedWebhookRetryResponseDto {
+  @ApiProperty() deliveryId!: string;
+  @ApiProperty({ enum: ['retry_requested'] }) status!: 'retry_requested';
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
 }
 
 export class AdminConsoleVerifiedWebhooksResponseDto {

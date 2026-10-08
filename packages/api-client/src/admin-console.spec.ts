@@ -16,6 +16,7 @@ import type {
   AdminConsoleUsersResponse,
   AdminConsoleQuotaGrantResponse,
   AdminConsoleVerifiedWebhooksResponse,
+  AdminConsoleVerifiedWebhookRetryResponse,
 } from '@applyai/shared-types';
 import {
   AdminSessionStatus,
@@ -37,6 +38,11 @@ declare const verifiedWebhookResult: AdminConsoleVerifiedWebhooksResponse;
 // @ts-expect-error No provider event identifier is in the typed response.
 verifiedWebhookResult.items[0]?.eventId;
 void verifiedWebhooks;
+const retryWebhook: Promise<AdminConsoleVerifiedWebhookRetryResponse> =
+  client.adminConsole.retryVerifiedWebhook('clocaldelivery000000000000', {
+    stepUpProof: 'synthetic-proof', idempotencyKey: 'synthetic-key-12345',
+  });
+void retryWebhook;
 
 // @ts-expect-error Typed Admin client responses must not expose MFA enrollment state.
 sanitizedUser.mfaEnabled;

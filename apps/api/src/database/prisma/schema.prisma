@@ -341,6 +341,7 @@ enum ActivityType {
   admin_job_deactivate
   admin_resume_requeue
   admin_quota_grant
+  admin_webhook_retry
   queue_job
 }
 
@@ -781,6 +782,7 @@ model BillingVerifiedWebhookDelivery {
   id         String                        @id @default(cuid())
   eventId    String
   eventType  String
+  eventCreatedAt DateTime?
   // This delivery's outcome; resolvedAt separately records later event-level
   // processing of a failed delivery without erasing its original outcome.
   state      BillingVerifiedWebhookState   @default(processing)
@@ -1132,6 +1134,10 @@ model BillingFinancialEvidenceCase {
   nextAttemptAt       DateTime                 @default(now())
   leaseExpiresAt      DateTime?
   fencingToken        Int                      @default(0)
+  adminRetryDeliveryId String?                  @unique
+  adminRetryKeyHash    String?                  @unique
+  adminRetryFingerprint String?
+  adminRetryRequestedAt DateTime?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
   resolutions         BillingEvidenceResolution[]

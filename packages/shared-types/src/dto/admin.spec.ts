@@ -22,6 +22,7 @@ import type {
   AdminConsoleQuotaGrantRequest,
   AdminConsoleQuotaGrantResponse,
   AdminConsoleVerifiedWebhooksResponse,
+  AdminConsoleVerifiedWebhookRetryResponse,
 } from './admin';
 import { QuotaGrantCategory, QuotaGrantReason, ResumeRequeueReason } from '../enums';
 
@@ -30,6 +31,11 @@ declare const user: AdminConsoleUserSummary;
 declare const verifiedWebhooks: AdminConsoleVerifiedWebhooksResponse;
 verifiedWebhooks.items[0]?.status satisfies 'unresolved' | 'retryable' | 'resolved' | undefined;
 verifiedWebhooks.items[0]?.id satisfies string | undefined;
+verifiedWebhooks.items[0]?.retryEligible satisfies boolean | undefined;
+declare const retryWebhook: AdminConsoleVerifiedWebhookRetryResponse;
+retryWebhook.status satisfies 'retry_requested';
+// @ts-expect-error The retry result contains no provider identity.
+retryWebhook.eventId;
 // @ts-expect-error The read contract never exposes Stripe event identities.
 verifiedWebhooks.items[0]?.eventId;
 // @ts-expect-error The read contract never exposes raw provider payloads.

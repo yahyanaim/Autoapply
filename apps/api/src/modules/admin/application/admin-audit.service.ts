@@ -24,6 +24,7 @@ const SAFE_AUDIT_ENUM_VALUES: Readonly<Record<string, ReadonlySet<string>>> = {
     'disabled',
     'deactivated',
     'requeue_requested',
+    'retry_requested',
   ]),
   role: new Set(['user', 'org_admin', 'platform_admin']),
   plan: new Set(['free', 'pro', 'premium']),
@@ -58,6 +59,7 @@ const ADMIN_ACTION_TYPES: Readonly<Record<string, ActivityType>> = {
   'admin.job.deactivate': ActivityType.admin_job_deactivate,
   'admin.resume.requeue': ActivityType.admin_resume_requeue,
   'admin.quota.grant': ActivityType.admin_quota_grant,
+  'admin.webhook.retry': ActivityType.admin_webhook_retry,
 };
 
 export type AdminAuditSnapshot = Readonly<Record<string, unknown>>;

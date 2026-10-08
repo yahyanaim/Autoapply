@@ -24,6 +24,8 @@ export class AdminVerifiedWebhooksService {
         observedAt: item.observedAt,
         finishedAt: item.finishedAt,
         resolvedAt: item.resolvedAt,
+        retryEligible: item.retryEligible,
+        retryStatus: item.retryStatus,
       })),
       limit: result.limit,
       nextCursor: result.nextCursor,

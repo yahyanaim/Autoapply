@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import {
   BillingVerifiedWebhookReason,
   BillingVerifiedWebhookState,
@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import Stripe from 'stripe';
 import { PrismaService } from '../../../database/prisma/prisma.service';
+import { BillingVerifiedWebhookRetryService } from './billing-verified-webhook-retry.service';
 
 export const BILLING_VERIFIED_WEBHOOK_BOUNDARY_ID = 'verified_stripe_webhook_inspection_v1';
 const RELEVANT_TYPES = new Set([
@@ -30,14 +31,19 @@ function day(value: string): Date {
 
 @Injectable()
 export class BillingVerifiedWebhookService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService,
+    @Optional() private readonly retries?: BillingVerifiedWebhookRetryService) {}
 
   // Called only after constructWebhookEvent has verified the signature. The
   // event payload, signature and provider error are never persisted here.
   async beginVerified(event: Stripe.Event): Promise<{ id: string } | null> {
     if (!RELEVANT_TYPES.has(event.type)) return null;
+    const createdMs = Number.isSafeInteger(event.created) && event.created > 0
+      ? event.created * 1000 : NaN;
+    const eventCreatedAt = Number.isFinite(createdMs) && createdMs <= 8_640_000_000_000_000
+      ? new Date(createdMs) : null;
     const row = await this.prisma.billingVerifiedWebhookDelivery.create({
-      data: { eventId: event.id, eventType: event.type, observedAt: new Date() },
+      data: { eventId: event.id, eventType: event.type, eventCreatedAt, observedAt: new Date() },
       select: { id: true },
     });
     return { id: row.id };
@@ -125,10 +131,11 @@ export class BillingVerifiedWebhookService {
     };
     const rows = coveredRange ? await this.prisma.billingVerifiedWebhookDelivery.findMany({
       where, orderBy: [{ observedAt: 'desc' }, { id: 'desc' }], take: limit + 1,
-      select: { id: true, eventType: true, state: true, reason: true,
+      select: { id: true, eventId: true, eventType: true, eventCreatedAt: true, state: true, reason: true,
         observedAt: true, finishedAt: true, resolvedAt: true },
     }) : [];
     const page = rows.slice(0, limit);
+    const retryStates = this.retries ? await this.retries.describePage(page) : new Map();
     return {
       coverage: !coveredRange ? 'unavailable' as const
         : coveredFrom > from || coveredTo < toExclusive ? 'partial' as const : 'covered' as const,
@@ -144,6 +151,8 @@ export class BillingVerifiedWebhookService {
         observedAt: row.observedAt.toISOString(),
         finishedAt: row.finishedAt?.toISOString() ?? null,
         resolvedAt: row.resolvedAt?.toISOString() ?? null,
+        retryEligible: retryStates.get(row.id)?.retryEligible ?? false,
+        retryStatus: retryStates.get(row.id)?.retryStatus ?? 'none',
       })),
       nextCursor: rows.length > limit ? page[page.length - 1]?.id ?? null : null,
     };
