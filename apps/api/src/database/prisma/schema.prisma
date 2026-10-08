@@ -172,6 +172,18 @@ enum BillingInvoiceFinancialOutcomeStatus {
   excluded_no_local_subscription
 }
 
+enum BillingVerifiedWebhookState {
+  processing
+  retryable_failure
+  unclassified_failure
+  resolved
+}
+
+enum BillingVerifiedWebhookReason {
+  provider_unavailable
+  processing_error
+}
+
 enum AiCostIntentState {
   pending
   costed
@@ -753,6 +765,34 @@ model StripeWebhookEvent {
   invoiceFinancialOutcome BillingInvoiceFinancialOutcome?
 
   @@map("stripe_webhook_events")
+}
+
+model BillingVerifiedWebhookBoundary {
+  id        String   @id
+  startsAt  DateTime
+  createdAt DateTime @default(now())
+
+  @@map("billing_verified_webhook_boundaries")
+}
+
+// Only created after Stripe signature verification. Stripe identity is private
+// and never projected to Admin; the opaque local id is the read cursor.
+model BillingVerifiedWebhookDelivery {
+  id         String                        @id @default(cuid())
+  eventId    String
+  eventType  String
+  // This delivery's outcome; resolvedAt separately records later event-level
+  // processing of a failed delivery without erasing its original outcome.
+  state      BillingVerifiedWebhookState   @default(processing)
+  reason     BillingVerifiedWebhookReason?
+  observedAt DateTime
+  finishedAt DateTime?
+  resolvedAt DateTime?
+
+  @@index([eventId, state])
+  @@index([observedAt, id])
+  @@index([state, observedAt, id])
+  @@map("billing_verified_webhook_deliveries")
 }
 
 model BillingInvoiceFinancialOutcome {

@@ -19,6 +19,7 @@ import { BillingFinancialCompletenessService } from './application/billing-finan
 import { BillingEvidenceRetryService } from './application/billing-evidence-retry.service';
 import { BillingRecordedNetRevenueService } from './application/billing-recorded-net-revenue.service';
 import { BillingEventCompletenessService } from './application/billing-event-completeness.service';
+import { BillingVerifiedWebhookService } from './application/billing-verified-webhook.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
@@ -38,6 +39,7 @@ import { BillingEventCompletenessService } from './application/billing-event-com
     BillingEvidenceRetryService,
     BillingRecordedNetRevenueService,
     BillingEventCompletenessService,
+    BillingVerifiedWebhookService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],
@@ -54,6 +56,7 @@ import { BillingEventCompletenessService } from './application/billing-event-com
     BillingFinancialCompletenessService,
     BillingRecordedNetRevenueService,
     BillingEventCompletenessService,
+    BillingVerifiedWebhookService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],

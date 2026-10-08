@@ -593,3 +593,31 @@ export interface AdminConsoleBillingCompletenessResponse {
   limit: number;
   nextCursor: string | null;
 }
+
+export interface AdminConsoleVerifiedWebhooksRequest {
+  from: string;
+  to: string;
+  cursor?: string;
+  limit?: number;
+  state?: 'unresolved' | 'retryable' | 'resolved';
+}
+
+/** Future-only verified deliveries; provider identities and payloads are excluded. */
+export interface AdminConsoleVerifiedWebhooksResponse {
+  coverage: 'covered' | 'partial' | 'unavailable';
+  coverageStartAt: string;
+  requestedRange: { from: string; toExclusive: string };
+  coveredRange: { from: string; toExclusive: string } | null;
+  asOf: string;
+  items: Array<{
+    id: string;
+    eventType: string;
+    status: 'unresolved' | 'retryable' | 'resolved';
+    reason: 'processing_outcome_unknown' | 'provider_unavailable' | 'processing_error';
+    observedAt: string;
+    finishedAt: string | null;
+    resolvedAt: string | null;
+  }>;
+  limit: number;
+  nextCursor: string | null;
+}

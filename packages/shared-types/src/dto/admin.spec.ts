@@ -21,10 +21,19 @@ import type {
   AdminConsoleMetricsResponse,
   AdminConsoleQuotaGrantRequest,
   AdminConsoleQuotaGrantResponse,
+  AdminConsoleVerifiedWebhooksResponse,
 } from './admin';
 import { QuotaGrantCategory, QuotaGrantReason, ResumeRequeueReason } from '../enums';
 
 declare const user: AdminConsoleUserSummary;
+
+declare const verifiedWebhooks: AdminConsoleVerifiedWebhooksResponse;
+verifiedWebhooks.items[0]?.status satisfies 'unresolved' | 'retryable' | 'resolved' | undefined;
+verifiedWebhooks.items[0]?.id satisfies string | undefined;
+// @ts-expect-error The read contract never exposes Stripe event identities.
+verifiedWebhooks.items[0]?.eventId;
+// @ts-expect-error The read contract never exposes raw provider payloads.
+verifiedWebhooks.items[0]?.payload;
 
 user.id satisfies string;
 user.status satisfies 'active' | 'suspended';

@@ -40,6 +40,8 @@ import type {
   AdminConsoleMetricsResponse,
   AdminConsoleBillingCompletenessRequest,
   AdminConsoleBillingCompletenessResponse,
+  AdminConsoleVerifiedWebhooksRequest,
+  AdminConsoleVerifiedWebhooksResponse,
   AdminConsoleQuotaGrantRequest,
   AdminConsoleQuotaGrantResponse,
 } from '@applyai/shared-types';
@@ -395,6 +397,15 @@ export class ApiClient {
   };
 
   adminConsole = {
+    verifiedWebhooks: async (
+      params: AdminConsoleVerifiedWebhooksRequest,
+    ): Promise<AdminConsoleVerifiedWebhooksResponse> => {
+      const res = await this.http.get<AdminConsoleVerifiedWebhooksResponse>(
+        '/admin/console/verified-webhooks', { params },
+      );
+      return res.data;
+    },
+
     billingCompleteness: async (
       params: AdminConsoleBillingCompletenessRequest,
     ): Promise<AdminConsoleBillingCompletenessResponse> => {
