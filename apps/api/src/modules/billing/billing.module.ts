@@ -18,6 +18,7 @@ import { BillingStripeFeeMetricsReadService } from './application/billing-stripe
 import { BillingFinancialCompletenessService } from './application/billing-financial-completeness.service';
 import { BillingEvidenceRetryService } from './application/billing-evidence-retry.service';
 import { BillingRecordedNetRevenueService } from './application/billing-recorded-net-revenue.service';
+import { BillingEventCompletenessService } from './application/billing-event-completeness.service';
 
 @Module({
   imports: [PrismaModule, ConfigModule],
@@ -36,6 +37,7 @@ import { BillingRecordedNetRevenueService } from './application/billing-recorded
     BillingFinancialCompletenessService,
     BillingEvidenceRetryService,
     BillingRecordedNetRevenueService,
+    BillingEventCompletenessService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],
@@ -51,6 +53,7 @@ import { BillingRecordedNetRevenueService } from './application/billing-recorded
     BillingStripeFeeMetricsReadService,
     BillingFinancialCompletenessService,
     BillingRecordedNetRevenueService,
+    BillingEventCompletenessService,
     StripeAdapter,
     PlanEntitlementGuard,
   ],

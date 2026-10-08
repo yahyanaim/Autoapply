@@ -148,6 +148,30 @@ enum BillingEvidenceState {
   excluded_duplicate
 }
 
+enum BillingEventScanStatus {
+  completed
+  incomplete
+  failed
+  unavailable
+}
+
+enum BillingEventScanFinding {
+  missing_receipt
+  missing_gross_effect
+  missing_refund_observation
+  missing_refund_effect
+  missing_dispute_observation
+  missing_fee_observation
+  missing_recorded_fee_effect
+  missing_dispute_effect
+  unresolved_evidence
+}
+
+enum BillingInvoiceFinancialOutcomeStatus {
+  eligible
+  excluded_no_local_subscription
+}
+
 enum AiCostIntentState {
   pending
   costed
@@ -726,8 +750,18 @@ model StripeWebhookEvent {
   disputeEffect BillingDisputeEffect?
   stripeFeeObservation BillingStripeFeeObservation?
   stripeFeeEffect BillingStripeFeeEffect?
+  invoiceFinancialOutcome BillingInvoiceFinancialOutcome?
 
   @@map("stripe_webhook_events")
+}
+
+model BillingInvoiceFinancialOutcome {
+  sourceStripeEventId String @id
+  status BillingInvoiceFinancialOutcomeStatus
+  createdAt DateTime @default(now())
+  sourceEvent StripeWebhookEvent @relation(fields: [sourceStripeEventId], references: [eventId], onDelete: Restrict)
+
+  @@map("billing_invoice_financial_outcomes")
 }
 
 model SubscriptionLifecycleEvent {
@@ -1079,6 +1113,51 @@ model BillingEvidenceResolution {
   @@unique([caseId, state])
   @@index([caseId, createdAt])
   @@map("billing_evidence_resolutions")
+}
+
+model BillingEventScanBoundary {
+  id        String   @id
+  startsAt  DateTime
+  createdAt DateTime @default(now())
+
+  @@map("billing_event_scan_boundaries")
+}
+
+model BillingEventScan {
+  id               String                 @id @default(cuid())
+  from             DateTime
+  toExclusive      DateTime
+  asOf             DateTime
+  attemptedFrom    DateTime?
+  attemptedToExclusive DateTime?
+  verifiedFrom     DateTime?
+  verifiedToExclusive DateTime?
+  status           BillingEventScanStatus @default(incomplete)
+  reason           String?
+  providerCursor   String?
+  scannedCount     Int                    @default(0)
+  createdAt        DateTime               @default(now())
+  completedAt      DateTime?
+  findings         BillingEventScanDiscrepancy[]
+
+  @@index([createdAt, id])
+  @@index([from, toExclusive, createdAt])
+  @@map("billing_event_scans")
+}
+
+model BillingEventScanDiscrepancy {
+  id                  String                  @id @default(cuid())
+  scanId              String
+  sourceStripeEventId String
+  eventType           String
+  eventAt             DateTime
+  finding             BillingEventScanFinding
+  createdAt           DateTime                @default(now())
+  scan                BillingEventScan        @relation(fields: [scanId], references: [id], onDelete: Restrict)
+
+  @@unique([scanId, sourceStripeEventId, finding])
+  @@index([scanId, eventAt, id])
+  @@map("billing_event_scan_discrepancies")
 }
 
 model AiCostMetricsBoundary {

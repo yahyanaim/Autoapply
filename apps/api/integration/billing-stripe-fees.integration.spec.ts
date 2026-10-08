@@ -86,6 +86,7 @@ describe('Billing Stripe fee ledger PostgreSQL integration', () => {
     await prisma.billingDispute.deleteMany({ where: { id: { in: disputeLocalIds } } });
     await prisma.billingStripeFeeEffect.deleteMany({ where: { balanceTransactionId: { in: transactionIds } } });
     await prisma.billingStripeFeeObservation.deleteMany({ where: { sourceStripeEventId: { in: eventIds } } });
+    await prisma.billingInvoiceFinancialOutcome.deleteMany({ where: { sourceStripeEventId: { in: eventIds } } });
     await prisma.stripeWebhookEvent.deleteMany({ where: { eventId: { in: eventIds } } });
     await prisma.billingDailyStripeFeeMetric.deleteMany({ where: {
       day: { gte: day(effectiveAt), lte: day(observedAt) }, currency: 'usd',

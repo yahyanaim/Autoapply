@@ -38,6 +38,8 @@ import type {
   AdminConsoleApplicationsResponse,
   AdminConsoleMetricsRequest,
   AdminConsoleMetricsResponse,
+  AdminConsoleBillingCompletenessRequest,
+  AdminConsoleBillingCompletenessResponse,
   AdminConsoleQuotaGrantRequest,
   AdminConsoleQuotaGrantResponse,
 } from '@applyai/shared-types';
@@ -393,6 +395,15 @@ export class ApiClient {
   };
 
   adminConsole = {
+    billingCompleteness: async (
+      params: AdminConsoleBillingCompletenessRequest,
+    ): Promise<AdminConsoleBillingCompletenessResponse> => {
+      const res = await this.http.get<AdminConsoleBillingCompletenessResponse>(
+        '/admin/console/billing-completeness', { params },
+      );
+      return res.data;
+    },
+
     metrics: async (
       params: AdminConsoleMetricsRequest,
     ): Promise<AdminConsoleMetricsResponse> => {

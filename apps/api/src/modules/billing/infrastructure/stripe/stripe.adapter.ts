@@ -102,6 +102,37 @@ export class StripeAdapter {
     return this.getClient().events.retrieve(id);
   }
 
+  /** Provider payloads never leave this adapter's comparison boundary. */
+  async listFinancialEvents(input: {
+    fromSeconds: number;
+    throughSeconds: number;
+    types: string[];
+    startingAfter?: string;
+    limit: number;
+  }): Promise<{
+    events: Array<{ id: string; type: string; created: number; currency: string | null }>;
+    hasMore: boolean;
+  }> {
+    const page = await this.getClient().events.list({
+      created: { gte: input.fromSeconds, lte: input.throughSeconds },
+      types: input.types,
+      limit: input.limit,
+      ...(input.startingAfter ? { starting_after: input.startingAfter } : {}),
+    });
+    return {
+      events: page.data.map((event) => {
+        const object = event.data.object as unknown as Record<string, unknown>;
+        return {
+          id: event.id,
+          type: event.type,
+          created: event.created,
+          currency: typeof object.currency === 'string' ? object.currency : null,
+        };
+      }),
+      hasMore: page.has_more,
+    };
+  }
+
   resolveSubscriptionPlan(
     subscription: Stripe.Subscription,
   ): SubscriptionPlan {

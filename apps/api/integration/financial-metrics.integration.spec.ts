@@ -85,6 +85,9 @@ describe('Billing future-only financial metrics PostgreSQL integration', () => {
     await prisma?.subscriptionLifecycleEvent.deleteMany({
       where: { sourceStripeEventId: { in: eventIds } },
     });
+    await prisma?.billingInvoiceFinancialOutcome.deleteMany({
+      where: { sourceStripeEventId: { in: eventIds } },
+    });
     await prisma?.stripeWebhookEvent.deleteMany({
       where: { eventId: { in: eventIds } },
     });
@@ -128,6 +131,14 @@ describe('Billing future-only financial metrics PostgreSQL integration', () => {
     await billing.handleWebhook(
       invoiceEvent(eventIds[3]!, eventDay, 1_900, 'pi-failed', false),
     );
+
+    expect(await prisma.billingInvoiceFinancialOutcome.findMany({
+      where: { sourceStripeEventId: { in: eventIds } },
+      orderBy: { sourceStripeEventId: 'asc' },
+      select: { sourceStripeEventId: true, status: true },
+    })).toEqual([eventIds[1], eventIds[0], eventIds[2]].sort().map((sourceStripeEventId) => ({
+      sourceStripeEventId, status: 'eligible',
+    })));
 
     await expect(
       prisma.billingFinancialEvent.count({
@@ -179,6 +190,9 @@ describe('Billing future-only financial metrics PostgreSQL integration', () => {
     await expect(
       prisma.stripeWebhookEvent.findUnique({ where: { eventId: eventIds[4] } }),
     ).resolves.toBeNull();
+    await expect(prisma.billingInvoiceFinancialOutcome.findUnique({
+      where: { sourceStripeEventId: eventIds[4] },
+    })).resolves.toBeNull();
     await expect(
       prisma.payment.findUnique({ where: { stripePaymentId: 'pi-rollback' } }),
     ).resolves.toBeNull();
