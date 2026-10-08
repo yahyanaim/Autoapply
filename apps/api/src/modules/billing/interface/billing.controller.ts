@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../../auth/interface/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/interface/decorators/current-user.decorator';
 import { BillingService } from '../application/billing.service';
 import { StripeAdapter } from '../infrastructure/stripe/stripe.adapter';
+import { BillingVerifiedWebhookService } from '../application/billing-verified-webhook.service';
 import { CheckoutDto } from './dto/checkout.dto';
 import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
@@ -26,6 +27,7 @@ export class BillingController {
   constructor(
     private readonly billingService: BillingService,
     private readonly stripeAdapter: StripeAdapter,
+    private readonly verifiedWebhooks: BillingVerifiedWebhookService,
   ) {}
 
   @Get('subscription')
@@ -78,6 +80,18 @@ export class BillingController {
       if (error instanceof ServiceUnavailableException) throw error;
       throw new BadRequestException('Invalid Stripe webhook');
     }
-    return this.billingService.handleWebhook(event);
+    const delivery = await this.verifiedWebhooks.beginVerified(event);
+    try {
+      return await this.billingService.handleWebhook(event, delivery?.id);
+    } catch (error) {
+      if (delivery) {
+        try {
+          await this.verifiedWebhooks.fail(delivery.id, event.id, error);
+        } catch {
+          // Failure capture must never replace the original processing failure.
+        }
+      }
+      throw error;
+    }
   }
 }

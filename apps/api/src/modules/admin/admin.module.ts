@@ -31,6 +31,8 @@ import { AdminConsoleMetricsController } from './interface/admin-console-metrics
 import { AdminQuotaService } from './application/admin-quota.service';
 import { AdminBillingCompletenessService } from './application/admin-billing-completeness.service';
 import { AdminConsoleBillingCompletenessController } from './interface/admin-console-billing-completeness.controller';
+import { AdminVerifiedWebhooksService } from './application/admin-verified-webhooks.service';
+import { AdminConsoleVerifiedWebhooksController } from './interface/admin-console-verified-webhooks.controller';
 
 @Module({
   imports: [
@@ -59,6 +61,7 @@ import { AdminConsoleBillingCompletenessController } from './interface/admin-con
     AdminMetricsService,
     AdminQuotaService,
     AdminBillingCompletenessService,
+    AdminVerifiedWebhooksService,
   ],
   controllers: [
     AdminController,
@@ -70,6 +73,7 @@ import { AdminConsoleBillingCompletenessController } from './interface/admin-con
     AdminConsoleOperationsController,
     AdminConsoleMetricsController,
     AdminConsoleBillingCompletenessController,
+    AdminConsoleVerifiedWebhooksController,
   ],
   exports: [AdminService, AdminMutationExecutor, AdminUsersService],
 })

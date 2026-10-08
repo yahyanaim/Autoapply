@@ -15,6 +15,7 @@ import type {
   AdminConsoleUserSummary,
   AdminConsoleUsersResponse,
   AdminConsoleQuotaGrantResponse,
+  AdminConsoleVerifiedWebhooksResponse,
 } from '@applyai/shared-types';
 import {
   AdminSessionStatus,
@@ -29,6 +30,13 @@ import type { ApiClient } from './client';
 
 declare const client: ApiClient;
 declare const sanitizedUser: AdminConsoleUserSummary;
+
+const verifiedWebhooks: Promise<AdminConsoleVerifiedWebhooksResponse> =
+  client.adminConsole.verifiedWebhooks({ from: '2026-10-08', to: '2026-10-08', limit: 20 });
+declare const verifiedWebhookResult: AdminConsoleVerifiedWebhooksResponse;
+// @ts-expect-error No provider event identifier is in the typed response.
+verifiedWebhookResult.items[0]?.eventId;
+void verifiedWebhooks;
 
 // @ts-expect-error Typed Admin client responses must not expose MFA enrollment state.
 sanitizedUser.mfaEnabled;

@@ -17,6 +17,7 @@ import { BillingFinancialMetricsRecorderService } from './billing-financial-metr
 import { isDisputeMovementEvent, selectDisputeMovement } from './billing-dispute-movement';
 import { BillingStripeFeeService, PreparedStripeFee } from './billing-stripe-fee.service';
 import { BillingFinancialCompletenessService } from './billing-financial-completeness.service';
+import { BillingVerifiedWebhookService } from './billing-verified-webhook.service';
 
 @Injectable()
 export class BillingService {
@@ -28,6 +29,7 @@ export class BillingService {
     private readonly stripeFees: BillingStripeFeeService,
     @Optional() private readonly clock: SystemClock = new SystemClock(),
     @Optional() private readonly completeness?: BillingFinancialCompletenessService,
+    @Optional() private readonly verifiedWebhooks?: BillingVerifiedWebhookService,
   ) {}
 
   async createCheckoutSession(userId: string, plan: SubscriptionPlan) {
@@ -64,12 +66,15 @@ export class BillingService {
     return { url: session.url };
   }
 
-  async handleWebhook(event: Stripe.Event) {
+  async handleWebhook(event: Stripe.Event, verifiedDeliveryId?: string) {
     const processed = await this.prisma.stripeWebhookEvent.findUnique({
       where: { eventId: event.id },
       select: { id: true },
     });
-    if (processed) return { received: true, duplicate: true };
+    if (processed) {
+      await this.verifiedWebhooks?.resolve(event.id, verifiedDeliveryId);
+      return { received: true, duplicate: true };
+    }
 
     // Persist a minimal recovery case before any external provider lookup.
     await this.completeness?.begin(event);
@@ -101,6 +106,7 @@ export class BillingService {
           retrievedDispute,
           feeEvidence,
         );
+        await this.verifiedWebhooks?.resolveInTransaction(transaction, event.id, verifiedDeliveryId);
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -108,7 +114,10 @@ export class BillingService {
           where: { eventId: event.id },
           select: { id: true },
         });
-        if (duplicate) return { received: true, duplicate: true };
+        if (duplicate) {
+          await this.verifiedWebhooks?.resolve(event.id, verifiedDeliveryId);
+          return { received: true, duplicate: true };
+        }
       }
       throw error;
     }
