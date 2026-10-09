@@ -23,7 +23,8 @@ export type AdminConsoleUserAction =
   | 'admin.session.revoke_all'
   | 'admin.job.deactivate'
   | 'admin.resume.requeue'
-  | 'admin.quota.grant';
+  | 'admin.quota.grant'
+  | 'admin.webhook.retry';
 
 /** Deliberately excludes credentials, MFA material, tokens, CVs, and billing data. */
 export interface AdminConsoleUserSummary {
@@ -174,7 +175,7 @@ export interface AdminConsoleOverviewResponse {
 export interface AdminConsoleStepUpRequest {
   code: string;
   action: AdminConsoleUserAction;
-  targetType: 'user' | 'session' | 'job' | 'resume';
+  targetType: 'user' | 'session' | 'job' | 'resume' | 'webhook_delivery';
   targetId: string;
 }
 
@@ -617,7 +618,21 @@ export interface AdminConsoleVerifiedWebhooksResponse {
     observedAt: string;
     finishedAt: string | null;
     resolvedAt: string | null;
+    /** Local eligibility only; Stripe may no longer retain the event at dispatch. */
+    retryEligible: boolean;
+    retryStatus: 'none' | 'pending' | 'processed' | 'needs_review';
   }>;
   limit: number;
   nextCursor: string | null;
+}
+
+export interface AdminConsoleVerifiedWebhookRetryRequest {
+  stepUpProof: string;
+  idempotencyKey: string;
+}
+
+export interface AdminConsoleVerifiedWebhookRetryResponse {
+  deliveryId: string;
+  status: 'retry_requested';
+  requestedAt: string;
 }

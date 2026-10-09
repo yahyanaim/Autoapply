@@ -42,6 +42,8 @@ import type {
   AdminConsoleBillingCompletenessResponse,
   AdminConsoleVerifiedWebhooksRequest,
   AdminConsoleVerifiedWebhooksResponse,
+  AdminConsoleVerifiedWebhookRetryRequest,
+  AdminConsoleVerifiedWebhookRetryResponse,
   AdminConsoleQuotaGrantRequest,
   AdminConsoleQuotaGrantResponse,
 } from '@applyai/shared-types';
@@ -397,6 +399,18 @@ export class ApiClient {
   };
 
   adminConsole = {
+    retryVerifiedWebhook: async (deliveryId: string,
+      input: AdminConsoleVerifiedWebhookRetryRequest,
+    ): Promise<AdminConsoleVerifiedWebhookRetryResponse> => {
+      const res = await this.http.post<AdminConsoleVerifiedWebhookRetryResponse>(
+        `/admin/console/verified-webhooks/${encodeURIComponent(deliveryId)}/retry`,
+        {},
+        { headers: { 'X-Admin-Step-Up-Proof': input.stepUpProof,
+          'Idempotency-Key': input.idempotencyKey } },
+      );
+      return res.data;
+    },
+
     verifiedWebhooks: async (
       params: AdminConsoleVerifiedWebhooksRequest,
     ): Promise<AdminConsoleVerifiedWebhooksResponse> => {

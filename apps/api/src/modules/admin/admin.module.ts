@@ -33,6 +33,7 @@ import { AdminBillingCompletenessService } from './application/admin-billing-com
 import { AdminConsoleBillingCompletenessController } from './interface/admin-console-billing-completeness.controller';
 import { AdminVerifiedWebhooksService } from './application/admin-verified-webhooks.service';
 import { AdminConsoleVerifiedWebhooksController } from './interface/admin-console-verified-webhooks.controller';
+import { AdminWebhookRetryService } from './application/admin-webhook-retry.service';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { AdminConsoleVerifiedWebhooksController } from './interface/admin-consol
     AdminQuotaService,
     AdminBillingCompletenessService,
     AdminVerifiedWebhooksService,
+    AdminWebhookRetryService,
   ],
   controllers: [
     AdminController,

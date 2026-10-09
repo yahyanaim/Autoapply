@@ -9,6 +9,7 @@ export enum AdminConsoleStepUpActionDto {
   deactivateJob = 'admin.job.deactivate',
   requeueResume = 'admin.resume.requeue',
   grantQuota = 'admin.quota.grant',
+  retryWebhook = 'admin.webhook.retry',
 }
 
 export class AdminConsoleStepUpRequestDto {
@@ -21,12 +22,12 @@ export class AdminConsoleStepUpRequestDto {
   @IsEnum(AdminConsoleStepUpActionDto)
   action!: AdminConsoleStepUpActionDto;
 
-  @ApiProperty({ enum: ['user', 'session', 'job', 'resume'] })
+  @ApiProperty({ enum: ['user', 'session', 'job', 'resume', 'webhook_delivery'] })
   @IsString()
-  @Matches(/^(user|session|job|resume)$/, {
-    message: 'targetType must be user, session, job, or resume',
+  @Matches(/^(user|session|job|resume|webhook_delivery)$/, {
+    message: 'targetType must be an approved Admin target type',
   })
-  targetType!: 'user' | 'session' | 'job' | 'resume';
+  targetType!: 'user' | 'session' | 'job' | 'resume' | 'webhook_delivery';
 
   @ApiProperty({
     description: 'Prisma CUID for users, jobs, or resumes; UUID v4 for sessions',
