@@ -18,6 +18,7 @@ vi.mock('next/link', () => ({
 }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/admin/console/metrics',
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 const safeResponse = {

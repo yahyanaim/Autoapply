@@ -14,7 +14,7 @@ vi.mock('@/lib/api/admin-api-client', () => ({
 vi.mock('next/link', () => ({
   default: ({ children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
 }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/admin/console/activity-logs' }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/admin/console/activity-logs', useRouter: () => ({ replace: vi.fn() }) }));
 
 const safeEvent = {
   id: 'audit-1',
@@ -68,7 +68,7 @@ describe('AdminActivityLogsPage', () => {
 
   it('sends approved filters, clears them, and never exposes the cursor', async () => {
     const rendered = view(<AdminActivityLogsPage />);
-    await settle();
+    await vi.waitFor(() => expect(rendered.container.querySelector('input[aria-label="Filter by Action"]')).not.toBeNull());
     setFormValue(rendered.required('input[aria-label="Filter by Action"]'), 'admin.user.suspend');
     await settle();
     await settle();
