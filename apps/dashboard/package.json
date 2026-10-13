@@ -28,7 +28,9 @@
     "next": "15.5.27",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-is": "19.2.8",
     "react-hook-form": "^7.49.3",
+    "recharts": "3.10.1",
     "tailwind-merge": "^2.2.0",
     "zod": "^3.22.4",
     "zustand": "^4.5.0"

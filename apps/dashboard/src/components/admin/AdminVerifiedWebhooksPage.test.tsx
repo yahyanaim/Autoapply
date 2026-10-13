@@ -10,7 +10,7 @@ const { verifiedWebhooks, issueStepUp, retryVerifiedWebhook } = vi.hoisted(() =>
 vi.mock('@/lib/api/admin-api-client', () => ({ adminApiClient: { adminConsole: {
   verifiedWebhooks, issueStepUp, retryVerifiedWebhook,
 } } }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/admin/console/verified-webhooks' }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/admin/console/verified-webhooks', useRouter: () => ({ replace: vi.fn() }) }));
 
 const safe = {
   coverage: 'partial', coverageStartAt: '2026-10-08T12:00:00.000Z',

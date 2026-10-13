@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AnchorHTMLAttributes } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, renderView, setFormValue } from '@/test/render';
 import { AdminBillingCompletenessPage } from './AdminBillingCompletenessPage';
 import { AdminConsoleShell } from './AdminConsoleShell';
@@ -12,7 +12,7 @@ vi.mock('@/lib/api/admin-api-client', () => ({
 vi.mock('next/link', () => ({
   default: ({ children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement>) => <a {...props}>{children}</a>,
 }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/admin/console/billing-completeness' }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/admin/console/billing-completeness', useRouter: () => ({ replace: vi.fn() }) }));
 
 const safe = {
   scanId: 'local_scan1', status: 'completed', reason: null,
@@ -38,7 +38,14 @@ function button(container: Element, text: string) {
 }
 
 describe('AdminBillingCompletenessPage', () => {
-  beforeEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); billingCompleteness.mockResolvedValue(safe); });
+  beforeEach(() => {
+    // This existing October 4 fixture predates Overview. Freeze Date only so its
+    // inclusive range stays valid without weakening the production seven-day cap.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-09T12:00:00.000Z'));
+    vi.clearAllMocks(); vi.unstubAllEnvs(); billingCompleteness.mockResolvedValue(safe);
+  });
+  afterEach(() => vi.useRealTimers());
 
   it('renders only safe classifications with typed read-only client data', async () => {
     const rendered = view();
@@ -69,7 +76,7 @@ describe('AdminBillingCompletenessPage', () => {
     click(button(rendered.container, 'Previous'));
     await vi.waitFor(() => expect(rendered.container.textContent).toContain('local_finding1'));
     setFormValue(rendered.required<HTMLInputElement>('input[aria-label="Scan from UTC day"]'), '2026-10-04');
-    await vi.waitFor(() => expect(billingCompleteness).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-04' })));
+    await vi.waitFor(() => expect(billingCompleteness).toHaveBeenLastCalledWith(expect.objectContaining({ from: '2026-10-04', to: '2026-10-09' })));
     click(button(rendered.container, 'New scan'));
     await vi.waitFor(() => expect(billingCompleteness.mock.calls.length).toBeGreaterThanOrEqual(4));
     rendered.cleanup();
