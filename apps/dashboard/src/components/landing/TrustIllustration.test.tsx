@@ -20,12 +20,14 @@ describe("landing trust illustrations", () => {
 
     expect(image.getAttribute("src")).toContain(encodeURIComponent(`/images/trust/${name}.webp`));
     expect(existsSync(resolve(process.cwd(), `public/images/trust/${name}.webp`))).toBe(true);
-    expect(image.getAttribute("width")).toBe("64");
-    expect(image.getAttribute("height")).toBe("48");
-    expect(image.getAttribute("sizes")).toBe("64px");
+    expect(image.getAttribute("width")).toBe("576");
+    expect(image.getAttribute("height")).toBe("576");
+    expect(image.getAttribute("sizes")).toBe("(min-width: 1024px) 176px, (min-width: 640px) 160px, 112px");
     expect(image.getAttribute("alt")).toBe("");
     expect(image.className).toContain("object-contain");
-    expect(image.parentElement?.className).toContain("h-12 w-16 shrink-0");
+    expect(image.parentElement?.className).toContain("h-28 w-28 shrink-0");
+    expect(image.parentElement?.className).toContain("sm:h-40 sm:w-full lg:h-44");
+    expect(image.parentElement?.className).not.toContain("overflow-hidden");
     expect(image.parentElement?.getAttribute("aria-hidden")).toBe("true");
     expect(container.querySelector("svg")).toBeNull();
   });
