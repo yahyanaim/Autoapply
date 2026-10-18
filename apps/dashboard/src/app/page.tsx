@@ -14,6 +14,7 @@ import { ApplyAILogo } from "@/components/brand/ApplyAILogo";
 import { FloatingCareerAssistant } from "@/components/career-chat/FloatingCareerAssistant";
 import { EarlyUserForm } from "@/components/landing/EarlyUserForm";
 import { FaqSection } from "@/components/landing/FaqSection";
+import { TrustIllustration } from "@/components/landing/TrustIllustration";
 import {
   isLandingLocale,
   LANDING_LOCALE_STORAGE_KEY,
@@ -1687,100 +1688,6 @@ export default function HomePage() {
       </footer>
       <FloatingCareerAssistant />
     </div>
-  );
-}
-
-function TrustIllustration({ variant }: { variant: number }) {
-  const orange = "#f2752c";
-  const ink = "#262621";
-  const paper = "#fffaf5";
-  const muted = "#d9d0c7";
-
-  return (
-    <span
-      className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#eee8e0]"
-      aria-hidden="true"
-    >
-      <svg viewBox="0 0 80 58" className="h-full w-full" fill="none">
-        <path
-          d="M-4 51C15 35 31 52 47 40C61 30 70 34 84 23V62H-4V51Z"
-          fill="#e1d6ca"
-        />
-        {variant === 0 && (
-          <>
-            <circle cx="30" cy="23" r="10" fill={muted} />
-            <path
-              d="M14 52C15 37 20 30 30 30C40 30 45 37 46 52H14Z"
-              fill={orange}
-            />
-            <circle cx="53" cy="19" r="8" fill={ink} />
-            <path
-              d="M42 44C43 32 47 27 53 27C61 27 65 33 66 44H42Z"
-              fill={paper}
-            />
-          </>
-        )}
-        {variant === 1 && (
-          <>
-            <rect x="18" y="8" width="40" height="46" rx="7" fill={paper} />
-            <path
-              d="M27 20H49M27 28H46M27 36H41"
-              stroke={muted}
-              strokeWidth="4"
-              strokeLinecap="round"
-            />
-            <path
-              d="M43 45L48 49L57 39"
-              stroke={orange}
-              strokeWidth="4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </>
-        )}
-        {variant === 2 && (
-          <>
-            <rect x="12" y="18" width="43" height="32" rx="8" fill={ink} />
-            <rect x="24" y="10" width="43" height="32" rx="8" fill={paper} />
-            <circle cx="45" cy="26" r="8" fill={orange} />
-            <path
-              d="M45 22V29"
-              stroke={paper}
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-            <circle cx="45" cy="31" r="1.5" fill={paper} />
-          </>
-        )}
-        {variant === 3 && (
-          <>
-            <path
-              d="M19 39L38 19L61 37"
-              stroke={ink}
-              strokeWidth="4"
-              strokeLinecap="round"
-            />
-            <circle
-              cx="19"
-              cy="39"
-              r="8"
-              fill={paper}
-              stroke={orange}
-              strokeWidth="3"
-            />
-            <circle
-              cx="38"
-              cy="19"
-              r="8"
-              fill={paper}
-              stroke={orange}
-              strokeWidth="3"
-            />
-            <circle cx="61" cy="37" r="8" fill={ink} />
-          </>
-        )}
-      </svg>
-    </span>
   );
 }
 
