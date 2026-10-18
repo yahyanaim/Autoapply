@@ -1098,12 +1098,15 @@ export default function HomePage() {
 
             <div className="mt-4 grid gap-4 md:grid-cols-3">
               <article className="rounded-2xl border border-black/[0.07] bg-[#f7f4ef] p-5">
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm text-primary-600"
+                <Image
+                  src="/images/guidance/why-this-role-fits.webp"
+                  alt=""
                   aria-hidden="true"
-                >
-                  ✦
-                </span>
+                  width={576}
+                  height={576}
+                  sizes="(min-width: 640px) 128px, 112px"
+                  className="h-28 w-28 object-contain sm:h-32 sm:w-32"
+                />
                 <p className="mt-4 text-sm font-semibold text-[#262621]">
                   {t("Why this role fits")}
                 </p>
@@ -1119,12 +1122,15 @@ export default function HomePage() {
                 </p>
               </article>
               <article className="rounded-2xl border border-black/[0.07] bg-white p-5">
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 text-sm text-primary-600"
+                <Image
+                  src="/images/guidance/your-words-stay-yours.webp"
+                  alt=""
                   aria-hidden="true"
-                >
-                  ☻
-                </span>
+                  width={576}
+                  height={576}
+                  sizes="(min-width: 640px) 128px, 112px"
+                  className="h-28 w-28 object-contain sm:h-32 sm:w-32"
+                />
                 <p className="mt-4 text-sm font-semibold text-[#262621]">
                   {t("Your words stay yours")}
                 </p>
@@ -1135,12 +1141,15 @@ export default function HomePage() {
                 </p>
               </article>
               <article className="relative overflow-hidden rounded-2xl bg-primary-500 p-5 text-white">
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/18 text-sm"
+                <Image
+                  src="/images/guidance/you-choose-submit.webp"
+                  alt=""
                   aria-hidden="true"
-                >
-                  ↗
-                </span>
+                  width={576}
+                  height={576}
+                  sizes="(min-width: 640px) 128px, 112px"
+                  className="h-28 w-28 object-contain sm:h-32 sm:w-32"
+                />
                 <p className="mt-4 text-sm font-semibold">
                   {t("You choose submit")}
                 </p>
