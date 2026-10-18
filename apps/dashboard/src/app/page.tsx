@@ -650,33 +650,31 @@ export default function HomePage() {
               ))}
             </div>
 
-            <div className="mt-20 sm:mt-28">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-gray-400">
+            <section className="mt-20 sm:mt-28" aria-labelledby="responsible-applications-heading">
+              <h2 id="responsible-applications-heading" className="mx-auto max-w-2xl text-balance text-2xl font-medium leading-tight tracking-[-0.025em] text-gray-900 sm:text-3xl">
                 {t("Built for responsible, secure applications")}
-              </p>
-              <div className="mt-7 grid border-y border-black/[0.07] sm:grid-cols-2 lg:grid-cols-4">
+              </h2>
+              <div className="mt-8 grid text-center sm:grid-cols-2 lg:grid-cols-4">
                 {localizedTrustSignals.map(({ label, detail }, index) => (
-                  <div
+                  <article
                     key={label}
-                    className={`flex items-center gap-3 border-b border-black/[0.07] px-5 py-5 text-left sm:border-r ${
-                      index >= 2 ? "sm:border-b-0" : ""
-                    } ${index % 2 === 1 ? "sm:border-r-0" : ""} ${
-                      index === localizedTrustSignals.length - 1
-                        ? "lg:border-r-0"
-                        : ""
-                    } lg:border-b-0 lg:border-r`}
+                    className={`flex min-w-0 flex-col items-center gap-4 px-5 py-6 sm:gap-5 sm:px-7 sm:py-8 ${
+                      index > 0 ? "border-t border-black/[0.07]" : ""
+                    } ${index === 1 ? "sm:border-t-0" : ""} ${
+                      index % 2 === 1 ? "sm:border-s sm:border-black/[0.07]" : ""
+                    } lg:border-t-0 ${index > 0 ? "lg:border-s lg:border-black/[0.07]" : ""}`}
                   >
                     <TrustIllustration variant={index} />
-                    <div>
-                      <p className="text-sm font-semibold">{label}</p>
-                      <p className="mt-0.5 text-xs leading-5 text-gray-500">
+                    <div className="min-w-0 sm:mt-auto">
+                      <h3 className="text-base font-semibold leading-6 text-gray-900">{label}</h3>
+                      <p className="mt-1.5 text-sm leading-6 text-gray-600">
                         {detail}
                       </p>
                     </div>
-                  </div>
+                  </article>
                 ))}
               </div>
-            </div>
+            </section>
           </div>
         </section>
 
