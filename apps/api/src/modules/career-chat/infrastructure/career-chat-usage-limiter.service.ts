@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CareerChatMessage } from '../domain/career-chat-provider.interface';
+import { CAREER_CHAT_DEFAULT_REQUEST_UNITS } from '../domain/career-chat-limits';
 
 type RedisBudgetClient = Pick<Redis, 'eval' | 'quit' | 'disconnect' | 'on'>;
 
@@ -71,23 +72,23 @@ export class CareerChatUsageLimiter implements OnModuleDestroy {
   ): Promise<number> {
     // UTF-8 bytes are a deliberately conservative tokenizer-independent upper
     // bound, including for Arabic and mixed-script conversations.
-    const estimatedInputTokens = messages.reduce(
-      (total, message) => total + Buffer.byteLength(message.content, 'utf8'),
-      0,
+    const perAttemptTokens = estimateCareerChatRequestUnits(
+      messages,
+      maxOutputTokens,
     );
-    const perAttemptTokens =
-      Math.max(1, estimatedInputTokens) + maxOutputTokens;
     const requestedTokens =
       perAttemptTokens * Math.max(1, Math.floor(maximumAttempts));
     const maxRequestTokens = this.config.get<number>(
       'DAHL_CAREER_CHAT_MAX_REQUEST_TOKENS',
-      3_500,
+      CAREER_CHAT_DEFAULT_REQUEST_UNITS,
     );
 
     if (perAttemptTokens > maxRequestTokens) {
-      throw new PayloadTooLargeException(
-        'The conversation is too long. Start a new chat and try again.',
-      );
+      throw new PayloadTooLargeException({
+        code: 'CAREER_CHAT_REQUEST_BUDGET_EXCEEDED',
+        message:
+          'This request exceeds the Career Assistant request allowance. Shorten your message or start a new chat.',
+      });
     }
 
     const dailyLimit = this.config.get<number>(
@@ -232,4 +233,20 @@ export class CareerChatUsageLimiter implements OnModuleDestroy {
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1) - now.getTime()
     );
   }
+}
+
+/** Conservative input bytes plus maximum output tokens, for one attempt. */
+export function estimateCareerChatRequestUnits(
+  messages: CareerChatMessage[],
+  maxOutputTokens: number,
+): number {
+  return (
+    Math.max(
+      1,
+      messages.reduce(
+        (total, message) => total + Buffer.byteLength(message.content, 'utf8'),
+        0,
+      ),
+    ) + maxOutputTokens
+  );
 }

@@ -5,6 +5,16 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { CareerChatUsageLimiter } from '../src/modules/career-chat/infrastructure/career-chat-usage-limiter.service';
+import { estimateCareerChatRequestUnits } from '../src/modules/career-chat/infrastructure/career-chat-usage-limiter.service';
+import {
+  CareerChatService,
+  prepareCareerChatMessages,
+} from '../src/modules/career-chat/application/career-chat.service';
+import { DahlCareerChatProvider } from '../src/modules/career-chat/infrastructure/dahl-career-chat.provider';
+import {
+  StaticCareerChatContextService,
+  standaloneCareerChatContextText,
+} from '../src/standalone/static-career-chat-context.service';
 
 describe('Career Assistant integration: shared Redis budgets', () => {
   let cleanupRedis: Redis;
@@ -69,6 +79,65 @@ describe('Career Assistant integration: shared Redis budgets', () => {
     await expect(
       limiter.reserve([{ role: 'user', content: 'x'.repeat(404) }], 1),
     ).rejects.toBeInstanceOf(PayloadTooLargeException);
+  });
+
+  it('admits a real framed first question once across instances and reserves every allowed attempt', async () => {
+    const messages = [{ role: 'user' as const, content: 'Hi' }];
+    const prepared = DahlCareerChatProvider.toDahlCompatibleMessages(
+      prepareCareerChatMessages(messages, standaloneCareerChatContextText()),
+    );
+    const reserved = estimateCareerChatRequestUnits(prepared, 700) * 3;
+    const values = config({
+      REDIS_URL: process.env.REDIS_URL,
+      CAREER_CHAT_ENABLED: true,
+      DAHL_CAREER_CHAT_API_KEY: 'synthetic-integration-key-not-a-secret',
+      DAHL_CAREER_CHAT_DAILY_TOKEN_BUDGET: reserved,
+      DAHL_CAREER_CHAT_MONTHLY_TOKEN_BUDGET: reserved,
+    });
+    limiter = new CareerChatUsageLimiter(values);
+    const other = new CareerChatUsageLimiter(values);
+    const originalFetch = global.fetch;
+    const upstream = jest.fn().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: 'A synthetic career answer.' } }],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    global.fetch = upstream;
+    try {
+      const create = (budget: CareerChatUsageLimiter) =>
+        new CareerChatService(
+          new DahlCareerChatProvider(values, budget),
+          new StaticCareerChatContextService(),
+        );
+      const outcomes = await Promise.allSettled([
+        create(limiter).answer(messages),
+        create(other).answer(messages),
+      ]);
+      expect(
+        outcomes.filter((outcome) => outcome.status === 'fulfilled'),
+      ).toHaveLength(1);
+      const failed = outcomes.find(
+        (outcome) => outcome.status === 'rejected',
+      ) as PromiseRejectedResult;
+      expect(failed.reason).toBeInstanceOf(ServiceUnavailableException);
+      expect(upstream).toHaveBeenCalledTimes(1);
+      const day = new Date().toISOString().slice(0, 10);
+      expect(
+        await cleanupRedis.get(`applyai:career-chat:budget:day:${day}`),
+      ).toBe(String(reserved));
+      expect(
+        await cleanupRedis.get(
+          `applyai:career-chat:budget:month:${day.slice(0, 7)}`,
+        ),
+      ).toBe(String(reserved));
+    } finally {
+      global.fetch = originalFetch;
+      await other.onModuleDestroy();
+    }
   });
 });
 

@@ -12,13 +12,17 @@ import {
 export class StaticCareerChatContextService implements CareerChatContextProvider {
   async build(): Promise<CareerChatContext> {
     return {
-      text: [
-        officialMoroccoCareerContext(),
-        '',
-        'Current job listings are not connected in standalone mode.',
-        'Do not describe a vacancy as current unless the user supplies its details and source.',
-      ].join('\n'),
+      text: standaloneCareerChatContextText(),
       allowedSources: [...OFFICIAL_MOROCCO_CAREER_SOURCES],
     };
   }
+}
+
+export function standaloneCareerChatContextText(): string {
+  return [
+    officialMoroccoCareerContext(),
+    '',
+    'Current job listings are not connected in standalone mode.',
+    'Do not describe a vacancy as current unless the user supplies its details and source.',
+  ].join('\n');
 }

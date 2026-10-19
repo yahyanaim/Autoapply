@@ -15,6 +15,10 @@ import {
   CareerChatProvider,
 } from '../domain/career-chat-provider.interface';
 import { CareerChatUsageLimiter } from './career-chat-usage-limiter.service';
+import {
+  CAREER_CHAT_DEFAULT_OUTPUT_TOKENS,
+  CAREER_CHAT_MESSAGE_CHARACTERS,
+} from '../domain/career-chat-limits';
 
 interface DahlChatResponse {
   model?: unknown;
@@ -30,6 +34,7 @@ class DahlRequestFailure extends Error {
     readonly retryable: boolean,
     readonly countsTowardCircuit: boolean,
     readonly status?: number,
+    readonly reason?: 'response_too_long',
   ) {
     super('Dahl request failed');
   }
@@ -80,13 +85,14 @@ export class DahlCareerChatProvider implements CareerChatProvider {
     );
     const maxOutputTokens = this.config.get<number>(
       'DAHL_CAREER_CHAT_MAX_OUTPUT_TOKENS',
-      700,
+      CAREER_CHAT_DEFAULT_OUTPUT_TOKENS,
     );
     const maxRetries = this.config.get<number>(
       'DAHL_CAREER_CHAT_MAX_RETRIES',
       2,
     );
-    const preparedMessages = this.toDahlCompatibleMessages(messages);
+    const preparedMessages =
+      DahlCareerChatProvider.toDahlCompatibleMessages(messages);
     const dahlFetch = ((input: unknown, init?: unknown) =>
       globalThis.fetch(
         input as string | URL | Request,
@@ -197,12 +203,20 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       if (error instanceof DahlRequestFailure) {
         if (error.countsTowardCircuit) this.recordFailure();
         this.logAnonymousMetric(
-          error.status ? `http_${error.status}` : 'invalid_response',
+          error.reason ??
+            (error.status ? `http_${error.status}` : 'invalid_response'),
           model,
           startedAt,
           reservedTokens,
           attempts,
         );
+        if (error.reason === 'response_too_long') {
+          throw new BadGatewayException({
+            code: 'CAREER_CHAT_RESPONSE_TOO_LONG',
+            message:
+              'The Career Assistant response exceeded the message limit. Ask for a shorter answer.',
+          });
+        }
         throw new BadGatewayException(
           'The Morocco career assistant is temporarily unavailable',
         );
@@ -311,7 +325,7 @@ export class DahlCareerChatProvider implements CareerChatProvider {
    * System policy, reference context, and conversation are JSON encoded into
    * separate fields so an injected closing tag cannot escape its data section.
    */
-  private toDahlCompatibleMessages(
+  static toDahlCompatibleMessages(
     messages: CareerChatMessage[],
   ): CareerChatMessage[] {
     const systemMessages = messages.filter(
@@ -350,9 +364,19 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       .replaceAll('<', '‹')
       .replaceAll('>', '›')
       .trim();
-    const maximumCharacters = maxOutputTokens * 12;
+    const maximumCharacters = Math.min(
+      maxOutputTokens * 12,
+      CAREER_CHAT_MESSAGE_CHARACTERS,
+    );
     if (normalized.length > maximumCharacters) {
-      throw new DahlRequestFailure(false, true);
+      // Reject intact: never silently truncate or accept an answer that the
+      // next request's unchanged per-message DTO cannot validate.
+      throw new DahlRequestFailure(
+        false,
+        true,
+        undefined,
+        'response_too_long',
+      );
     }
     return normalized;
   }

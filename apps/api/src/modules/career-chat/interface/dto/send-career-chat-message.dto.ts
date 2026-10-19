@@ -10,17 +10,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { CAREER_CHAT_MESSAGE_CHARACTERS } from '../../domain/career-chat-limits';
 
 export class CareerChatMessageDto {
   @ApiProperty({ enum: ['user', 'assistant'] })
   @IsIn(['user', 'assistant'])
   role!: 'user' | 'assistant';
 
-  @ApiProperty({ minLength: 1, maxLength: 2_000 })
+  @ApiProperty({ minLength: 1, maxLength: CAREER_CHAT_MESSAGE_CHARACTERS })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MinLength(1)
-  @MaxLength(2_000)
+  @MaxLength(CAREER_CHAT_MESSAGE_CHARACTERS)
   content!: string;
 }
 
