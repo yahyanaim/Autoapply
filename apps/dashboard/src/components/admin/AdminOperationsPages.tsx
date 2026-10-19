@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
-  AdminConsoleApplicationsRequest,
   AdminConsoleJobsRequest,
-  AdminConsoleNotificationsRequest,
 } from '@applyai/shared-types';
 import {
   JobDeactivationReason,
@@ -128,36 +126,4 @@ export function AdminResumeFailuresPage() {
   return <section className="space-y-5"><Header title="Resume Failures" detail="Sanitized processing state with one bounded administrative requeue for explicitly transient failures." />{data.failures.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[820px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Resume reference</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Failure</th><th className="px-4 py-3">Attempts</th><th className="px-4 py-3">Failed</th><th className="px-4 py-3">Action</th></tr></thead><tbody className="divide-y divide-stone-100">{data.failures.map((failure) => { const mappedReason = requeueReasonFor(failure.failureCategory); return <tr key={failure.resumeId}><td className="px-4 py-3 font-mono text-xs">{failure.resumeId}</td><td className="px-4 py-3">{failure.mimeType ?? 'Unknown'}</td><td className="px-4 py-3">{failure.failureCategory.replaceAll('_', ' ')}</td><td className="px-4 py-3 tabular-nums">{failure.executionCount}</td><td className="px-4 py-3 whitespace-nowrap">{new Date(failure.failedAt).toLocaleString()}</td><td className="px-4 py-3">{failure.requeueable && mappedReason ? <Button variant="outline" size="sm" onClick={() => { setSelectedResumeId(failure.resumeId); setReason(mappedReason); setCode(''); setIdempotencyKey(crypto.randomUUID()); requeue.reset(); }}>Requeue</Button> : <span className="text-xs text-gray-500">Not requeueable</span>}</td></tr>; })}</tbody></table></div> : <State title="No resume failures" detail="No failed resume-processing records were returned." />}{selectedResumeId && reason ? <form className="grid gap-3 border border-orange-200 bg-orange-50 p-4 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-end" onSubmit={(event) => { event.preventDefault(); requeue.mutate(selectedResumeId); }}><p className="text-sm text-gray-700"><span className="block text-xs font-medium">Approved reason</span>{reason.replaceAll('_', ' ')}</p><label className="grid gap-1 text-xs font-medium text-gray-700">Authenticator code<input aria-label="Resume requeue authenticator code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className="h-9 rounded-md border border-stone-300 bg-white px-3 text-sm" /></label><Button type="submit" size="sm" disabled={code.length !== 6 || requeue.isPending}>{requeue.isPending ? 'Requesting…' : 'Confirm requeue'}</Button><Button type="button" variant="outline" size="sm" onClick={() => { setSelectedResumeId(undefined); setReason(undefined); setIdempotencyKey(''); }}>Cancel</Button>{requeue.isError ? <p role="alert" className="text-sm text-red-700 sm:col-span-4">Resume requeue failed. Verify eligibility and the step-up code, then retry.</p> : null}</form> : null}<Pagination cursor={cursor} setCursor={setCursor} history={history} setHistory={setHistory} nextCursor={data.nextCursor} /></section>;
 }
 
-export function AdminBetaGatePage() {
-  const query = useQuery({ queryKey: ['admin-console', 'beta-gate'], queryFn: () => adminApiClient.adminConsole.betaGate() });
-  if (query.isLoading) return <Loading label="Loading Beta Gate" />;
-  if (query.isError) return <State title="Could not load Beta Gate" detail="The durable gate summary is unavailable." retry={() => void query.refetch()} />;
-  if (!query.data) return null;
-  const gate = query.data;
-  return <section className="space-y-5"><Header title="Beta Gate" detail="Durable registration capacity. Runtime configuration is read-only." /><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Registrations', gate.registrationCount], ['Capacity', gate.capacity], ['Remaining', gate.remainingSlots], ['Status', gate.status]].map(([label, value]) => <article key={label} className="border border-stone-200 bg-white p-5"><p className="text-sm text-gray-600">{label}</p><p className="mt-2 text-3xl font-semibold capitalize tabular-nums">{value}</p></article>)}</div>{!gate.enabled ? <p className="border border-stone-200 bg-stone-50 p-4 text-sm text-gray-600">Beta mode is disabled. This page does not change runtime configuration.</p> : null}</section>;
-}
-
-export function AdminNotificationsPage() {
-  const [cursor, setCursor] = useState<string>();
-  const [history, setHistory] = useState<Array<string | undefined>>([]);
-  const params = useMemo<AdminConsoleNotificationsRequest>(() => ({ limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) }), [cursor]);
-  const query = useQuery({ queryKey: ['admin-console', 'notifications', params], queryFn: () => adminApiClient.adminConsole.notifications(params) });
-  if (query.isLoading) return <Loading label="Loading notification operations" />;
-  if (query.isError) return <State title="Could not load notifications" detail="The bounded delivery summary is unavailable." retry={() => void query.refetch()} />;
-  const data = query.data;
-  if (!data) return null;
-  return <section className="space-y-5"><Header title="Notifications" detail="Delivery counts and sanitized failures from the last 24 hours." /><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{Object.entries(data.rollup).map(([label, value]) => <article key={label} className="border border-stone-200 bg-white p-4"><p className="text-xs uppercase text-gray-500">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p></article>)}</div>{data.failures.length ? <div className="overflow-x-auto border border-stone-200 bg-white"><table className="w-full min-w-[600px] text-left text-sm"><thead className="bg-stone-50 text-xs uppercase text-gray-500"><tr><th className="px-4 py-3">Failure</th><th className="px-4 py-3">Channel</th><th className="px-4 py-3">Created</th></tr></thead><tbody className="divide-y divide-stone-100">{data.failures.map((failure) => <tr key={failure.id}><td className="px-4 py-3 font-mono text-xs">{failure.id}</td><td className="px-4 py-3">{failure.channel}</td><td className="px-4 py-3">{new Date(failure.createdAt).toLocaleString()}</td></tr>)}</tbody></table></div> : <State title="No delivery failures" detail="No failed notifications occurred in this bounded period." />}<Pagination cursor={cursor} setCursor={setCursor} history={history} setHistory={setHistory} nextCursor={data.nextCursor} /></section>;
-}
-
-export function AdminApplicationsPage() {
-  const [createdFrom, setCreatedFrom] = useState('');
-  const [createdTo, setCreatedTo] = useState('');
-  const invalid = Boolean(createdFrom && createdTo && createdFrom > createdTo);
-  const params = useMemo<AdminConsoleApplicationsRequest>(() => ({ ...(createdFrom ? { createdFrom: new Date(createdFrom).toISOString() } : {}), ...(createdTo ? { createdTo: new Date(createdTo).toISOString() } : {}) }), [createdFrom, createdTo]);
-  const query = useQuery({ queryKey: ['admin-console', 'applications', params], queryFn: () => adminApiClient.adminConsole.applications(params), enabled: !invalid });
-  if (invalid) return <State title="Invalid date range" detail="The start date must be before the end date." />;
-  if (query.isLoading) return <Loading label="Loading aggregate applications" />;
-  if (query.isError) return <State title="Could not load applications" detail="The aggregate application summary is unavailable." retry={() => void query.refetch()} />;
-  if (!query.data) return null;
-  return <section className="space-y-5"><Header title="Aggregate Applications" detail="Non-attributable application volumes only." /><div className="flex flex-wrap gap-3 border border-stone-200 bg-white p-3"><label className="grid gap-1 text-xs text-gray-600">Created from<input type="datetime-local" value={createdFrom} onChange={(event) => setCreatedFrom(event.target.value)} className="h-9 rounded-md border border-stone-300 px-3 text-sm" /></label><label className="grid gap-1 text-xs text-gray-600">Created to<input type="datetime-local" value={createdTo} onChange={(event) => setCreatedTo(event.target.value)} className="h-9 rounded-md border border-stone-300 px-3 text-sm" /></label></div><article className="border border-stone-200 bg-white p-5"><p className="text-sm text-gray-600">Total applications</p><p className="mt-2 text-4xl font-semibold tabular-nums">{query.data.total}</p></article><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{Object.entries(query.data.byStatus).map(([status, count]) => <article key={status} className="border border-stone-200 bg-white p-4"><p className="text-sm capitalize text-gray-600">{status.replaceAll('_', ' ')}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{count}</p></article>)}</div></section>;
-}
+export { AdminBetaGatePage, AdminNotificationsPage, AdminApplicationsPage } from './AdminReadOperationsPages';
