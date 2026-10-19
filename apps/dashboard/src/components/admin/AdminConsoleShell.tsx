@@ -59,9 +59,9 @@ function AdminConsoleFrame({ children }: { children: React.ReactNode }) {
   const { locale } = useAdminLocale();
   const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLButtonElement>(null);
-  const isOverview = pathname === '/admin/console/overview';
+  const isLocalizedView = ['/admin/console/overview', '/admin/console/beta-gate', '/admin/console/notifications', '/admin/console/applications'].includes(pathname);
   // Other existing Admin views retain their original English content until they have reviewed translations.
-  const visibleLocale = isOverview ? locale : 'en';
+  const visibleLocale = isLocalizedView ? locale : 'en';
   const copy = shellCopy[visibleLocale];
   const currentIndex = navigation.findIndex((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -87,7 +87,7 @@ function AdminConsoleFrame({ children }: { children: React.ReactNode }) {
             <div><p className="text-xs font-semibold">{copy.console}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{copy.workspace}</p></div>
             {currentIndex >= 0 ? <><span aria-hidden="true" className="h-5 w-px bg-border" /><span className="truncate text-xs font-medium text-primary-800">{copy.nav[currentIndex]}</span></> : null}
           </div>
-          <AdminHeaderControls locale={visibleLocale} languageEnabled={isOverview} operationsEnabled={enabled} />
+          <AdminHeaderControls locale={visibleLocale} languageEnabled={isLocalizedView} operationsEnabled={enabled} />
         </div>
       </header>
       <div className="mx-auto grid max-w-[1460px] gap-3 px-3 pb-10 pt-4 sm:px-6 lg:grid-cols-[72px_minmax(0,1fr)] lg:gap-5">

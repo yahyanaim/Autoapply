@@ -4,12 +4,13 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { click, renderView, setFormValue } from '@/test/render';
 import { AdminApplicationsPage, AdminBetaGatePage, AdminJobsPage, AdminNotificationsPage, AdminResumeFailuresPage } from './AdminOperationsPages';
+import { AdminLocaleProvider } from './AdminLocale';
 
 const api = vi.hoisted(() => ({ jobs: vi.fn(), issueStepUp: vi.fn(), deactivateJob: vi.fn(), resumeFailures: vi.fn(), requeueResume: vi.fn(), betaGate: vi.fn(), notifications: vi.fn(), applications: vi.fn() }));
 vi.mock('@/lib/api/admin-api-client', () => ({ adminApiClient: { adminConsole: api } }));
 
 function view(node: ReactNode) {
-  return renderView(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{node}</QueryClientProvider>);
+  return renderView(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><AdminLocaleProvider initialLocale="en" persist={false}>{node}</AdminLocaleProvider></QueryClientProvider>);
 }
 async function settle() { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); }
 

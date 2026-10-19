@@ -123,6 +123,15 @@ describe('AdminConsoleShell navigation', () => {
     expect(auth.logout).not.toHaveBeenCalled();
     rendered.cleanup();
   });
+  it.each(['/admin/console/beta-gate', '/admin/console/notifications', '/admin/console/applications'])('enables reviewed locale controls on %s without changing destinations', (pathname) => {
+    route.pathname = pathname;
+    window.localStorage.setItem('applyai-admin-locale', 'ar');
+    const rendered = renderView(<AdminConsoleShell><p>Safe read page</p></AdminConsoleShell>);
+    expect(rendered.container.querySelector('[lang="ar"][dir="rtl"]')).not.toBeNull();
+    expect(rendered.container.querySelector('summary[aria-label="تغيير اللغة"]')).not.toBeNull();
+    expect(rendered.container.querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe(pathname);
+    expect(auth.logout).not.toHaveBeenCalled(); rendered.cleanup();
+  });
 
   it('uses only the existing account profile/edit destination and supported logout, with no request on opening', async () => {
     const rendered = renderView(<AdminConsoleShell><p>Overview</p></AdminConsoleShell>);
