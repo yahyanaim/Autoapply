@@ -46,6 +46,10 @@ dashboard data, billing, resume processing, and extension handoff use only
 `NEXT_PUBLIC_API_URL`. Nori appears only on the homepage and uses only
 `NEXT_PUBLIC_CAREER_CHAT_API_URL`, without authentication cookies or tokens.
 
+The public homepage renders while session restoration runs in the background;
+an unavailable or slow product API must not leave it blank. A successfully
+restored authenticated session still redirects to the dashboard.
+
 ## 2.1 Configure the Chrome extension
 
 Build the extension with the same public origins:

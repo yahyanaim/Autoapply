@@ -72,6 +72,14 @@ PRODUCTION_NORI_API_URL=https://nori.example.com
 Leave `PRODUCTION_NORI_API_URL` empty only while Nori is intentionally not
 public. The API domains must be HTTPS and must not contain credentials.
 
+When only the landing page and standalone Nori service are deployed, leave
+`PRODUCTION_API_URL` unset until the full Product API has been deployed and its
+readiness endpoint verified. Product API health verification is deferred during
+this phase; the production-origin smoke workflow cannot pass its required API
+configuration check. A published landing page is not evidence that registration,
+login, or authenticated job discovery works in production. The standalone Nori
+origin must not be substituted for the Product API origin.
+
 The smoke job intentionally listens only to Vercel's dashboard deployment
 environment, currently named `Production – autoapply`. This avoids duplicate
 checks from separate Vercel projects while still checking the dashboard and the
