@@ -5,7 +5,7 @@ const localBaseUrl = "http://127.0.0.1:3191";
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: /landing-marquee\.e2e\.ts/,
+  testMatch: /landing-(marquee|session)\.e2e\.ts/,
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
