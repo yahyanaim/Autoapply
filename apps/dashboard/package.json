@@ -9,7 +9,8 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:landing-e2e": "playwright test --config playwright.config.ts"
   },
   "dependencies": {
     "@applyai/api-client": "workspace:*",
@@ -36,6 +37,7 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.46.0",
     "@types/node": "^24.13.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",

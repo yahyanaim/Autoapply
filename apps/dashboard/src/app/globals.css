@@ -117,12 +117,18 @@
   }
 
   .feature-marquee-track {
+    /* Account for both padded edges when aligning the two copies at the loop. */
+    --feature-marquee-offset: calc(-50% + 0.625rem);
     display: flex;
     width: max-content;
     gap: 1.25rem;
     padding-inline: 1.25rem;
     animation: feature-marquee 42s linear infinite;
     will-change: transform;
+  }
+
+  .feature-marquee-track:dir(rtl) {
+    --feature-marquee-offset: calc(50% - 0.625rem);
   }
 
   .feature-marquee:hover .feature-marquee-track {
@@ -141,11 +147,16 @@
   }
 
   .company-logo-row {
+    --company-logo-offset: calc(-50% - 2rem);
     display: flex;
     width: max-content;
     gap: 4rem;
     animation: company-logo-marquee 34s linear infinite;
     will-change: transform;
+  }
+
+  .company-logo-row:dir(rtl) {
+    --company-logo-offset: calc(50% + 2rem);
   }
 
   .company-logo-row-reverse {
@@ -178,19 +189,19 @@
 
 @keyframes feature-marquee {
   to {
-    transform: translateX(calc(-50% - 0.625rem));
+    transform: translateX(var(--feature-marquee-offset));
   }
 }
 
 @keyframes company-logo-marquee {
   to {
-    transform: translateX(calc(-50% - 2rem));
+    transform: translateX(var(--company-logo-offset));
   }
 }
 
 @keyframes company-logo-marquee-reverse {
   from {
-    transform: translateX(calc(-50% - 2rem));
+    transform: translateX(var(--company-logo-offset));
   }
 
   to {
