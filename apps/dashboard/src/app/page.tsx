@@ -327,7 +327,7 @@ export default function HomePage() {
   }, [locale]);
 
   useEffect(() => {
-    if (!isInitialized || user) return;
+    if (user) return;
 
     setTypedHeadlineLength(0);
 
@@ -353,9 +353,9 @@ export default function HomePage() {
       window.clearTimeout(startTimer);
       if (typingTimer) clearInterval(typingTimer);
     };
-  }, [heroHeadline, isInitialized, user]);
+  }, [heroHeadline, user]);
 
-  if (!isInitialized || user) return null;
+  if (user) return null;
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
