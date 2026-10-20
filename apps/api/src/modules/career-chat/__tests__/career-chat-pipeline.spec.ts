@@ -95,6 +95,81 @@ describe('real Nori request pipeline (only upstream HTTP is mocked)', () => {
     jest.restoreAllMocks();
   });
 
+  it('returns only final text and final-answer sources through the real pipeline', async () => {
+    global.fetch = jest
+      .fn()
+      .mockImplementation(async () =>
+        response(
+          '<think>PRIVATE_REASONING https://www.anapec.org/</think>Consultez https://www.emploi-public.ma/',
+        ),
+      );
+    const { service, limiter } = pipeline();
+    const logs = ['log', 'warn', 'error'].map((method) =>
+      jest.spyOn(Logger.prototype, method as 'log' | 'warn' | 'error'),
+    );
+    try {
+      const result = await service.answer(
+        validated([{ role: 'user', content: 'Où chercher ?' }]),
+      );
+      expect(result.answer).toBe('Consultez https://www.emploi-public.ma/');
+      expect(result.sources).toEqual(['https://www.emploi-public.ma/']);
+      expect(
+        JSON.stringify(result) +
+          JSON.stringify(logs.flatMap((spy) => spy.mock.calls)),
+      ).not.toContain('PRIVATE_REASONING');
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      await limiter.onModuleDestroy();
+    }
+  });
+
+  it('preserves invalid-response circuit behavior after reasoning-only failures', async () => {
+    const fetch = jest
+      .fn()
+      .mockImplementation(async () =>
+        response('<think>PRIVATE_REASONING</think>'),
+      );
+    global.fetch = fetch;
+    const { service, limiter } = pipeline();
+    try {
+      for (let index = 0; index < 3; index += 1) {
+        const error = await service
+          .answer(validated([{ role: 'user', content: 'Hi' }]))
+          .catch((e) => e);
+        expect(error.getStatus()).toBe(502);
+        expect(JSON.stringify(error.getResponse())).not.toContain(
+          'PRIVATE_REASONING',
+        );
+      }
+      const error = await service
+        .answer(validated([{ role: 'user', content: 'Hi' }]))
+        .catch((e) => e);
+      expect(error.getStatus()).toBe(503);
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      await limiter.onModuleDestroy();
+    }
+  });
+
+  it('returns the canonical owner source for an approved citation with a fragment', async () => {
+    const answer = 'Consultez [ANAPEC](https://www.anapec.org/#jobs).';
+    const fetch = jest.fn().mockImplementation(async () => response(answer));
+    global.fetch = fetch;
+    const { service, limiter } = pipeline();
+    try {
+      await expect(
+        service.answer(validated([{ role: 'user', content: 'Où chercher ?' }])),
+      ).resolves.toMatchObject({
+        answer,
+        sources: ['https://www.anapec.org/'],
+        privacy: 'not-stored',
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      await limiter.onModuleDestroy();
+    }
+  });
+
   it.each([
     'Hi',
     'Where can I find jobs in Casablanca?',
@@ -137,6 +212,12 @@ describe('real Nori request pipeline (only upstream HTTP is mocked)', () => {
         );
         expect(framed.operatingInstructions).toContain(
           'Use only HTTPS sources',
+        );
+        expect(framed.operatingInstructions).toContain(
+          'never internal reasoning',
+        );
+        expect(framed.operatingInstructions).toContain(
+          'Do not invent office addresses or neighborhood recommendations',
         );
         expect(
           Buffer.byteLength(body.messages[0].content, 'utf8') + body.max_tokens,

@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { careerChatClient } from '@/lib/api/career-chat-client';
 import { FloatingCareerAssistant } from './FloatingCareerAssistant';
 
-vi.mock('@/lib/api/career-chat-client', () => ({
+vi.mock('@/lib/api/career-chat-client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/career-chat-client')>()),
   careerChatClient: {
     ask: vi.fn(),
   },
@@ -155,7 +156,9 @@ describe('FloatingCareerAssistant', () => {
     renderWithEarlyBetaVisibility('mobile', true);
 
     expect(
-      container.querySelector('button[aria-label="Ask Nori about jobs in Morocco"]'),
+      container.querySelector(
+        'button[aria-label="Ask Nori about jobs in Morocco"]',
+      ),
     ).toBeNull();
   });
 

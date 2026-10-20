@@ -25,6 +25,8 @@ interface DahlChatResponse {
   choices?: Array<{
     message?: {
       content?: unknown;
+      // Documented separately by MiniMax; never a fallback for final content.
+      reasoning_content?: unknown;
     };
   }>;
 }
@@ -34,7 +36,7 @@ class DahlRequestFailure extends Error {
     readonly retryable: boolean,
     readonly countsTowardCircuit: boolean,
     readonly status?: number,
-    readonly reason?: 'response_too_long',
+    readonly reason?: 'response_too_long' | 'invalid_final_answer',
   ) {
     super('Dahl request failed');
   }
@@ -217,6 +219,13 @@ export class DahlCareerChatProvider implements CareerChatProvider {
               'The Career Assistant response exceeded the message limit. Ask for a shorter answer.',
           });
         }
+        if (error.reason === 'invalid_final_answer') {
+          throw new BadGatewayException({
+            code: 'CAREER_CHAT_INVALID_RESPONSE',
+            message:
+              'The Career Assistant could not return a valid final answer. Please try again.',
+          });
+        }
         throw new BadGatewayException(
           'The Morocco career assistant is temporarily unavailable',
         );
@@ -359,11 +368,27 @@ export class DahlCareerChatProvider implements CareerChatProvider {
   }
 
   private toSafePlainText(answer: string, maxOutputTokens: number): string {
-    const normalized = answer
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-      .replaceAll('<', '‹')
-      .replaceAll('>', '›')
-      .trim();
+    // Bound the raw envelope as well as the final answer. Neither discarded
+    // reasoning nor malformed provider text is included in errors or logs.
+    if (answer.length > maxOutputTokens * 12) {
+      throw new DahlRequestFailure(
+        false,
+        true,
+        undefined,
+        'invalid_final_answer',
+      );
+    }
+    const normalized = extractFinalAnswer(
+      answer.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''),
+    ).trim();
+    if (!normalized) {
+      throw new DahlRequestFailure(
+        false,
+        true,
+        undefined,
+        'invalid_final_answer',
+      );
+    }
     const maximumCharacters = Math.min(
       maxOutputTokens * 12,
       CAREER_CHAT_MESSAGE_CHARACTERS,
@@ -371,12 +396,7 @@ export class DahlCareerChatProvider implements CareerChatProvider {
     if (normalized.length > maximumCharacters) {
       // Reject intact: never silently truncate or accept an answer that the
       // next request's unchanged per-message DTO cannot validate.
-      throw new DahlRequestFailure(
-        false,
-        true,
-        undefined,
-        'response_too_long',
-      );
+      throw new DahlRequestFailure(false, true, undefined, 'response_too_long');
     }
     return normalized;
   }
@@ -458,4 +478,43 @@ export class DahlCareerChatProvider implements CareerChatProvider {
       ].join(' '),
     );
   }
+}
+
+/** Only recognized complete control blocks are removed, never general HTML.
+ * Ambiguous markers (including escaped old-server output or examples inside
+ * code), nested blocks and incomplete output fail closed instead of guessing.
+ * Ordinary brackets, comparisons and code remain unchanged as Markdown text.
+ */
+function extractFinalAnswer(content: string): string {
+  const marker =
+    /(?:<|‹|&lt;|&#0*60;|&#x0*3c;)\s*\/?\s*(?:think|analysis|reasoning)\b/gi;
+  let hidden = false;
+  let cursor = 0;
+  let final = '';
+  const invalid = () =>
+    new DahlRequestFailure(false, true, undefined, 'invalid_final_answer');
+  for (const match of content.matchAll(marker)) {
+    const index = match.index!;
+    if (!hidden) final += content.slice(cursor, index);
+    const tag = content.slice(index).match(/^<(\/?)think>/i);
+    if (!tag || Boolean(tag[1]) !== hidden) throw invalid();
+    if (!hidden) {
+      let codeDelimiter: string | undefined;
+      for (const code of final.matchAll(/`+|~{3,}/g)) {
+        if (!codeDelimiter) codeDelimiter = code[0];
+        else if (code[0] === codeDelimiter) codeDelimiter = undefined;
+      }
+      if (codeDelimiter) throw invalid();
+    }
+    hidden = !hidden;
+    cursor = index + tag[0].length;
+  }
+  if (
+    hidden ||
+    /(?:^|\n)\s*(?:<|‹|&lt;|&#0*60;|&#x0*3c;)\/?(?:t|th|thi|thin)$/i.test(
+      content,
+    )
+  )
+    throw invalid();
+  return final + content.slice(cursor);
 }
