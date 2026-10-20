@@ -143,7 +143,7 @@ describe('DahlCareerChatProvider', () => {
     );
   });
 
-  it('neutralizes provider HTML before returning plain text', async () => {
+  it('preserves angle brackets as text for the non-HTML renderer', async () => {
     global.fetch = successfulFetch(
       '<img src=x onerror="globalThis.compromised=true">Use ANAPEC',
     ) as typeof fetch;
@@ -152,10 +152,154 @@ describe('DahlCareerChatProvider', () => {
     await expect(
       provider.complete([{ role: 'user', content: 'Hello' }]),
     ).resolves.toEqual({
-      answer: '‹img src=x onerror="globalThis.compromised=true"›Use ANAPEC',
+      answer: '<img src=x onerror="globalThis.compromised=true">Use ANAPEC',
       model: 'MiniMaxAI/MiniMax-M2.7',
     });
   });
+
+  it.each([
+    ['<think>PRIVATE_REASONING</think>Final answer.', 'Final answer.'],
+    [
+      '<THINK>PRIVATE_REASONING</THINK>\n**Réponse finale**',
+      '**Réponse finale**',
+    ],
+    [
+      '<think>first private block</think><think>second private block</think>الجواب النهائي',
+      'الجواب النهائي',
+    ],
+    [
+      'Use `Array<T>` when x < y and y > 0.\n\n```html\n<div>example</div>\n```',
+      'Use `Array<T>` when x < y and y > 0.\n\n```html\n<div>example</div>\n```',
+    ],
+  ])(
+    'extracts final content and preserves ordinary text (%#)',
+    async (content, answer) => {
+      const fetch = successfulFetch(content);
+      global.fetch = fetch as typeof globalThis.fetch;
+      const provider = new DahlCareerChatProvider(config, usageLimiter);
+      await expect(
+        provider.complete([{ role: 'user', content: 'Hi' }]),
+      ).resolves.toHaveProperty('answer', answer);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('ignores structured reasoning fields, even when their text exceeds the final limit', async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: 'Final answer.',
+                reasoning_content: 'PRIVATE_REASONING'.repeat(300),
+                reasoning_details: [{ text: 'PRIVATE_DETAILS' }],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const provider = new DahlCareerChatProvider(config, usageLimiter);
+    const result = await provider.complete([{ role: 'user', content: 'Hi' }]);
+    expect(result.answer).toBe('Final answer.');
+    expect(JSON.stringify(result)).not.toContain('PRIVATE_');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    '<think>PRIVATE_REASONING',
+    '<think>PRIVATE_REASONING</think>',
+    '<think>PRIVATE_REASONING</thin>',
+    '<think attr="x">PRIVATE_REASONING</think>Final',
+    '<think>PRIVATE_REASONING<think>nested</think></think>Final',
+    'PRIVATE_REASONING</think>Final',
+    '<analysis>PRIVATE_REASONING</analysis>Final',
+    '&lt;think&gt;PRIVATE_REASONING&lt;/think&gt;Final',
+    '‹think›PRIVATE_REASONING‹/think›Final',
+    '<thi',
+    '```xml\n<think>ambiguous example</think>\n```',
+    '<think>private</think>`<think>ambiguous</think>`',
+    'x'.repeat(8_401),
+  ])(
+    'fails closed for incomplete, ambiguous or reasoning-only content (%#)',
+    async (content) => {
+      const fetch = successfulFetch(content);
+      global.fetch = fetch as typeof globalThis.fetch;
+      const logs = ['log', 'warn', 'error'].map((method) =>
+        jest
+          .spyOn(Logger.prototype, method as 'log' | 'warn' | 'error')
+          .mockImplementation(),
+      );
+      try {
+        const provider = new DahlCareerChatProvider(config, usageLimiter);
+        const error = await provider
+          .complete([{ role: 'user', content: 'PRIVATE_QUESTION' }])
+          .catch((e) => e);
+        expect(error.getStatus()).toBe(502);
+        expect(error.getResponse().code).toBe('CAREER_CHAT_INVALID_RESPONSE');
+        const exposed =
+          JSON.stringify(error.getResponse()) +
+          JSON.stringify(logs.flatMap((spy) => spy.mock.calls));
+        expect(exposed).not.toContain('PRIVATE_');
+        expect(exposed).not.toContain('test-key-not-a-secret');
+        expect(fetch).toHaveBeenCalledTimes(1);
+      } finally {
+        logs.forEach((spy) => spy.mockRestore());
+      }
+    },
+  );
+
+  it('does not promote reasoning-only structured fields into a final answer', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  reasoning_content: 'PRIVATE_REASONING',
+                },
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+    const provider = new DahlCareerChatProvider(config, usageLimiter);
+    await expect(
+      provider.complete([{ role: 'user', content: 'Hi' }]),
+    ).rejects.toBeInstanceOf(BadGatewayException);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([1_999, 2_000, 2_001])(
+    'validates %s final characters after discarding a complete reasoning envelope',
+    async (length) => {
+      const fetch = successfulFetch(
+        '<think>' +
+          'PRIVATE_REASONING'.repeat(150) +
+          '</think>' +
+          'ع'.repeat(length),
+      );
+      global.fetch = fetch as typeof globalThis.fetch;
+      const provider = new DahlCareerChatProvider(config, usageLimiter);
+      if (length <= 2_000)
+        await expect(
+          provider.complete([{ role: 'user', content: 'Hi' }]),
+        ).resolves.toHaveProperty('answer', 'ع'.repeat(length));
+      else
+        await expect(
+          provider.complete([{ role: 'user', content: 'Hi' }]),
+        ).rejects.toMatchObject({
+          response: { code: 'CAREER_CHAT_RESPONSE_TOO_LONG' },
+        });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it.each([429, 500, 503])(
     'retries transient HTTP %s and then succeeds',

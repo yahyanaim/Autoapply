@@ -67,9 +67,43 @@ The assistant receives:
 - no private or user-captured jobs.
 
 Only allow-listed sources actually cited by the model are returned as clickable
-links to the dashboard. Only credential-free HTTPS URLs are accepted. Provider
-markup is neutralized by the API and rendered as React text, never injected as
-HTML.
+links to the dashboard. Only credential-free HTTPS URLs are accepted. Answers
+are Markdown text, never an HTML response. The Dashboard uses `react-markdown`
+with HTML execution and remote images disabled; it never injects model HTML.
+The library's default raw-node-to-text conversion preserves literal markup and
+technical prose such as `List<T>` as escaped React text, not active elements.
+No `rehype-raw` or HTML-injection sink is used. Only owner-returned sources can
+become clickable links. URL identity uses the owner's fragment/trailing-slash
+normalization; navigation keeps the safe URL's fragment. Queries and encoded
+paths remain significant, with no hostname-only trust or percent-decoding.
+User messages remain plain React text. Ordinary brackets, comparisons and code
+are preserved.
+
+### Final answers, not internal reasoning
+
+The adapter reads only `choices[0].message.content`. Dedicated fields such as
+`reasoning_content` are never answer fallbacks or public response properties.
+Complete, non-nested `<think>...</think>` blocks are discarded before source
+extraction and final-answer length validation. Incomplete, nested, orphaned,
+malformed or escaped reasoning wrappers fail closed, as do reasoning-only
+responses. Reasoning-control tags inside code examples are ambiguous and are
+rejected rather than guessed at; other code is preserved. Unknown free-form,
+unmarked analysis cannot be deterministically identified by a delimiter guard.
+Prompt guidance is supplementary, not a security guarantee.
+
+The raw text envelope remains bounded by the existing output-token-derived
+ceiling; the extracted final answer retains the hard 2,000 UTF-16-unit limit.
+An invalid final answer returns a generic HTTP 502 with
+`CAREER_CHAT_INVALID_RESPONSE`, without raw provider text, and follows the
+existing circuit policy. Validation failures do not trigger regeneration or
+additional paid inference. Only anonymous outcome metadata is logged.
+
+The client validates the complete response before animation/history insertion,
+rejecting recognizable reasoning wrappers from stale/mixed backend versions.
+The reusable answer component supports paragraphs, compact headings, emphasis,
+lists, code and approved source links, with message-level automatic direction
+and isolated left-to-right code. No global typography or widget redesign is
+required. Local rendering tests use synthetic responses, not live inference.
 
 ## Limits
 
@@ -99,7 +133,7 @@ than silently granting a new local allowance during an outage.
 ### Usable request allowance
 
 The default is a local cost-safety ceiling, not MiniMax's context window. The
-actual framed policy/static context uses about 3.3 KB before conversation text.
+actual framed policy/static context uses about 3.5 KB before conversation text.
 A full 2,000-character ordinary-Unicode question can add 6 KB; output allowance,
 the greeting and framing also count. A 12,000-unit ceiling leaves useful room
 without removing policy or changing daily/monthly budgets. Input units remain
@@ -125,6 +159,13 @@ raises a budget automatically. Longer questions, the UI greeting and conversatio
 history require more capacity than this minimum. The budgets are shared across
 the service, not per visitor, and are conservative units rather than measured
 provider tokens or monetary charges.
+
+With this revision's prompt and default 700 output tokens/two retries, the
+minimum API starter reserves 12,741 units (4,247 per attempt), and the derived
+minimum request ceiling is 10,501 units. The defaults remain 12,000 per attempt,
+250,000 per UTC day and 5,000,000 per UTC month; no budget is increased. These
+derived minima change with the actual prompt, context, output allowance and
+retry configuration rather than being hardcoded validation constants.
 
 Conversation content above 8,000 characters returns HTTP 413 with
 `CAREER_CHAT_CONVERSATION_TOO_LONG`. A framed request exceeding its configured

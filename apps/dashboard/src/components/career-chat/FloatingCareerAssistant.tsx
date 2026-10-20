@@ -18,8 +18,11 @@ import {
 } from 'lucide-react';
 import {
   careerChatClient,
+  careerChatErrorMessage,
+  validateCareerChatResponse,
   type PublicCareerChatResponse,
 } from '@/lib/api/career-chat-client';
+import { CareerChatAnswer, safeCareerChatUrl } from './CareerChatAnswer';
 
 type ChatRole = 'user' | 'assistant';
 
@@ -171,10 +174,11 @@ export function FloatingCareerAssistant() {
   );
 
   const revealAnswer = (response: PublicCareerChatResponse) => {
+    response = validateCareerChatResponse(response);
     const id = nextMessageId.current++;
     const chunkSize = Math.max(1, Math.ceil(response.answer.length / 120));
     const safeSources = response.sources
-      .map(safeSourceUrl)
+      .map(safeCareerChatUrl)
       .filter((source): source is string => source !== null)
       .slice(0, 6);
     let visibleCharacters = 0;
@@ -224,9 +228,7 @@ export function FloatingCareerAssistant() {
 
     try {
       const response = await careerChatClient.ask(
-        nextMessages
-          .slice(-10)
-          .map(({ role, content }) => ({ role, content })),
+        nextMessages.slice(-10).map(({ role, content }) => ({ role, content })),
       );
       revealAnswer(response);
     } catch (caught) {
@@ -235,10 +237,9 @@ export function FloatingCareerAssistant() {
         {
           id: nextMessageId.current++,
           role: 'assistant',
-          content:
-            caught instanceof Error
-              ? caught.message
-              : 'I could not answer just now. Please try again shortly.',
+          content: careerChatErrorMessage(
+            caught instanceof Error ? caught.message : null,
+          ),
         },
       ]);
       setAnswering(false);
@@ -321,7 +322,19 @@ export function FloatingCareerAssistant() {
                     : 'career-chat-message career-chat-message-assistant'
                 }
               >
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                {message.role === 'user' ? (
+                  <p
+                    dir="auto"
+                    className="whitespace-pre-wrap [overflow-wrap:anywhere]"
+                  >
+                    {message.content}
+                  </p>
+                ) : (
+                  <CareerChatAnswer
+                    content={message.content}
+                    sources={message.sources}
+                  />
+                )}
                 {message.sources && message.sources.length > 0 && (
                   <div className="mt-3 border-t border-gray-200/70 pt-2">
                     <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
@@ -379,6 +392,7 @@ export function FloatingCareerAssistant() {
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleInputKeyDown}
                 maxLength={2_000}
+                dir="auto"
                 rows={2}
                 placeholder="Ask about jobs in Morocco…"
                 className="career-chat-input"
@@ -395,7 +409,8 @@ export function FloatingCareerAssistant() {
             </div>
             <p className="mt-2 flex items-center justify-center gap-1 text-[10px] text-gray-400">
               <ShieldCheck className="h-3 w-3" />
-              Nori cannot access your ApplyAI profile, CV, or dashboard. Chat messages are not stored.
+              Nori cannot access your ApplyAI profile, CV, or dashboard. Chat
+              messages are not stored.
             </p>
           </form>
         </section>
@@ -439,16 +454,6 @@ function sourceLabel(source: string): string {
     return new URL(source).hostname.replace(/^www\./, '');
   } catch {
     return 'Source';
-  }
-}
-
-function safeSourceUrl(source: string): string | null {
-  try {
-    const url = new URL(source);
-    if (url.protocol !== 'https:' || url.username || url.password) return null;
-    return url.toString();
-  } catch {
-    return null;
   }
 }
 
