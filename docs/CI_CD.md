@@ -5,7 +5,7 @@ ApplyAI uses one delivery owner per component:
 | Component                     | Delivery owner                    | Why                                                                                                       |
 | ----------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | Dashboard                     | Vercel Git integration            | Next.js is a short-lived web deployment.                                                                  |
-| Nori public assistant         | Separate Vercel project, optional | It is stateless apart from Redis-backed limits and does not load product data.                            |
+| Nori public assistant         | Separate Vercel project           | It is stateless apart from Redis-backed limits and does not load product data.                            |
 | Product API and BullMQ worker | Persistent container host         | Resume parsing, Redis queues, S3 uploads, and PostgreSQL connection management require durable processes. |
 
 Do not deploy the full product API to Vercel serverless. A serverless request can
@@ -57,44 +57,79 @@ an unverified change from reaching production.
 
 ## Vercel release verification
 
-Vercel emits a GitHub production deployment status after its deployment. The
-`Verify Vercel production release` workflow then checks the dashboard and the
-product API readiness endpoint. It also checks the independent Nori readiness
-endpoint when configured.
+Vercel deployment success, GitHub CI success, public-origin smoke success and
+authenticated application health are separate evidence. A green Vercel status
+does not prove that a public origin or its dependencies are ready.
 
-Add these **GitHub repository variables** (not secrets):
+The Product API/worker deployment is currently **deferred**. Standalone Nori is
+already a separate public service; it must never be substituted for Product API.
+`Verify Vercel production release` checks these services independently:
 
-```text
-PRODUCTION_API_URL=https://api.example.com
-PRODUCTION_NORI_API_URL=https://nori.example.com
-```
+| Service | Required evidence | Missing configuration / failure |
+| --- | --- | --- |
+| Dashboard | Canonical production `/`: HTTP 200, HTML | Fail |
+| Standalone Nori | Its own `/health/ready`: HTTP 200, `status: ready`, `mode: career-chat-standalone` | Fail; Nori is explicitly required |
+| Product API: deferred | No probe; summary says `DEFERRED`, never `PASSED` | A supplied URL while deferred is a configuration failure |
+| Product API: enabled | Its own `/health/ready`: HTTP 200 with ready database, Redis and storage; not standalone Nori | Fail if URL is absent/invalid or readiness is wrong/unhealthy |
 
-Leave `PRODUCTION_NORI_API_URL` empty only while Nori is intentionally not
-public. The API domains must be HTTPS and must not contain credentials.
+An operator must review and configure these **GitHub repository variables**
+(not secrets). This code change does not set them:
 
-When only the landing page and standalone Nori service are deployed, leave
-`PRODUCTION_API_URL` unset until the full Product API has been deployed and its
-readiness endpoint verified. Product API health verification is deferred during
-this phase; the production-origin smoke workflow cannot pass its required API
-configuration check. A published landing page is not evidence that registration,
-login, or authenticated job discovery works in production. The standalone Nori
-origin must not be substituted for the Product API origin.
+| Variable | Contract |
+| --- | --- |
+| `PRODUCTION_DASHBOARD_URL` | Required canonical Dashboard production origin |
+| `PRODUCTION_NORI_API_URL` | Required canonical standalone Nori production origin |
+| `PRODUCTION_PRODUCT_API_STATE` | `deferred` (explicit current-stage default) or `enabled`; any other value fails |
+| `PRODUCTION_API_URL` | Empty while deferred; mandatory when enabled and actually deployed |
 
-The smoke job intentionally listens only to Vercel's dashboard deployment
-environment, currently named `Production – autoapply`. This avoids duplicate
-checks from separate Vercel projects while still checking the dashboard and the
-independently hosted product API. If the Vercel project is renamed, update the
-workflow condition and test it with a production deployment.
+Origins must be distinct, credential-free HTTPS origins without a path, query,
+fragment, custom port, IP literal or local hostname. Use approved stable public
+origins, not Vercel deployment/log URLs. Do not populate `PRODUCTION_API_URL`
+with Nori's address to satisfy CI. Enabling Product API is a separately approved
+operational step, not inferred from Nori availability or the presence of a URL.
+
+The workflow accepts successful `deployment_status` events only for
+`Production – autoapply` (Dashboard) and `Production – autoapply-api` (Nori).
+It validates repository identity, Vercel bot creators, matching environment
+metadata, SHA, deployment ID and the event origin. Vercel currently marks these
+named production deployments `production_environment=false`; that flag alone
+cannot classify the actual project stage.
+
+`environment_url` is preferred to the legacy `target_url`. The accepted event
+origin must match the configured service origin or the observed generated-host
+family `autoapply-<id>-yahyanaims-projects.vercel.app`. Both projects currently
+use that family, so the hostname prefix is **not** a service identity. Review
+the script and regression tests if project/team naming changes. No event URL
+is fetched: every probe uses a separately configured canonical origin. The
+workflow checks out trusted `main`, never a deployment-supplied source ref.
+
+Every relevant event rechecks all expected services, including independent
+failures. Each probe permits at most three GET attempts, ten seconds per
+attempt, and one second between retryable failures (network/timeout, HTTP 429
+or 5xx). Redirects are rejected, not followed. Readiness JSON is limited to
+8 KiB and validated without logging its contents. No chat, inference request,
+registration or mutation occurs. Nori's readiness endpoint itself makes its
+existing public, keyless provider-availability GET; it does not generate text.
+
+Runs are serialized per deployment ID without cancellation. Repeated events
+are idempotent, read-only **rechecks**, not persistent deduplication or new
+releases. They can fail if health changes. The summary records the event ID/SHA
+but does not claim to prove which commit a stable origin currently serves.
+Preview/unrelated events are ignored without a health claim.
+
+The workflow also runs offline regressions on relevant pull requests/main
+changes. Local check: `node --test scripts/verify-production-smoke.test.mjs`.
 
 ## Release sequence
 
 1. Open a pull request; CI and security checks must pass.
 2. Review and merge it into `main`.
 3. Vercel creates the dashboard/Nori deployment from `main`.
-4. Release the full API and worker from the same tested commit, run Prisma
-   migrations first, and wait for `/health/ready`.
-5. Confirm the Vercel smoke-test workflow succeeds.
-6. Run the documented synthetic user flow: register, upload one CV, wait for
+4. Confirm Dashboard/Nori smoke results, with Product API explicitly deferred.
+5. Only after separate Product API deployment authorization: release API/worker
+   from the tested commit, migrate first, wait for `/health/ready`, then enable
+   its production verification contract. Do not infer this from Vercel success.
+6. Once Product API exists, run the documented synthetic user flow: register, upload one CV, wait for
    parsing, discover jobs, prepare/review an application, and exercise the
    extension without submitting a real application.
 

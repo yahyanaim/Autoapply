@@ -2,36 +2,61 @@ name: Verify Vercel production release
 
 on:
   deployment_status:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/verify-vercel-release.yml
+      - scripts/verify-production-smoke*.mjs
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/verify-vercel-release.yml
+      - scripts/verify-production-smoke*.mjs
 
 permissions:
   contents: read
 
 jobs:
+  smoke-contract:
+    name: Production smoke regression tests
+    if: github.event_name != 'deployment_status'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --check scripts/verify-production-smoke.mjs
+      - run: node --test scripts/verify-production-smoke.test.mjs
+
   smoke-test:
     name: Smoke-test deployed production origins
     if: >-
+      github.event_name == 'deployment_status' &&
       github.event.deployment_status.state == 'success' &&
-      github.event.deployment.environment == 'Production – autoapply'
+      (github.event.deployment.environment == 'Production – autoapply' ||
+       github.event.deployment.environment == 'Production – autoapply-api')
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      DASHBOARD_URL: ${{ github.event.deployment_status.target_url }}
-      PRODUCT_API_URL: ${{ vars.PRODUCTION_API_URL }}
-      NORI_API_URL: ${{ vars.PRODUCTION_NORI_API_URL }}
+    concurrency:
+      group: production-smoke-${{ github.event.deployment.id }}
+      cancel-in-progress: false
     steps:
-      - name: Verify dashboard and API health
-        shell: bash
-        run: |
-          set -euo pipefail
-          for url in "$DASHBOARD_URL" "$PRODUCT_API_URL"; do
-            test -n "$url"
-            node -e "const url = new URL(process.argv[1]); if (url.protocol !== 'https:') process.exit(1)" "$url"
-          done
-
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors "$DASHBOARD_URL/" >/dev/null
-          curl --fail --silent --show-error --location --retry 3 --retry-all-errors "$PRODUCT_API_URL/health/ready" >/dev/null
-
-          if [ -n "$NORI_API_URL" ]; then
-            node -e "const url = new URL(process.argv[1]); if (url.protocol !== 'https:') process.exit(1)" "$NORI_API_URL"
-            curl --fail --silent --show-error --location --retry 3 --retry-all-errors "$NORI_API_URL/health/ready" >/dev/null
-          fi
+      - uses: actions/checkout@v4
+        with:
+          # Execute trusted default-branch code, never a deployment-supplied ref.
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify independently deployed production services
+        run: node scripts/verify-production-smoke.mjs
+        env:
+          PRODUCTION_DASHBOARD_URL: ${{ vars.PRODUCTION_DASHBOARD_URL }}
+          PRODUCTION_NORI_API_URL: ${{ vars.PRODUCTION_NORI_API_URL }}
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+          PRODUCTION_PRODUCT_API_STATE: ${{ vars.PRODUCTION_PRODUCT_API_STATE || 'deferred' }}
