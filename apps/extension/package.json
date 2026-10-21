@@ -21,7 +21,7 @@
     "@applyai/api-client": "workspace:*"
   },
   "devDependencies": {
-    "vite": "6.4.3",
+    "vite": "6.4.4",
     "@crxjs/vite-plugin": "^2.0.0-beta.28",
     "@vitejs/plugin-react": "^4.3.0",
     "@types/chrome": "^0.0.269",
