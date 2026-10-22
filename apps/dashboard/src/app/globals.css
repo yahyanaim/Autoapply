@@ -619,6 +619,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   .feature-marquee-track,
   .company-logo-row {
     animation: none;
@@ -643,5 +647,62 @@
   .career-assistant-thinking-eyes,
   .career-chat-thinking span {
     animation: none !important;
+  }
+}
+
+.early-beta-confirmation {
+  animation: early-beta-confirmation-in 180ms ease-out both;
+}
+
+@keyframes early-beta-confirmation-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nori-mascot-head-shake {
+  transform-origin: 50% 80%;
+  animation: nori-head-shake 12s ease-in-out infinite;
+}
+
+@keyframes nori-head-shake {
+  0%, 88%, 98%, 100% { transform: rotate(0deg); }
+  90% { transform: rotate(-3deg); }
+  92% { transform: rotate(3deg); }
+  94% { transform: rotate(-2deg); }
+  96% { transform: rotate(1deg); }
+}
+
+.nori-mascot-eyelid {
+  clip-path: inset(0 0 100% 0);
+  animation: nori-eye-close 6.2s linear infinite;
+}
+
+.nori-mascot-closed-eyes {
+  opacity: 0;
+  animation: nori-eye-line 6.2s linear infinite;
+}
+
+@keyframes nori-eye-close {
+  0%, 94%, 97.2%, 100% { clip-path: inset(0 0 100% 0); }
+  95.2%, 95.6% { clip-path: inset(0); }
+}
+
+@keyframes nori-eye-line {
+  0%, 95%, 96.4%, 100% { opacity: 0; }
+  95.2%, 95.6% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .early-beta-confirmation,
+  .nori-mascot-head-shake,
+  .nori-mascot-eyelid,
+  .nori-mascot-closed-eyes {
+    animation: none;
   }
 }
