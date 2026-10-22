@@ -26,6 +26,22 @@ honeypot field, uses an opaque idempotency key for safe client retries, and
 uses email as the durable duplicate check. The public response intentionally
 does not disclose whether an address was already registered.
 
+## Landing-page interaction
+
+The navbar's **Join Free Beta** link opens the existing `#early-beta` section.
+The navigation disclosure retains every product, language and account link on
+mobile and tablet. Long submit labels wrap inside the form card in English and
+Arabic; French remains an existing preferred-language option.
+
+While a submission is pending, the form locks its fields and submit control.
+An unchanged retry reuses its idempotency key; editing the payload starts a new
+attempt. Only a successful HTTP response displays **You're on the list!**, with
+localized waitlist copy. The confirmation does not expose an email address or
+promise access. A polite status announcement and focused confirmation heading
+provide accessible feedback. The hidden, inert form reserves its responsive
+height to avoid a success-state layout shift. Reduced motion disables the
+confirmation entrance and smooth anchor scrolling.
+
 ## Staging setup required before enabling storage
 
 Use a dedicated staging Google Cloud project, service account, and spreadsheet.

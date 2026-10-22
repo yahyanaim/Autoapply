@@ -1,3 +1,4 @@
+import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   click,
@@ -108,8 +109,15 @@ describe("early beta registration form", () => {
     resolveResponse?.(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     await flushUpdates();
     expect(view.container.textContent).toContain(
-      "Thank you. You are on the ApplyAI early-user list. We will contact you when the beta opens.",
+      "You're on the list!",
     );
+    const confirmation = view.required<HTMLElement>("[data-beta-success]");
+    expect(confirmation.textContent).toContain("We'll contact you by email when the next steps are ready.");
+    expect(confirmation.textContent).not.toContain("avery@example.test");
+    expect(confirmation.textContent).not.toMatch(/first 100|activated|accepted/i);
+    expect(document.activeElement).toBe(confirmation.querySelector("h3"));
+    expect(form.getAttribute("aria-hidden")).toBe("true");
+    expect(form.hasAttribute("inert")).toBe(true);
   });
 
   it("returns a safe generic error for failed submissions and never exposes provider details", async () => {
@@ -123,5 +131,69 @@ describe("early beta registration form", () => {
 
     expect(view.container.textContent).toContain("We could not add you to the early-user list right now.");
     expect(view.container.textContent).not.toContain("provider token invalid");
+    expect(view.container.querySelector("[data-beta-success]")).toBeNull();
+    expect(view.required<HTMLInputElement>("#early-user-email").value).toBe("AVERY@EXAMPLE.TEST");
+  });
+
+  it("keeps required semantics and the existing French preference option", () => {
+    view = renderView(<EarlyUserForm />);
+    for (const id of ["first-name", "email", "country", "job-search-status", "preferred-language", "consent"]) {
+      expect(view.required<HTMLInputElement>(`#early-user-${id}`).required).toBe(true);
+    }
+    setFormValue(view.required<HTMLSelectElement>("#early-user-preferred-language"), "french");
+    expect(view.required<HTMLSelectElement>("#early-user-preferred-language").value).toBe("french");
+  });
+
+  it("guards duplicate submits and edits while a request is pending", async () => {
+    let resolveResponse!: (value: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    view = renderView(<EarlyUserForm />);
+    fillRequiredFields();
+    const form = view.required<HTMLFormElement>("form");
+    act(() => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    setFormValue(view.required<HTMLInputElement>("#early-user-first-name"), "Changed while pending");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(view.required<HTMLInputElement>("#early-user-first-name").value).toBe("Avery");
+    expect(view.required<HTMLFieldSetElement>("fieldset").disabled).toBe(true);
+    expect(view.container.querySelector("[data-beta-success]")).toBeNull();
+    resolveResponse(new Response('{"ok":true}', { status: 200 }));
+    await flushUpdates();
+    expect(view.required<HTMLElement>("[data-beta-success]").textContent).toContain("You're on the list!");
+  });
+
+  it("retries an unchanged payload with its key and gives an edited payload a new key", async () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _options?: RequestInit) => new Response("", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    view = renderView(<EarlyUserForm />);
+    fillRequiredFields();
+    const form = view.required<HTMLFormElement>("form");
+    const submit = async () => {
+      act(() => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+      await flushUpdates();
+    };
+    await submit();
+    await submit();
+    setFormValue(view.required<HTMLInputElement>("#early-user-country"), "Morocco");
+    await submit();
+    const options = fetchMock.mock.calls.map((call) => call[1]!);
+    const keys = options.map((option) => (option.headers as Record<string, string>)["Idempotency-Key"]);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
+    expect(options[1].body).toBe(options[0].body);
+    expect(view.container.querySelector("[data-beta-success]")).toBeNull();
+  });
+
+  it("announces the Arabic confirmation only after the safe successful response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 })));
+    view = renderView(<EarlyUserForm locale="ar" />);
+    fillRequiredFields();
+    act(() => { view!.required<HTMLFormElement>("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    await flushUpdates();
+    expect(view.required<HTMLElement>("[data-beta-success] h3").textContent).toBe("أنت الآن على قائمة الانتظار!");
+    expect(view.required<HTMLElement>('[role="status"]').textContent).toContain("سنتواصل معك عبر البريد الإلكتروني");
   });
 });

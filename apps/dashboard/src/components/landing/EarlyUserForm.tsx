@@ -1,6 +1,14 @@
 "use client";
 
-import { isValidElement, type FormEvent, type ReactNode, useRef, useState } from "react";
+import {
+  isValidElement,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import {
   EARLY_USER_JOB_SEARCH_STATUSES,
@@ -47,19 +55,26 @@ const initialValues: FormValues = {
   website: "",
 };
 
+const SUCCESS_HEADLINE = "You're on the list!";
 const SUCCESS_MESSAGE =
-  "Thank you. You are on the ApplyAI early-user list. We will contact you when the beta opens.";
+  "Thanks for joining the ApplyAI Early Beta waitlist. We'll contact you by email when the next steps are ready.";
 const GENERIC_ERROR_MESSAGE =
   "We could not add you to the early-user list right now. Please try again later.";
 
-const jobSearchLabels: Record<(typeof EARLY_USER_JOB_SEARCH_STATUSES)[number], string> = {
+const jobSearchLabels: Record<
+  (typeof EARLY_USER_JOB_SEARCH_STATUSES)[number],
+  string
+> = {
   "actively-searching": "Actively searching",
   "open-to-opportunities": "Open to opportunities",
   "preparing-to-search": "Preparing to search",
   other: "Other",
 };
 
-const languageLabels: Record<(typeof EARLY_USER_PREFERRED_LANGUAGES)[number], string> = {
+const languageLabels: Record<
+  (typeof EARLY_USER_PREFERRED_LANGUAGES)[number],
+  string
+> = {
   english: "English",
   arabic: "Arabic",
   french: "French",
@@ -69,12 +84,22 @@ const languageLabels: Record<(typeof EARLY_USER_PREFERRED_LANGUAGES)[number], st
 export function EarlyUserForm({ locale = "en" }: { locale?: LandingLocale }) {
   const [values, setValues] = useState<FormValues>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<FieldName, string>>>({});
-  const [status, setStatus] = useState<"idle" | "submitting" | "success" | "error">(
-    "idle",
+  const [status, setStatus] = useState<
+    "idle" | "submitting" | "success" | "error"
+  >("idle");
+  const submission = useRef<{ key: string; body: string } | undefined>(
+    undefined,
   );
-  const idempotencyKey = useRef<string | undefined>(undefined);
+  const submitting = useRef(false);
+  const successHeading = useRef<HTMLHeadingElement>(null);
+  const isSuccess = status === "success";
+
+  useEffect(() => {
+    if (isSuccess) successHeading.current?.focus();
+  }, [isSuccess]);
 
   const updateValue = (field: Exclude<FieldName, "consent">, value: string) => {
+    if (submitting.current) return;
     setValues((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
     setStatus("idle");
@@ -82,6 +107,7 @@ export function EarlyUserForm({ locale = "en" }: { locale?: LandingLocale }) {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting.current || isSuccess) return;
     const parsed = parseEarlyUserSubmission(values);
     if (!parsed.success) {
       const nextErrors: Partial<Record<FieldName, string>> = {};
@@ -100,219 +126,343 @@ export function EarlyUserForm({ locale = "en" }: { locale?: LandingLocale }) {
       return;
     }
 
+    submitting.current = true;
     setErrors({});
     setStatus("submitting");
-    idempotencyKey.current ??= createIdempotencyKey();
+    const body = JSON.stringify(parsed.data);
+    // Retry the same payload with its key; edited submissions are distinct attempts.
+    if (submission.current?.body !== body) {
+      submission.current = { key: createIdempotencyKey(), body };
+    }
 
     try {
       const response = await fetch("/api/early-users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey.current,
+          "Idempotency-Key": submission.current.key,
         },
-        body: JSON.stringify(parsed.data),
+        body,
       });
       if (!response.ok) throw new Error("early_user_submission_failed");
       setStatus("success");
     } catch {
       setStatus("error");
+    } finally {
+      submitting.current = false;
     }
   };
 
-  if (status === "success") {
-    return (
-      <div
-        role="status"
-        className="rounded-2xl border border-success-200 bg-success-50 p-6 text-center text-sm leading-6 text-success-800 sm:p-8 sm:text-base"
-      >
-        {translateLanding(locale, SUCCESS_MESSAGE)}
-      </div>
-    );
-  }
-
   return (
-    <form
-      noValidate
-      onSubmit={submit}
-      className="space-y-5"
-      aria-label={translateLanding(locale, "Early beta registration")}
-    >
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label={translateLanding(locale, "First name or preferred name")} error={errors.firstName} required>
-          <input
-            id="early-user-first-name"
-            name="firstName"
-            autoComplete="given-name"
-            maxLength={80}
-            placeholder={translateLanding(locale, "e.g. Amira")}
-            value={values.firstName}
-            onChange={(event) => updateValue("firstName", event.target.value)}
-            aria-invalid={Boolean(errors.firstName)}
-            aria-describedby={errors.firstName ? "early-user-first-name-error" : undefined}
-            className={inputClass(errors.firstName)}
-          />
-        </Field>
-        <Field label={translateLanding(locale, "Email address")} error={errors.email} required>
-          <input
-            id="early-user-email"
-            name="email"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            maxLength={254}
-            placeholder={translateLanding(locale, "you@example.com")}
-            value={values.email}
-            onChange={(event) => updateValue("email", event.target.value)}
-            aria-invalid={Boolean(errors.email)}
-            aria-describedby={errors.email ? "early-user-email-error" : undefined}
-            className={inputClass(errors.email)}
-          />
-        </Field>
-      </div>
-
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label={translateLanding(locale, "Country")} error={errors.country} required>
-          <input
-            id="early-user-country"
-            name="country"
-            autoComplete="country-name"
-            maxLength={80}
-            placeholder={translateLanding(locale, "e.g. Morocco")}
-            value={values.country}
-            onChange={(event) => updateValue("country", event.target.value)}
-            aria-invalid={Boolean(errors.country)}
-            aria-describedby={errors.country ? "early-user-country-error" : undefined}
-            className={inputClass(errors.country)}
-          />
-        </Field>
-        <SelectField
-          id="early-user-job-search-status"
-          name="jobSearchStatus"
-          label={translateLanding(locale, "Current job-search")}
-          value={values.jobSearchStatus}
-          error={errors.jobSearchStatus}
-          onChange={(value) => updateValue("jobSearchStatus", value)}
-          emptyLabel={translateLanding(locale, "Select one")}
-          options={EARLY_USER_JOB_SEARCH_STATUSES.map((value) => ({
-            value,
-            label: translateLanding(locale, jobSearchLabels[value]),
-          }))}
-        />
-        <SelectField
-          id="early-user-preferred-language"
-          name="preferredLanguage"
-          label={translateLanding(locale, "Preferred language")}
-          value={values.preferredLanguage}
-          error={errors.preferredLanguage}
-          onChange={(value) => updateValue("preferredLanguage", value)}
-          emptyLabel={translateLanding(locale, "Select one")}
-          options={EARLY_USER_PREFERRED_LANGUAGES.map((value) => ({
-            value,
-            label: translateLanding(locale, languageLabels[value]),
-          }))}
-        />
-        <Field label={translateLanding(locale, "Current role or target role")} error={errors.targetRole}>
-          <input
-            id="early-user-target-role"
-            name="targetRole"
-            maxLength={120}
-            placeholder={translateLanding(locale, "e.g. Product designer")}
-            value={values.targetRole}
-            onChange={(event) => updateValue("targetRole", event.target.value)}
-            aria-invalid={Boolean(errors.targetRole)}
-            aria-describedby={errors.targetRole ? "early-user-target-role-error" : undefined}
-            className={inputClass(errors.targetRole)}
-          />
-        </Field>
-        <SelectField
-          id="early-user-heard-about"
-          name="heardAbout"
-          label={translateLanding(locale, "How did you hear about ApplyAI?")}
-          value={values.heardAbout}
-          error={errors.heardAbout}
-          onChange={(value) => updateValue("heardAbout", value)}
-          optional
-          className="sm:col-span-2"
-          emptyLabel={translateLanding(locale, "Select an option")}
-          options={[
-            { value: "search", label: translateLanding(locale, "Search") },
-            { value: "social", label: translateLanding(locale, "Social media") },
-            { value: "friend", label: translateLanding(locale, "Friend or colleague") },
-            { value: "other", label: translateLanding(locale, "Other") },
-          ]}
-        />
-      </div>
-
-      <Field
-        label={translateLanding(locale, "What is the main problem you want ApplyAI to solve?")}
-        error={errors.mainProblem}
+    <div className="relative min-w-0">
+      <p
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
       >
-        <textarea
-          id="early-user-main-problem"
-          name="mainProblem"
-          rows={4}
-          maxLength={500}
-          placeholder={translateLanding(locale, "For example, finding roles that fit my experience.")}
-          value={values.mainProblem}
-          onChange={(event) => updateValue("mainProblem", event.target.value)}
-          aria-invalid={Boolean(errors.mainProblem)}
-          aria-describedby={errors.mainProblem ? "early-user-main-problem-error" : undefined}
-          className={`${inputClass(errors.mainProblem)} min-h-28 resize-y py-3`}
-        />
-      </Field>
-
-      <div className="sr-only" aria-hidden="true">
-        <label htmlFor="early-user-website">{translateLanding(locale, "Website")}</label>
-        <input
-          id="early-user-website"
-          name="website"
-          tabIndex={-1}
-          autoComplete="off"
-          maxLength={200}
-          value={values.website}
-          onChange={(event) => updateValue("website", event.target.value)}
-        />
-      </div>
-
-      <div>
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-black/[0.08] bg-[#faf9f7] p-4 text-sm leading-6 text-gray-700">
-          <input
-            id="early-user-consent"
-            name="consent"
-            type="checkbox"
-            checked={values.consent}
-            onChange={(event) => {
-              setValues((current) => ({ ...current, consent: event.target.checked }));
-              setErrors((current) => ({ ...current, consent: undefined }));
-              setStatus("idle");
-            }}
-            aria-invalid={Boolean(errors.consent)}
-            aria-describedby={errors.consent ? "early-user-consent-error" : undefined}
-            className="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-          <span>
-            {translateLanding(
-              locale,
-              "I agree that ApplyAI may contact me about the Early Beta. I understand this does not guarantee an invitation or immediate access.",
-            )}
-          </span>
-        </label>
-        {errors.consent && <FieldError id="early-user-consent-error" message={errors.consent} />}
-      </div>
-
-      {status === "error" && (
-        <p role="alert" className="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700">
-          {translateLanding(locale, GENERIC_ERROR_MESSAGE)}
-        </p>
-      )}
-
-      <Button type="submit" size="lg" className="w-full rounded-xl sm:w-auto" disabled={status === "submitting"}>
         {status === "submitting"
           ? translateLanding(locale, "Joining the list…")
-          : translateLanding(locale, "Join the ApplyAI Early Beta")}
-      </Button>
-    </form>
+          : isSuccess
+            ? translateLanding(locale, SUCCESS_MESSAGE)
+            : ""}
+      </p>
+      <form
+        noValidate
+        onSubmit={submit}
+        className={`min-w-0 ${isSuccess ? "invisible" : ""}`}
+        aria-label={translateLanding(locale, "Early beta registration")}
+        aria-hidden={isSuccess || undefined}
+        aria-busy={status === "submitting"}
+        inert={isSuccess || undefined}
+      >
+        {/* Keep the form in flow after success so its responsive height stays stable. */}
+        <fieldset
+          className="min-w-0 space-y-5"
+          disabled={status === "submitting" || isSuccess}
+        >
+          <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+            <Field
+              label={translateLanding(locale, "First name or preferred name")}
+              error={errors.firstName}
+              required
+            >
+              <input
+                id="early-user-first-name"
+                name="firstName"
+                required
+                autoComplete="given-name"
+                maxLength={80}
+                placeholder={translateLanding(locale, "e.g. Amira")}
+                value={values.firstName}
+                onChange={(event) =>
+                  updateValue("firstName", event.target.value)
+                }
+                aria-invalid={Boolean(errors.firstName)}
+                aria-describedby={
+                  errors.firstName ? "early-user-first-name-error" : undefined
+                }
+                className={inputClass(errors.firstName)}
+              />
+            </Field>
+            <Field
+              label={translateLanding(locale, "Email address")}
+              error={errors.email}
+              required
+            >
+              <input
+                id="early-user-email"
+                name="email"
+                required
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                maxLength={254}
+                placeholder={translateLanding(locale, "you@example.com")}
+                value={values.email}
+                onChange={(event) => updateValue("email", event.target.value)}
+                aria-invalid={Boolean(errors.email)}
+                aria-describedby={
+                  errors.email ? "early-user-email-error" : undefined
+                }
+                className={inputClass(errors.email)}
+              />
+            </Field>
+          </div>
+
+          <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+            <Field
+              label={translateLanding(locale, "Country")}
+              error={errors.country}
+              required
+            >
+              <input
+                id="early-user-country"
+                name="country"
+                required
+                autoComplete="country-name"
+                maxLength={80}
+                placeholder={translateLanding(locale, "e.g. Morocco")}
+                value={values.country}
+                onChange={(event) => updateValue("country", event.target.value)}
+                aria-invalid={Boolean(errors.country)}
+                aria-describedby={
+                  errors.country ? "early-user-country-error" : undefined
+                }
+                className={inputClass(errors.country)}
+              />
+            </Field>
+            <SelectField
+              id="early-user-job-search-status"
+              name="jobSearchStatus"
+              label={translateLanding(locale, "Current job-search")}
+              value={values.jobSearchStatus}
+              error={errors.jobSearchStatus}
+              onChange={(value) => updateValue("jobSearchStatus", value)}
+              emptyLabel={translateLanding(locale, "Select one")}
+              options={EARLY_USER_JOB_SEARCH_STATUSES.map((value) => ({
+                value,
+                label: translateLanding(locale, jobSearchLabels[value]),
+              }))}
+            />
+            <SelectField
+              id="early-user-preferred-language"
+              name="preferredLanguage"
+              label={translateLanding(locale, "Preferred language")}
+              value={values.preferredLanguage}
+              error={errors.preferredLanguage}
+              onChange={(value) => updateValue("preferredLanguage", value)}
+              emptyLabel={translateLanding(locale, "Select one")}
+              options={EARLY_USER_PREFERRED_LANGUAGES.map((value) => ({
+                value,
+                label: translateLanding(locale, languageLabels[value]),
+              }))}
+            />
+            <Field
+              label={translateLanding(locale, "Current role or target role")}
+              error={errors.targetRole}
+            >
+              <input
+                id="early-user-target-role"
+                name="targetRole"
+                maxLength={120}
+                placeholder={translateLanding(locale, "e.g. Product designer")}
+                value={values.targetRole}
+                onChange={(event) =>
+                  updateValue("targetRole", event.target.value)
+                }
+                aria-invalid={Boolean(errors.targetRole)}
+                aria-describedby={
+                  errors.targetRole ? "early-user-target-role-error" : undefined
+                }
+                className={inputClass(errors.targetRole)}
+              />
+            </Field>
+            <SelectField
+              id="early-user-heard-about"
+              name="heardAbout"
+              label={translateLanding(
+                locale,
+                "How did you hear about ApplyAI?",
+              )}
+              value={values.heardAbout}
+              error={errors.heardAbout}
+              onChange={(value) => updateValue("heardAbout", value)}
+              optional
+              className="sm:col-span-2"
+              emptyLabel={translateLanding(locale, "Select an option")}
+              options={[
+                { value: "search", label: translateLanding(locale, "Search") },
+                {
+                  value: "social",
+                  label: translateLanding(locale, "Social media"),
+                },
+                {
+                  value: "friend",
+                  label: translateLanding(locale, "Friend or colleague"),
+                },
+                { value: "other", label: translateLanding(locale, "Other") },
+              ]}
+            />
+          </div>
+
+          <Field
+            label={translateLanding(
+              locale,
+              "What is the main problem you want ApplyAI to solve?",
+            )}
+            error={errors.mainProblem}
+          >
+            <textarea
+              id="early-user-main-problem"
+              name="mainProblem"
+              rows={4}
+              maxLength={500}
+              placeholder={translateLanding(
+                locale,
+                "For example, finding roles that fit my experience.",
+              )}
+              value={values.mainProblem}
+              onChange={(event) =>
+                updateValue("mainProblem", event.target.value)
+              }
+              aria-invalid={Boolean(errors.mainProblem)}
+              aria-describedby={
+                errors.mainProblem ? "early-user-main-problem-error" : undefined
+              }
+              className={`${inputClass(errors.mainProblem)} min-h-28 resize-y py-3`}
+            />
+          </Field>
+
+          <div className="sr-only" aria-hidden="true">
+            <label htmlFor="early-user-website">
+              {translateLanding(locale, "Website")}
+            </label>
+            <input
+              id="early-user-website"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              maxLength={200}
+              value={values.website}
+              onChange={(event) => updateValue("website", event.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-black/[0.08] bg-[#faf9f7] p-4 text-sm leading-6 text-gray-700">
+              <input
+                id="early-user-consent"
+                name="consent"
+                type="checkbox"
+                required
+                checked={values.consent}
+                onChange={(event) => {
+                  if (submitting.current) return;
+                  setValues((current) => ({
+                    ...current,
+                    consent: event.target.checked,
+                  }));
+                  setErrors((current) => ({ ...current, consent: undefined }));
+                  setStatus("idle");
+                }}
+                aria-invalid={Boolean(errors.consent)}
+                aria-describedby={
+                  errors.consent ? "early-user-consent-error" : undefined
+                }
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                {translateLanding(
+                  locale,
+                  "I agree that ApplyAI may contact me about the Early Beta. I understand this does not guarantee an invitation or immediate access.",
+                )}
+              </span>
+            </label>
+            {errors.consent && (
+              <FieldError
+                id="early-user-consent-error"
+                message={errors.consent}
+              />
+            )}
+          </div>
+
+          {status === "error" && (
+            <p
+              role="alert"
+              className="rounded-xl border border-danger-200 bg-danger-50 p-4 text-sm text-danger-700"
+            >
+              {translateLanding(locale, GENERIC_ERROR_MESSAGE)}
+            </p>
+          )}
+
+          <Button
+            type="submit"
+            size="lg"
+            className="h-auto min-h-12 w-full max-w-full whitespace-normal rounded-xl bg-primary-500 py-3 text-center leading-6 text-white hover:bg-primary-800 sm:w-auto"
+            disabled={status === "submitting" || isSuccess}
+          >
+            {status === "submitting"
+              ? translateLanding(locale, "Joining the list…")
+              : translateLanding(locale, "Join the ApplyAI Early Beta")}
+          </Button>
+        </fieldset>
+      </form>
+      {isSuccess && (
+        <div className="absolute inset-0 flex items-end justify-center pb-2 sm:items-center sm:pb-0">
+          <div
+            data-beta-success=""
+            className="early-beta-confirmation w-full rounded-2xl border border-primary-100 bg-primary-50/60 px-5 py-8 text-center sm:px-8 sm:py-10"
+          >
+            <span
+              aria-hidden="true"
+              className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-primary-200 bg-white text-primary-700 shadow-sm"
+            >
+              <Check className="h-6 w-6" strokeWidth={2} />
+            </span>
+            <h3
+              ref={successHeading}
+              tabIndex={-1}
+              className="mt-6 text-2xl font-semibold leading-tight tracking-tight text-gray-950 outline-none sm:text-3xl"
+            >
+              {translateLanding(locale, SUCCESS_HEADLINE)}
+            </h3>
+            <p className="mx-auto mt-4 max-w-md text-sm leading-7 text-gray-600 sm:text-base">
+              {translateLanding(locale, SUCCESS_MESSAGE)}
+            </p>
+            <Button
+              asChild
+              variant="outline"
+              className="mt-7 h-auto min-h-10 max-w-full whitespace-normal rounded-xl border-primary-200 px-5 py-2 text-primary-800 hover:bg-primary-50"
+            >
+              <a href="#features">
+                {translateLanding(locale, "Explore ApplyAI")}
+              </a>
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -329,9 +479,11 @@ function Field({
   className?: string;
   children: ReactNode;
 }) {
-  const id = isValidElement<{ id?: string }>(children) ? children.props.id : undefined;
+  const id = isValidElement<{ id?: string }>(children)
+    ? children.props.id
+    : undefined;
   return (
-    <div className={`space-y-1.5 ${className ?? ""}`}>
+    <div className={`min-w-0 space-y-1.5 ${className ?? ""}`}>
       <label htmlFor={id} className="block text-sm font-medium text-gray-700">
         {label}
         {required && <span aria-hidden="true"> *</span>}
@@ -366,17 +518,25 @@ function SelectField({
   emptyLabel?: string;
 }) {
   return (
-    <Field label={label} error={error} required={!optional} className={className}>
+    <Field
+      label={label}
+      error={error}
+      required={!optional}
+      className={className}
+    >
       <select
         id={id}
         name={name}
+        required={!optional}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${id}-error` : undefined}
         className={inputClass(error)}
       >
-        <option value="">{emptyLabel ?? (optional ? "Select an option" : "Select one")}</option>
+        <option value="">
+          {emptyLabel ?? (optional ? "Select an option" : "Select one")}
+        </option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

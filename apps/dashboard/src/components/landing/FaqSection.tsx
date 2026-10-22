@@ -32,7 +32,9 @@ export function FaqSection({ locale = "en" }: { locale?: LandingLocale }) {
             {t("Frequently asked questions")}
           </h2>
           <p className="mx-auto mt-5 max-w-2xl text-sm leading-6 text-gray-600 sm:text-base">
-            {t("Apply with confidence, with the limits and controls explained clearly.")}
+            {t(
+              "Apply with confidence, with the limits and controls explained clearly.",
+            )}
           </p>
         </div>
 
@@ -42,7 +44,11 @@ export function FaqSection({ locale = "en" }: { locale?: LandingLocale }) {
           className="mx-auto mt-10 max-w-3xl rounded-2xl border border-black/[0.08] bg-[#faf9f7] px-5 sm:px-7"
         >
           {LANDING_FAQ_ITEMS.map((item) => (
-            <AccordionItem key={item.id} value={item.id} className="last:border-b-0">
+            <AccordionItem
+              key={item.id}
+              value={item.id}
+              className="last:border-b-0"
+            >
               <AccordionTrigger className="gap-6 text-start text-base font-semibold leading-6 text-gray-900 hover:text-primary-700 sm:text-lg">
                 {t(item.question)}
               </AccordionTrigger>
@@ -73,7 +79,11 @@ export function FaqSection({ locale = "en" }: { locale?: LandingLocale }) {
         </Accordion>
 
         <div className="mt-9 flex justify-center">
-          <Button asChild size="lg" className="rounded-xl px-7">
+          <Button
+            asChild
+            size="lg"
+            className="h-auto min-h-12 max-w-full whitespace-normal rounded-xl bg-primary-500 px-7 py-3 text-center text-white hover:bg-primary-800"
+          >
             <Link href="#early-beta">{t("Join the ApplyAI Early Beta")}</Link>
           </Button>
         </div>
