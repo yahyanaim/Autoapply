@@ -393,6 +393,11 @@ const arabicTranslations: Record<string, string> = {
     "نعم. تتضمن الإعدادات أدوات لتنزيل نسخة JSON قابلة للنقل، ومراجعة الجلسات وإلغائها، ومراجعة الموافقة، وحذف حسابك وملفات السيرة الذاتية المحفوظة نهائيًا. يشرح إشعار الخصوصية حدود الاحتفاظ المطبقة.",
   "Read the Privacy Notice": "اقرأ إشعار الخصوصية",
   "Early access": "وصول مبكر",
+  "Join Free Beta": "انضم للبيتا مجانًا",
+  "You're on the list!": "أنت الآن على قائمة الانتظار!",
+  "Thanks for joining the ApplyAI Early Beta waitlist. We'll contact you by email when the next steps are ready.":
+    "شكرًا لانضمامك إلى قائمة انتظار النسخة التجريبية المبكرة من ApplyAI. سنتواصل معك عبر البريد الإلكتروني عندما تصبح الخطوات التالية جاهزة.",
+  "Explore ApplyAI": "اكتشف ApplyAI",
   "Join the ApplyAI Early Beta": "انضم إلى النسخة التجريبية المبكرة من ApplyAI",
   "Tell us only what we need to contact you about the beta. We do not ask for a CV, application materials, payment details, or account credentials here.":
     "أخبرنا فقط بما نحتاجه للتواصل معك بشأن النسخة التجريبية. لا نطلب هنا سيرة ذاتية أو مستندات تقديم أو تفاصيل دفع أو بيانات اعتماد للحساب.",

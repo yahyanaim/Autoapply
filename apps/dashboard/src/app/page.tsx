@@ -393,13 +393,13 @@ export default function HomePage() {
       <header className="relative z-50 px-4 pt-4 sm:px-6 sm:pt-6">
         <nav
           aria-label={t("Main navigation")}
-          className="mx-auto flex min-h-[58px] max-w-[1112px] items-center justify-between rounded-xl border border-black/[0.06] bg-white/95 px-4 shadow-[0_10px_32px_rgba(23,23,20,0.06)] backdrop-blur-xl sm:px-5"
+          className="mx-auto flex min-h-[58px] max-w-[1112px] items-center justify-between gap-3 rounded-xl border border-black/[0.06] bg-white/95 px-3 shadow-[0_10px_32px_rgba(23,23,20,0.06)] backdrop-blur-xl sm:px-5"
         >
           <Link href="/" aria-label={t("ApplyAI home")} className="shrink-0">
-            <ApplyAILogo className="h-8 w-auto sm:h-9" priority />
+            <ApplyAILogo className="h-7 w-auto sm:h-9" priority />
           </Link>
 
-          <div className="hidden items-center gap-8 lg:flex">
+          <div className="hidden items-center gap-5 xl:flex">
             <Link
               href="#features"
               className="text-sm font-medium text-gray-700 transition hover:text-black"
@@ -432,63 +432,86 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="hidden items-center gap-2 sm:flex">
-            <div
-              className="flex rounded-lg border border-black/[0.08] bg-[#f7f7f5] p-0.5"
-              aria-label={locale === "ar" ? "اختيار اللغة" : "Choose language"}
-            >
-              <button
-                type="button"
-                onClick={() => changeLocale("en")}
-                aria-pressed={locale === "en"}
-                className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                  locale === "en"
-                    ? "bg-white text-black shadow-sm"
-                    : "text-gray-500 hover:text-black"
-                }`}
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 xl:flex">
+              <div
+                className="flex rounded-lg border border-black/[0.08] bg-[#f7f7f5] p-0.5"
+                aria-label={
+                  locale === "ar" ? "اختيار اللغة" : "Choose language"
+                }
               >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => changeLocale("ar")}
-                aria-pressed={locale === "ar"}
-                className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
-                  locale === "ar"
-                    ? "bg-white text-black shadow-sm"
-                    : "text-gray-500 hover:text-black"
-                }`}
+                <button
+                  type="button"
+                  onClick={() => changeLocale("en")}
+                  aria-pressed={locale === "en"}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                    locale === "en"
+                      ? "bg-white text-black shadow-sm"
+                      : "text-gray-500 hover:text-black"
+                  }`}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeLocale("ar")}
+                  aria-pressed={locale === "ar"}
+                  className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition ${
+                    locale === "ar"
+                      ? "bg-white text-black shadow-sm"
+                      : "text-gray-500 hover:text-black"
+                  }`}
+                >
+                  العربية
+                </button>
+              </div>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/login">{t("Sign in")}</Link>
+              </Button>
+              <Button
+                asChild
+                size="sm"
+                className="rounded-xl bg-primary-500 px-4 text-white hover:bg-primary-800"
               >
-                العربية
-              </button>
+                <Link href="/register">
+                  {t("Get started")}
+                  <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
+                </Link>
+              </Button>
             </div>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/login">{t("Sign in")}</Link>
+
+            <Button
+              asChild
+              size="sm"
+              className="rounded-xl bg-primary-500 px-3 text-white hover:bg-primary-800"
+            >
+              <a href="#early-beta" onClick={() => setMobileOpen(false)}>
+                {t("Join Free Beta")}
+              </a>
             </Button>
-            <Button asChild size="sm" className="rounded-xl px-4">
-              <Link href="/register">
-                {t("Get started")}
-                <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
-              </Link>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="xl:hidden"
+              onClick={() => setMobileOpen((current) => !current)}
+              aria-label={t(
+                mobileOpen ? "Close navigation" : "Open navigation",
+              )}
+              aria-expanded={mobileOpen}
+              aria-controls="landing-navigation-menu"
+            >
+              <span className="text-xs font-semibold">
+                {t(mobileOpen ? "Close" : "Menu")}
+              </span>
             </Button>
           </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="sm:hidden"
-            onClick={() => setMobileOpen((current) => !current)}
-            aria-label={t(mobileOpen ? "Close navigation" : "Open navigation")}
-            aria-expanded={mobileOpen}
-          >
-            <span className="text-xs font-semibold">
-              {t(mobileOpen ? "Close" : "Menu")}
-            </span>
-          </Button>
         </nav>
 
         {mobileOpen && (
-          <div className="mx-auto mt-2 max-w-[1112px] rounded-xl border border-black/[0.06] bg-white p-3 shadow-xl sm:hidden">
+          <div
+            id="landing-navigation-menu"
+            className="mx-auto mt-2 max-w-[1112px] rounded-xl border border-black/[0.06] bg-white p-3 shadow-xl xl:hidden"
+          >
             {[
               ["Features", "#features"],
               ["How it works", "#how-it-works"],
@@ -535,7 +558,10 @@ export default function HomePage() {
               <Button asChild variant="outline">
                 <Link href="/login">{t("Sign in")}</Link>
               </Button>
-              <Button asChild>
+              <Button
+                asChild
+                className="bg-primary-500 text-white hover:bg-primary-800"
+              >
                 <Link href="/register">{t("Get started")}</Link>
               </Button>
             </div>
@@ -617,7 +643,7 @@ export default function HomePage() {
                 <Button
                   type="submit"
                   size="icon"
-                  className="h-11 w-11 shrink-0 rounded-xl"
+                  className="h-11 w-11 shrink-0 rounded-xl bg-primary-500 text-white hover:bg-primary-800"
                   aria-label={t("Search opportunities")}
                 >
                   <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
@@ -745,7 +771,11 @@ export default function HomePage() {
           </div>
 
           <div className="section-shell mt-4 flex justify-center">
-            <Button asChild size="lg" className="rounded-xl px-7">
+            <Button
+              asChild
+              size="lg"
+              className="rounded-xl bg-primary-500 px-7 text-white hover:bg-primary-800"
+            >
               <Link href="#how-it-works">
                 {t("Explore the ApplyAI workflow")}
                 <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
@@ -1265,7 +1295,11 @@ export default function HomePage() {
               <div className="grid md:grid-cols-[185px_1fr_1fr]">
                 <div />
                 <div className="rounded-b-xl bg-[#1b100a] px-6 py-7 text-center">
-                  <Button asChild size="lg" className="min-w-56 rounded-lg">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="min-w-56 rounded-lg bg-primary-500 text-white hover:bg-primary-800"
+                  >
                     <Link href="/register">
                       {t("Simplify my applications")}
                       <span aria-hidden="true">
@@ -1490,7 +1524,7 @@ export default function HomePage() {
                         variant={plan.popular ? "default" : "outline"}
                         className={`w-full rounded-xl ${
                           plan.popular
-                            ? ""
+                            ? "bg-primary-500 text-white hover:bg-primary-800"
                             : "border-black/10 bg-white shadow-none hover:bg-orange-50"
                         }`}
                       >
@@ -1603,11 +1637,12 @@ export default function HomePage() {
         <section
           id="early-beta"
           aria-labelledby="early-beta-heading"
-          className="bg-[#f1f1ed] py-16 sm:py-24"
+          tabIndex={-1}
+          className="scroll-mt-6 bg-[#f1f1ed] py-16 focus:outline-none sm:py-24"
         >
           <div className="section-shell">
-            <div className="mx-auto grid max-w-5xl gap-10 rounded-[28px] border border-black/[0.07] bg-white p-6 shadow-[0_22px_70px_rgba(35,28,21,0.08)] lg:grid-cols-[0.82fr_1.18fr] lg:p-10">
-              <div>
+            <div className="mx-auto grid min-w-0 max-w-5xl grid-cols-[minmax(0,1fr)] gap-10 rounded-[28px] border border-black/[0.07] bg-white p-6 shadow-[0_22px_70px_rgba(35,28,21,0.08)] lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] lg:p-10">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold uppercase tracking-[0.14em] text-primary-600">
                   {t("Early access")}
                 </p>
