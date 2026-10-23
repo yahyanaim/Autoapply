@@ -86,11 +86,12 @@ The GitHub workflows now provide a repeatable pull-request gate, dependency
 review, CodeQL scanning, and production-release smoke tests. Full details are
 in [CI_CD.md](CI_CD.md).
 
-The Vercel smoke workflow is scoped to Vercel's actual dashboard deployment
-environment name (`Production – autoapply`). The repository still needs the
-operator to set `PRODUCTION_API_URL` (and `PRODUCTION_NORI_API_URL` when Nori
-is public) as GitHub repository variables before an end-to-end release check
-can pass.
+The Vercel smoke workflow recognizes the named Dashboard and standalone Nori
+production deployments and probes their separately configured canonical origins.
+Product API remains deferred, not healthy or interchangeable with Nori. Its
+readiness check becomes mandatory only when explicitly enabled after deployment.
+The operator-managed variable/state contract and the limits of public HTTP
+evidence are documented in [CI_CD.md](CI_CD.md#vercel-release-verification).
 
 ### Accepted trade-off: existing-registration feedback
 

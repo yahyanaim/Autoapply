@@ -27,9 +27,11 @@ Last reviewed: 2026-09-09
 
 ## Remaining release work outside source code
 
-- Set `PRODUCTION_API_URL`, and set `PRODUCTION_NORI_API_URL` only when Nori is
-  public, as GitHub repository variables. The values cannot be inferred safely
-  from source code.
+- Configure the required Dashboard/Nori canonical origins for production smoke
+  verification. Product API remains explicitly deferred; its URL must stay
+  empty until separately deployed and enabled. Follow the deployment-state
+  contract in [CI_CD.md](CI_CD.md#vercel-release-verification); never substitute
+  Nori for Product API. Repository variables are operator-managed.
 - Branch protection is enabled for `main`: current pull requests need the
   quality, browser, dependency-review, and CodeQL checks. Because this is a
   single-maintainer repository, no second-person approval is required; force
@@ -42,6 +44,7 @@ Last reviewed: 2026-09-09
 ## Verification standard
 
 Every focused fix adds a failure-path test. Before release, run `pnpm check`,
-confirm the pull-request checks pass, release the product API/worker from the
-same commit as the dashboard, then complete the synthetic candidate journey in
-[CI_CD.md](CI_CD.md).
+confirm the pull-request checks pass and verify currently deployed components.
+After separately authorizing Product API deployment, release its API/worker
+from the tested commit and complete the synthetic candidate journey in
+[CI_CD.md](CI_CD.md). A deferred Product API check is not a pass.
